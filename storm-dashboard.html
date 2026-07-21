@@ -107,6 +107,26 @@
     cursor:pointer;
   }
 
+  /* Toast notifications for newly-issued alerts (left side, auto-dismiss). */
+  #toasts{
+    position:absolute;top:64px;left:24px;z-index:700;
+    display:flex;flex-direction:column;gap:10px;
+    max-width:320px;width:calc(100vw - 48px);pointer-events:none;
+  }
+  .toast{
+    pointer-events:auto;cursor:pointer;
+    background:var(--panel);border:1px solid var(--border);border-left:4px solid var(--border);
+    border-radius:10px;padding:10px 12px;
+    backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+    box-shadow:0 6px 20px rgba(0,0,0,0.4);
+    animation:toastIn 0.35s ease-out;
+  }
+  .toast.out{animation:toastOut 0.4s ease-in forwards;}
+  .toast .t-event{font-family:sans-serif;font-weight:700;font-size:13px;margin-bottom:2px;}
+  .toast .t-sub{font-family:sans-serif;font-size:11px;color:var(--dim);line-height:1.35;}
+  @keyframes toastIn{from{opacity:0;transform:translateX(-24px);}to{opacity:1;transform:translateX(0);}}
+  @keyframes toastOut{from{opacity:1;transform:translateX(0);}to{opacity:0;transform:translateX(-24px);}}
+
   .strike{
     width:8px;height:8px;border-radius:50%;
     background:#FFFFFF;
@@ -126,6 +146,7 @@
 <div id="map"></div>
 
 <div id="radarStatus"><span class="dot"></span><span id="radarStatusText">NEXRAD N0Q</span></div>
+<div id="toasts"></div>
 
 <div id="gear">
   <div id="gearbtn" onclick="document.getElementById('settingsPanel').classList.toggle('open')">⚙</div>
@@ -297,6 +318,7 @@ let lastAlertFeats = [];
 const alertFirstSeen = {};       // alert id -> first-seen time (ms), or 0 if pre-existing on load
 let alertsInitialized = false;   // alerts already active on first load must not flash
 const ALERT_FLASH_MS = 2 * 60 * 1000;
+const TOAST_MS = 12000;   // how long an alert toast stays on screen
 
 function hazardOf(event){
   const e = event.toLowerCase();
@@ -397,7 +419,11 @@ async function loadAlerts(){
       const id = f.id || (f.properties && f.properties.id);
       if(!id) continue;
       seenNow[id] = true;
-      if(alertFirstSeen[id] === undefined) alertFirstSeen[id] = alertsInitialized ? now : 0;
+      if(alertFirstSeen[id] === undefined){
+        const isNew = alertsInitialized;   // false on first load, so no toast storm at startup
+        alertFirstSeen[id] = isNew ? now : 0;
+        if(isNew && alertToastVisible(f)) showAlertToast(f);
+      }
     }
     for(const id in alertFirstSeen){ if(!seenNow[id]) delete alertFirstSeen[id]; }
     alertsInitialized = true;
@@ -407,6 +433,31 @@ async function loadAlerts(){
   }catch(e){
     console.error('alerts error', e);
   }
+}
+
+// Respect the hazard toggles so a muted hazard doesn't pop toasts.
+function alertToastVisible(f){
+  if(!hazardVisible[f._hazard]) return false;
+  if((f._cls === 'watch' || f._cls === 'advisory') && !hazardVisible.watches) return false;
+  return true;
+}
+
+function showAlertToast(f){
+  const cont = document.getElementById('toasts');
+  if(!cont) return;
+  const ev = f.properties.event || 'Weather Alert';
+  const color = alertColor(ev, f._cls);
+  let area = f.properties.areaDesc || f.properties.headline || '';
+  if(area.length > 110) area = area.slice(0, 110) + '…';
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.style.borderLeftColor = color;
+  el.innerHTML = `<div class="t-event" style="color:${color}">${ev}</div><div class="t-sub">${area}</div>`;
+  const remove = () => { el.classList.add('out'); setTimeout(() => el.remove(), 400); };
+  el.onclick = remove;
+  cont.prepend(el);
+  while(cont.children.length > 6) cont.lastChild.remove();   // cap the stack
+  setTimeout(remove, TOAST_MS);
 }
 
 function renderAlerts(){
