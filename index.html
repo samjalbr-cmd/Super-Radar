@@ -96,6 +96,19 @@
   }
   .flash-alert{ animation: alertFlash 1s ease-in-out 120; }
 
+  /* High-wind station markers pulse continuously while active. */
+  @keyframes windPulse{ 0%,100%{ stroke-opacity:1; } 50%{ stroke-opacity:0.15; } }
+  .wind-pulse{ animation: windPulse 1s ease-in-out infinite; }
+
+  #windAlert{
+    position:absolute;top:64px;left:24px;z-index:500;
+    padding:8px 12px;display:none;align-items:center;gap:8px;
+    background:var(--panel);border:1px solid #E10600;border-radius:10px;
+    backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+    font-family:monospace;font-size:11px;color:#FFD9D6;letter-spacing:0.03em;
+  }
+  #windAlert.show{display:flex;}
+
   .strike{
     width:8px;height:8px;border-radius:50%;
     background:#FFFFFF;
@@ -115,6 +128,7 @@
 <div id="map"></div>
 
 <div id="radarStatus"><span class="dot"></span><span id="radarStatusText">NEXRAD N0Q</span></div>
+<div id="windAlert"></div>
 
 <div id="gear">
   <div id="gearbtn" onclick="document.getElementById('settingsPanel').classList.toggle('open')">⚙</div>
@@ -148,6 +162,15 @@
         <option value="N0S">Storm-Relative Velocity</option>
       </select>
     </div>
+    <label style="margin-top:8px;">Weather Stations (METAR)</label>
+    <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" id="stationsChk" checked onchange="toggleStations(this)"> Show live stations</label>
+    <label style="margin-top:2px;">High-wind alert threshold (mph)</label>
+    <input id="windThresh" type="number" value="50" min="10" step="1" onchange="setWindThresh(this.value)" />
+    <label style="margin-top:2px;">Color stations by</label>
+    <select id="stationColor" onchange="setStationColor(this.value)">
+      <option value="wind">Wind speed</option>
+      <option value="temp">Temperature</option>
+    </select>
     <label style="margin-top:8px;">SPC Severe Layers</label>
     <div id="spcToggles" style="display:flex;flex-direction:column;gap:6px;">
       <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" data-spc="outlook" checked onchange="toggleSpc(this)"> Convective Outlook</label>
@@ -172,6 +195,20 @@
       <div class="legend-row"><span class="dotsw" style="background:#2ECC71;"></span>Flood / Rain</div>
       <div class="legend-row"><span class="dotsw" style="background:#CFE8FF;"></span>Snow / Ice</div>
       <div class="legend-row"><span class="dotsw" style="background:#B76FFF;"></span>Other</div>
+      <div class="legend-row legend-head">Station Wind</div>
+      <div class="legend-row"><span class="dotsw" style="background:#4A6FA5;"></span>&lt; 15 kt</div>
+      <div class="legend-row"><span class="dotsw" style="background:#3AA0FF;"></span>15–24 kt</div>
+      <div class="legend-row"><span class="dotsw" style="background:#F2B705;"></span>25–33 kt</div>
+      <div class="legend-row"><span class="dotsw" style="background:#FF7A00;"></span>34–47 kt</div>
+      <div class="legend-row"><span class="dotsw" style="background:#E10600;"></span>≥ 48 kt / over threshold</div>
+      <div class="legend-row legend-head">Station Temp (°F)</div>
+      <div class="legend-row"><span class="dotsw" style="background:#A020F0;"></span>&lt; 15</div>
+      <div class="legend-row"><span class="dotsw" style="background:#4169E1;"></span>15–31</div>
+      <div class="legend-row"><span class="dotsw" style="background:#00BFFF;"></span>32–49</div>
+      <div class="legend-row"><span class="dotsw" style="background:#2ECC71;"></span>50–64</div>
+      <div class="legend-row"><span class="dotsw" style="background:#F2B705;"></span>65–79</div>
+      <div class="legend-row"><span class="dotsw" style="background:#FF7A00;"></span>80–89</div>
+      <div class="legend-row"><span class="dotsw" style="background:#E10600;"></span>≥ 90</div>
     </div>
     <button id="fullscreenBtn" onclick="toggleFullscreen()">Enter TV Fullscreen</button>
   </div>
@@ -181,7 +218,7 @@
 <script>
 let lat = 42.907058, lon = -85.763014;
 let map, radarLayer, marker, alertLayerGroup, lightningLayerGroup;
-let spcOutlookLayer, mcdLayer, watchLayer, lsrLayer;
+let spcOutlookLayer, mcdLayer, watchLayer, lsrLayer, stationLayer;
 
 function initMap(){
   map = L.map('map', {zoomControl:false, attributionControl:true}).setView([lat, lon], 8);
@@ -200,7 +237,10 @@ function initMap(){
   watchLayer = L.layerGroup().addTo(map);
   mcdLayer = L.layerGroup().addTo(map);
   lsrLayer = L.layerGroup().addTo(map);
+  stationLayer = L.layerGroup().addTo(map);
   lightningLayerGroup = L.layerGroup().addTo(map);
+  // Re-filter station markers to the viewport when the map moves (no refetch).
+  map.on('moveend', renderStations);
   marker = L.marker([lat, lon], {icon: L.divIcon({className:'', html:'<div style="width:12px;height:12px;border-radius:50%;background:#F2B705;box-shadow:0 0 10px 3px #F2B705;"></div>'})}).addTo(map);
 }
 
@@ -676,11 +716,124 @@ function onSiteChange(id){
 
 function onProductChange(p){ singleProduct = p; updateSingleRadar(); }
 
+/* ---------------- Live weather stations (METAR/ASOS) ----------------
+   All US ASOS current obs are fetched nationally so high-wind scanning
+   covers the whole country; markers are drawn only within the viewport
+   (zoom >= 6) to stay readable. Any station whose sustained or gust wind
+   meets the threshold pulses red and is tallied in the wind-alert badge. */
+let stationsOn = true;
+let stationData = [];        // {lat, lon, p} cached from last fetch
+let windThreshMph = 50;
+let stationColorBy = 'wind'; // 'wind' | 'temp'
+
+function ktToMph(kt){ return kt == null ? null : kt * 1.15078; }
+function stationWindKt(p){ return Math.max(p.sknt || 0, p.gust || 0); }
+function windColor(kt){
+  if(kt >= 48) return '#E10600';
+  if(kt >= 34) return '#FF7A00';
+  if(kt >= 25) return '#F2B705';
+  if(kt >= 15) return '#3AA0FF';
+  return '#4A6FA5';
+}
+function tempColor(f){
+  if(f == null) return '#4A6FA5';
+  if(f >= 90) return '#E10600';
+  if(f >= 80) return '#FF7A00';
+  if(f >= 65) return '#F2B705';
+  if(f >= 50) return '#2ECC71';
+  if(f >= 32) return '#00BFFF';
+  if(f >= 15) return '#4169E1';
+  return '#A020F0';
+}
+
+async function loadStations(){
+  if(!stationsOn) return;
+  try{
+    const res = await fetch('https://mesonet.agron.iastate.edu/api/1/currents.geojson?country=US&networkclass=ASOS&minutes=120');
+    const data = await res.json();
+    stationData = (data.features || [])
+      .filter(f => f.geometry && f.geometry.coordinates)
+      .map(f => ({lon: f.geometry.coordinates[0], lat: f.geometry.coordinates[1], p: f.properties}));
+    renderStations();
+    updateHighWind();
+  }catch(e){ console.error('stations error', e); }
+}
+
+function stationPopup(s){
+  const p = s.p;
+  const wind = (p.sknt != null) ? `${p.drct != null ? Math.round(p.drct) + '° ' : ''}${Math.round(ktToMph(p.sknt))} mph` : 'calm';
+  const gust = (p.gust != null) ? `, gust ${Math.round(ktToMph(p.gust))} mph` : '';
+  const maxg = (p.max_gust != null) ? `<br>Peak gust today: ${Math.round(ktToMph(p.max_gust))} mph` : '';
+  const temp = (p.tmpf != null) ? `${Math.round(p.tmpf)}°F` : '—';
+  const feel = (p.feel != null) ? ` (feels ${Math.round(p.feel)}°)` : '';
+  const vis = (p.vsby != null) ? `${p.vsby} mi` : '—';
+  return `<div class="alert-popup"><b>${p.name || p.station} (${p.station})</b>Wind: ${wind}${gust}${maxg}<br>Temp: ${temp}${feel}<br>Vis: ${vis}<br><span style="color:#8A93A6;font-size:11px;">${fmtTime(p.utc_valid)}</span></div>`;
+}
+
+function renderStations(){
+  if(!stationLayer) return;
+  stationLayer.clearLayers();
+  if(!stationsOn || map.getZoom() < 6) return;
+  const b = map.getBounds();
+  const threshKt = windThreshMph / 1.15078;
+  for(const s of stationData){
+    if(!b.contains([s.lat, s.lon])) continue;
+    const kt = stationWindKt(s.p);
+    const high = threshKt > 0 && kt >= threshKt;
+    // High-wind always shows red so the alert is never hidden by temp coloring.
+    const color = high ? '#E10600' : (stationColorBy === 'temp' ? tempColor(s.p.tmpf) : windColor(kt));
+    const m = L.circleMarker([s.lat, s.lon], {
+      radius: high ? 6 : 4, color: color, weight: high ? 2 : 1,
+      fillColor: color, fillOpacity: high ? 0.95 : 0.75,
+      className: high ? 'wind-pulse' : undefined
+    });
+    m.bindPopup(stationPopup(s));
+    m.addTo(stationLayer);
+  }
+}
+
+// Scan ALL stations (not just viewport) so the badge warns about high wind anywhere.
+function updateHighWind(){
+  const el = document.getElementById('windAlert');
+  if(!el) return;
+  const threshKt = windThreshMph / 1.15078;
+  let count = 0, worst = null;
+  for(const s of stationData){
+    const kt = stationWindKt(s.p);
+    if(threshKt > 0 && kt >= threshKt){
+      count++;
+      if(!worst || kt > stationWindKt(worst.p)) worst = s;
+    }
+  }
+  if(stationsOn && count > 0){
+    const w = worst ? `${Math.round(ktToMph(stationWindKt(worst.p)))} mph @ ${worst.p.station}` : '';
+    el.textContent = `💨 ${count} station${count > 1 ? 's' : ''} ≥ ${windThreshMph} mph · peak ${w}`;
+    el.classList.add('show');
+  }else{
+    el.classList.remove('show');
+  }
+}
+
+function toggleStations(cb){
+  stationsOn = cb.checked;
+  if(stationsOn){ map.addLayer(stationLayer); loadStations(); }
+  else{ map.removeLayer(stationLayer); document.getElementById('windAlert').classList.remove('show'); }
+}
+
+function setWindThresh(v){
+  windThreshMph = Math.max(1, Number(v) || 50);
+  renderStations();
+  updateHighWind();
+}
+
+function setStationColor(v){ stationColorBy = (v === 'temp') ? 'temp' : 'wind'; renderStations(); }
+
 async function boot(){
   initMap();
   await Promise.all([loadRadar(), loadAlerts(), loadOutlook(), loadMCD(), loadWatches(), loadLSR(), loadNexradSites()]);
   document.getElementById('loading').classList.add('hide');
   populateSiteDropdown();
+  loadStations();   // heavy national fetch — fire after the map is visible
   connectLightning();
   setInterval(loadRadar, 5 * 60 * 1000);
   setInterval(loadAlerts, 2 * 60 * 1000);
@@ -689,6 +842,7 @@ async function boot(){
   setInterval(loadWatches, 5 * 60 * 1000);
   setInterval(loadLSR, 5 * 60 * 1000);
   setInterval(updateSingleRadar, 3 * 60 * 1000);
+  setInterval(loadStations, 5 * 60 * 1000);
 }
 
 boot();
