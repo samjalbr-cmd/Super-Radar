@@ -422,7 +422,7 @@ async function loadAlerts(){
       if(alertFirstSeen[id] === undefined){
         const isNew = alertsInitialized;   // false on first load, so no toast storm at startup
         alertFirstSeen[id] = isNew ? now : 0;
-        if(isNew && alertToastVisible(f)) showAlertToast(f);
+        if(isNew && alertToastVisible(f) && alertInView(f)) showAlertToast(f);
       }
     }
     for(const id in alertFirstSeen){ if(!seenNow[id]) delete alertFirstSeen[id]; }
@@ -440,6 +440,19 @@ function alertToastVisible(f){
   if(!hazardVisible[f._hazard]) return false;
   if((f._cls === 'watch' || f._cls === 'advisory') && !hazardVisible.watches) return false;
   return true;
+}
+
+// Only toast alerts whose area intersects the current map view.
+function alertInView(f){
+  if(!f._geoms || !f._geoms.length) return false;
+  const mb = map.getBounds();
+  for(const g of f._geoms){
+    try{
+      const b = L.geoJSON(g).getBounds();
+      if(b.isValid() && mb.intersects(b)) return true;
+    }catch(e){}
+  }
+  return false;
 }
 
 function showAlertToast(f){
