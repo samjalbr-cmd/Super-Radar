@@ -91,6 +91,13 @@
   .leaflet-popup-content-wrapper{background:#10192B;color:#F5F3EC;border:1px solid #25324a;}
   .leaflet-popup-tip{background:#10192B;}
 
+  /* Newly-issued warnings/watches pulse for ~2 min (120 one-second cycles). */
+  @keyframes alertFlash{
+    0%,100%{ stroke-opacity:1; stroke-width:5; fill-opacity:0.42; }
+    50%    { stroke-opacity:0.25; stroke-width:1.5; fill-opacity:0.04; }
+  }
+  .flash-alert{ animation: alertFlash 1s ease-in-out 120; }
+
   .strike{
     width:8px;height:8px;border-radius:50%;
     background:#FFFFFF;
@@ -209,6 +216,11 @@ function sevRank(sev){
 const hazardVisible = {tornado:true, thunderstorm:true, flood:true, winter:true, heat:true, other:true, watches:true, lightning:true};
 let lastAlertFeats = [];
 
+// Track when each alert was first seen so brand-new ones can flash.
+const alertFirstSeen = {};       // alert id -> first-seen time (ms), or 0 if pre-existing on load
+let alertsInitialized = false;   // alerts already active on first load must not flash
+const ALERT_FLASH_MS = 2 * 60 * 1000;
+
 function hazardOf(event){
   const e = event.toLowerCase();
   if(e.includes('tornado')) return 'tornado';
@@ -299,6 +311,20 @@ async function loadAlerts(){
         }
       }
     }
+    // Record first-seen times. On the very first load, existing alerts are
+    // stamped 0 (old) so they don't flash; only alerts that appear on a later
+    // refresh get a fresh timestamp and pulse for ALERT_FLASH_MS.
+    const now = Date.now();
+    const seenNow = {};
+    for(const f of feats){
+      const id = f.id || (f.properties && f.properties.id);
+      if(!id) continue;
+      seenNow[id] = true;
+      if(alertFirstSeen[id] === undefined) alertFirstSeen[id] = alertsInitialized ? now : 0;
+    }
+    for(const id in alertFirstSeen){ if(!seenNow[id]) delete alertFirstSeen[id]; }
+    alertsInitialized = true;
+
     lastAlertFeats = feats;
     renderAlerts();
   }catch(e){
@@ -318,9 +344,11 @@ function renderAlerts(){
 
     const color = alertColor(f.properties.event, f._cls);
     const isWatch = f._cls === 'watch';
+    const id = f.id || (f.properties && f.properties.id);
+    const isNew = id && (Date.now() - (alertFirstSeen[id] || 0) < ALERT_FLASH_MS);
     for(const g of f._geoms){
       const layer = L.geoJSON(g, {
-        style: {color: color, weight: isWatch ? 1.5 : 2.5, fillColor: color, fillOpacity: isWatch ? 0.10 : 0.22, dashArray: isWatch ? '6 4' : null}
+        style: {color: color, weight: isWatch ? 1.5 : 2.5, fillColor: color, fillOpacity: isWatch ? 0.10 : 0.22, dashArray: isWatch ? '6 4' : null, className: isNew ? 'flash-alert' : undefined}
       });
       layer.bindPopup(`<div class="alert-popup"><b>${f.properties.event}</b>${f.properties.headline || ''}</div>`);
       layer.addTo(alertLayerGroup);
