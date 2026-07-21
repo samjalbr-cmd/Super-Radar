@@ -133,7 +133,7 @@ function initMap(){
     attribution:'&copy; OpenStreetMap &copy; CARTO',
     maxZoom:12
   }).addTo(map);
-  radarLayer = L.tileLayer('', {opacity:0.85, maxZoom:12, maxNativeZoom:7, tileSize:512, zoomOffset:-1}).addTo(map);
+  radarLayer = L.tileLayer('', {opacity:0.85, maxZoom:12, maxNativeZoom:10, attribution:'NWS NEXRAD N0Q &copy; Iowa Environmental Mesonet'}).addTo(map);
   alertLayerGroup = L.layerGroup().addTo(map);
   lightningLayerGroup = L.layerGroup().addTo(map);
   marker = L.marker([lat, lon], {icon: L.divIcon({className:'', html:'<div style="width:12px;height:12px;border-radius:50%;background:#F2B705;box-shadow:0 0 10px 3px #F2B705;"></div>'})}).addTo(map);
@@ -145,22 +145,13 @@ function recenter(){
   marker = L.marker([lat, lon], {icon: L.divIcon({className:'', html:'<div style="width:12px;height:12px;border-radius:50%;background:#F2B705;box-shadow:0 0 10px 3px #F2B705;"></div>'})}).addTo(map);
 }
 
-async function loadRadar(){
-  try{
-    const res = await fetch('https://api.rainviewer.com/public/weather-maps.json');
-    const data = await res.json();
-    const host = data.host;
-    const past = data.radar.past || [];
-    const latest = past[past.length - 1];
-    if(latest){
-      // size 512 = HD tiles, scheme 6 = NEXRAD Level-III (classic green→yellow→red)
-      // options = {smooth}_{snow}; snow=0 so the whole field uses the NEXRAD
-      // reflectivity ramp instead of RainViewer's separate blue "snow" coloring
-      radarLayer.setUrl(`${host}${latest.path}/512/{z}/{x}/{y}/6/1_0.png`);
-    }
-  }catch(e){
-    console.error('radar error', e);
-  }
+function loadRadar(){
+  // Raw NWS NEXRAD base reflectivity (N0Q) national mosaic, served as XYZ tiles by the
+  // Iowa Environmental Mesonet. This is the actual NWS radar product rendered with the
+  // official NWS reflectivity color table (green→yellow→orange→red→magenta).
+  // Cache-bust with a timestamp so the periodic refresh pulls the latest ~5-min mosaic.
+  const ts = Math.floor(Date.now() / 1000);
+  radarLayer.setUrl(`https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913/{z}/{x}/{y}.png?t=${ts}`);
 }
 
 function sevRank(sev){
