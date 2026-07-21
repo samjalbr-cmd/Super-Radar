@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nightwatch — Storm Dashboard</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<style>
+  :root{
+    --void:#0A0E1A;
+    --panel:#10192Bcc;
+    --border:#25324a;
+    --dim:#8A93A6;
+    --amber:#F2B705;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body{height:100%;background:var(--void);overflow:hidden;font-family:sans-serif;}
+  #map{position:absolute;inset:0;}
+  .leaflet-control-attribution{background:rgba(10,14,26,0.6)!important;color:var(--dim)!important;font-size:9px!important;}
+  .leaflet-control-attribution a{color:var(--dim)!important;}
+  .leaflet-control-zoom{display:none;}
+
+  #gear{
+    position:absolute;top:28px;right:40px;
+    z-index:600;
+  }
+  #gearbtn{
+    position:absolute;top:0;right:0;
+    width:36px;height:36px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    background:var(--panel);border:1px solid var(--border);
+    color:var(--dim);cursor:pointer;font-size:16px;
+  }
+  #settingsPanel{
+    position:absolute;top:46px;right:0;width:280px;
+    padding:18px;display:none;flex-direction:column;gap:10px;
+    background:var(--panel);border:1px solid var(--border);border-radius:14px;
+    backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  }
+  #settingsPanel.open{display:flex;}
+  #settingsPanel label{font-family:monospace;font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:0.05em;}
+  #settingsPanel input{
+    background:#0d1420;border:1px solid var(--border);border-radius:8px;
+    color:#F5F3EC;padding:8px 10px;font-family:sans-serif;font-size:14px;
+  }
+  #settingsPanel button{
+    background:var(--amber);color:#181205;border:none;border-radius:8px;
+    padding:9px;font-weight:600;font-size:13px;cursor:pointer;margin-top:4px;
+  }
+  #fullscreenBtn{
+    background:transparent;color:var(--dim);border:1px solid var(--border);
+    border-radius:8px;padding:8px;font-family:monospace;font-size:11px;cursor:pointer;
+  }
+
+  #loading{
+    position:absolute;inset:0;background:var(--void);z-index:900;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;
+  }
+  #loading.hide{display:none;}
+  #loading .mark{font-size:28px;color:var(--amber);letter-spacing:0.04em;}
+  #loading .sub{font-family:monospace;font-size:12px;color:var(--dim);}
+
+  #legend{
+    position:absolute;bottom:24px;left:24px;z-index:500;
+    padding:10px 14px;display:none;flex-direction:column;gap:6px;
+    background:var(--panel);border:1px solid var(--border);border-radius:10px;
+    backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+    font-family:monospace;font-size:11px;color:#F5F3EC;
+  }
+  #legend.show{display:flex;}
+  #legend .row{display:flex;align-items:center;gap:8px;}
+  #legend .sw{width:10px;height:10px;border-radius:2px;flex-shrink:0;}
+
+  .alert-popup{font-family:sans-serif;font-size:13px;}
+  .alert-popup b{display:block;margin-bottom:2px;}
+  .leaflet-popup-content-wrapper{background:#10192B;color:#F5F3EC;border:1px solid #25324a;}
+  .leaflet-popup-tip{background:#10192B;}
+
+  .strike{
+    width:8px;height:8px;border-radius:50%;
+    background:#FFFFFF;
+    box-shadow:0 0 8px 3px #FFE96B, 0 0 16px 6px rgba(255,233,107,0.4);
+    animation:strikeFlash 0.5s ease-out;
+  }
+  @keyframes strikeFlash{
+    0%{transform:scale(3.2);opacity:1;}
+    100%{transform:scale(1);opacity:1;}
+  }
+</style>
+</head>
+<body>
+
+<div id="loading"><div class="mark">NIGHTWATCH</div><div class="sub">loading radar…</div></div>
+
+<div id="map"></div>
+
+<div id="gear">
+  <div id="gearbtn" onclick="document.getElementById('settingsPanel').classList.toggle('open')">⚙</div>
+  <div id="settingsPanel">
+    <label>Change Location</label>
+    <input id="cityInput" type="text" placeholder="City, State" />
+    <button onclick="searchCity()">Set Location</button>
+    <label style="margin-top:8px;">Show Alert Types</label>
+    <div id="hazardToggles" style="display:flex;flex-direction:column;gap:6px;font-size:13px;color:#F5F3EC;">
+      <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" data-hazard="tornado" checked onchange="toggleHazard(this)"> Tornado</label>
+      <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" data-hazard="thunderstorm" checked onchange="toggleHazard(this)"> Thunderstorm</label>
+      <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" data-hazard="flood" checked onchange="toggleHazard(this)"> Flood</label>
+      <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" data-hazard="winter" checked onchange="toggleHazard(this)"> Winter</label>
+      <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" data-hazard="heat" checked onchange="toggleHazard(this)"> Heat</label>
+      <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" data-hazard="other" checked onchange="toggleHazard(this)"> Other</label>
+      <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" data-hazard="watches" checked onchange="toggleHazard(this)"> Include Watches</label>
+      <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" data-hazard="lightning" checked onchange="toggleHazard(this)"> Lightning</label>
+    </div>
+    <button id="fullscreenBtn" onclick="toggleFullscreen()">Enter TV Fullscreen</button>
+  </div>
+</div>
+
+<div id="legend">
+  <div class="row"><div class="sw" style="background:#E10600;"></div>Tornado</div>
+  <div class="row"><div class="sw" style="background:#FFD400;"></div>Thunderstorm</div>
+  <div class="row"><div class="sw" style="background:#2ECC71;"></div>Flood</div>
+  <div class="row" style="color:#8A93A6;">solid = warning · dashed = watch</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+let lat = 42.907058, lon = -85.763014;
+let map, radarLayer, marker, alertLayerGroup, lightningLayerGroup;
+
+function initMap(){
+  map = L.map('map', {zoomControl:false, attributionControl:true}).setView([lat, lon], 8);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution:'&copy; OpenStreetMap &copy; CARTO',
+    maxZoom:12
+  }).addTo(map);
+  radarLayer = L.tileLayer('', {opacity:0.85, maxZoom:12, maxNativeZoom:7, tileSize:512, zoomOffset:-1}).addTo(map);
+  alertLayerGroup = L.layerGroup().addTo(map);
+  lightningLayerGroup = L.layerGroup().addTo(map);
+  marker = L.marker([lat, lon], {icon: L.divIcon({className:'', html:'<div style="width:12px;height:12px;border-radius:50%;background:#F2B705;box-shadow:0 0 10px 3px #F2B705;"></div>'})}).addTo(map);
+}
+
+function recenter(){
+  map.setView([lat, lon], 8);
+  if(marker) map.removeLayer(marker);
+  marker = L.marker([lat, lon], {icon: L.divIcon({className:'', html:'<div style="width:12px;height:12px;border-radius:50%;background:#F2B705;box-shadow:0 0 10px 3px #F2B705;"></div>'})}).addTo(map);
+}
+
+async function loadRadar(){
+  try{
+    const res = await fetch('https://api.rainviewer.com/public/weather-maps.json');
+    const data = await res.json();
+    const host = data.host;
+    const past = data.radar.past || [];
+    const latest = past[past.length - 1];
+    if(latest){
+      // size 512 = HD tiles, scheme 6 = NEXRAD Level-III (classic green→yellow→red)
+      radarLayer.setUrl(`${host}${latest.path}/512/{z}/{x}/{y}/6/1_1.png`);
+    }
+  }catch(e){
+    console.error('radar error', e);
+  }
+}
+
+function sevRank(sev){
+  if(sev === 'warning') return 3;
+  if(sev === 'watch') return 2;
+  return 1;
+}
+const hazardVisible = {tornado:true, thunderstorm:true, flood:true, winter:true, heat:true, other:true, watches:true, lightning:true};
+let lastAlertFeats = [];
+
+function hazardOf(event){
+  const e = event.toLowerCase();
+  if(e.includes('tornado')) return 'tornado';
+  if(e.includes('thunderstorm')) return 'thunderstorm';
+  if(e.includes('flood')) return 'flood';
+  if(e.includes('winter') || e.includes('snow') || e.includes('ice') || e.includes('blizzard')) return 'winter';
+  if(e.includes('heat')) return 'heat';
+  return 'other';
+}
+
+function toggleHazard(cb){
+  hazardVisible[cb.dataset.hazard] = cb.checked;
+  if(cb.dataset.hazard === 'lightning'){
+    if(cb.checked){ map.addLayer(lightningLayerGroup); }
+    else { map.removeLayer(lightningLayerGroup); }
+    return;
+  }
+  renderAlerts(); // instant redraw from cache, no refetch
+}
+
+function classify(event){
+  const e = event.toLowerCase();
+  if(e.includes('warning')) return 'warning';
+  if(e.includes('watch')) return 'watch';
+  return 'advisory';
+}
+
+// Per-hazard base colors. Watches use the same hue, lighter.
+function alertColor(event, cls){
+  const e = event.toLowerCase();
+  let base;
+  if(e.includes('tornado'))            base = '#E10600'; // red
+  else if(e.includes('thunderstorm'))  base = '#FFD400'; // yellow
+  else if(e.includes('flood'))         base = '#2ECC71'; // green
+  else if(e.includes('winter') || e.includes('snow') || e.includes('ice') || e.includes('blizzard')) base = '#6FB7FF';
+  else if(e.includes('heat'))          base = '#FF7A00';
+  else                                 base = '#B76FFF'; // other hazards: purple
+  if(cls === 'watch') return lighten(base, 0.45);
+  if(cls === 'advisory') return lighten(base, 0.65);
+  return base;
+}
+function lighten(hex, amt){
+  const n = parseInt(hex.slice(1), 16);
+  let r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  r = Math.round(r + (255 - r) * amt);
+  g = Math.round(g + (255 - g) * amt);
+  b = Math.round(b + (255 - b) * amt);
+  return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+}
+
+const zoneCache = {};
+async function zoneGeometry(zoneUrl){
+  if(zoneCache[zoneUrl] !== undefined) return zoneCache[zoneUrl];
+  try{
+    const res = await fetch(zoneUrl);
+    const data = await res.json();
+    zoneCache[zoneUrl] = data.geometry || null;
+  }catch(e){
+    zoneCache[zoneUrl] = null;
+  }
+  return zoneCache[zoneUrl];
+}
+
+async function loadAlerts(){
+  try{
+    const res = await fetch(`https://api.weather.gov/alerts/active`);
+    const data = await res.json();
+    const feats = data.features || [];
+    let zoneFetches = 0;
+    const ZONE_FETCH_LIMIT = 60; // watches span many counties; cap per refresh, cache fills over time
+
+    // Resolve geometries up front (incl. zone lookups for watches/warnings)
+    for(const f of feats){
+      const cls = classify(f.properties.event);
+      f._cls = cls;
+      f._hazard = hazardOf(f.properties.event);
+      f._geoms = [];
+      if(f.geometry){
+        f._geoms.push(f.geometry);
+      } else if(cls === 'warning' || cls === 'watch'){
+        for(const zoneUrl of (f.properties.affectedZones || [])){
+          if(zoneCache[zoneUrl] === undefined){
+            if(zoneFetches >= ZONE_FETCH_LIMIT) continue;
+            zoneFetches++;
+          }
+          const g = await zoneGeometry(zoneUrl);
+          if(g) f._geoms.push(g);
+        }
+      }
+    }
+    lastAlertFeats = feats;
+    renderAlerts();
+  }catch(e){
+    console.error('alerts error', e);
+  }
+}
+
+function renderAlerts(){
+  alertLayerGroup.clearLayers();
+  let drawnCount = 0;
+
+  for(const f of lastAlertFeats){
+    if(!f._geoms || !f._geoms.length) continue;
+    if(!hazardVisible[f._hazard]) continue;
+    if(f._cls === 'watch' && !hazardVisible.watches) continue;
+    if(f._cls === 'advisory' && !hazardVisible.watches) continue;
+
+    const color = alertColor(f.properties.event, f._cls);
+    const isWatch = f._cls === 'watch';
+    for(const g of f._geoms){
+      const layer = L.geoJSON(g, {
+        style: {color: color, weight: isWatch ? 1.5 : 2.5, fillColor: color, fillOpacity: isWatch ? 0.10 : 0.22, dashArray: isWatch ? '6 4' : null}
+      });
+      layer.bindPopup(`<div class="alert-popup"><b>${f.properties.event}</b>${f.properties.headline || ''}</div>`);
+      layer.addTo(alertLayerGroup);
+    }
+    drawnCount++;
+  }
+
+  document.getElementById('legend').classList.toggle('show', drawnCount > 0);
+}
+
+async function searchCity(){
+  const q = document.getElementById('cityInput').value.trim();
+  if(!q) return;
+  try{
+    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(q)}`);
+    const results = await res.json();
+    if(results.length){
+      lat = parseFloat(results[0].lat);
+      lon = parseFloat(results[0].lon);
+      recenter();
+      loadRadar();
+      loadAlerts();
+      document.getElementById('settingsPanel').classList.remove('open');
+    }
+  }catch(e){ console.error(e); }
+}
+
+function toggleFullscreen(){
+  if(!document.fullscreenElement){
+    document.documentElement.requestFullscreen().catch(()=>{});
+  } else {
+    document.exitFullscreen();
+  }
+}
+
+/* ---------------- Lightning (Blitzortung.org community network) ----------------
+   Unofficial websocket feed. Strikes render as white/gold flashes that
+   fade out over 10 minutes. Auto-reconnects if the stream drops.       */
+const STRIKE_TTL = 10 * 60 * 1000;
+let strikes = []; // {marker, time}
+let lightningSocket = null;
+
+// Blitzortung streams LZW-compressed JSON; this is the standard decoder.
+function lzwDecode(b){
+  let a, e = {}, d = b.split(""), f = d[0], g = f, h = [f], o = 256;
+  for(let i = 1; i < d.length; i++){
+    a = d[i].charCodeAt(0);
+    let k = 256 > a ? d[i] : (e[a] ? e[a] : g + f);
+    h.push(k);
+    f = k.charAt(0);
+    e[o] = g + f;
+    o++;
+    g = k;
+  }
+  return h.join("");
+}
+
+function connectLightning(){
+  try{
+    const hosts = ['ws1.blitzortung.org', 'ws7.blitzortung.org', 'ws8.blitzortung.org'];
+    const host = hosts[Math.floor(Math.random() * hosts.length)];
+    lightningSocket = new WebSocket(`wss://${host}:443/`);
+    lightningSocket.onopen = () => {
+      lightningSocket.send(JSON.stringify({a: 111}));
+    };
+    lightningSocket.onmessage = (msg) => {
+      try{
+        const data = JSON.parse(lzwDecode(msg.data));
+        if(typeof data.lat !== 'number' || typeof data.lon !== 'number') return;
+        addStrike(data.lat, data.lon);
+      }catch(e){ /* ignore malformed frames */ }
+    };
+    lightningSocket.onclose = () => setTimeout(connectLightning, 5000);
+    lightningSocket.onerror = () => { try{ lightningSocket.close(); }catch(e){} };
+  }catch(e){
+    setTimeout(connectLightning, 10000);
+  }
+}
+
+function addStrike(sLat, sLon){
+  const m = L.marker([sLat, sLon], {
+    icon: L.divIcon({className:'', html:'<div class="strike"></div>', iconSize:[8,8], iconAnchor:[4,4]}),
+    interactive: false
+  }).addTo(lightningLayerGroup);
+  strikes.push({marker: m, time: Date.now()});
+}
+
+// Age out strikes: fade opacity with age, remove after TTL
+setInterval(() => {
+  const now = Date.now();
+  strikes = strikes.filter(s => {
+    const age = now - s.time;
+    if(age > STRIKE_TTL){
+      lightningLayerGroup.removeLayer(s.marker);
+      return false;
+    }
+    const el = s.marker.getElement();
+    if(el) el.style.opacity = String(1 - age / STRIKE_TTL);
+    return true;
+  });
+}, 5000);
+
+async function boot(){
+  initMap();
+  await Promise.all([loadRadar(), loadAlerts()]);
+  document.getElementById('loading').classList.add('hide');
+  connectLightning();
+  setInterval(loadRadar, 5 * 60 * 1000);
+  setInterval(loadAlerts, 2 * 60 * 1000);
+}
+
+boot();
+</script>
+</body>
+</html>
