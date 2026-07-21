@@ -128,6 +128,13 @@
       <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" data-hazard="watches" checked onchange="toggleHazard(this)"> Include Watches</label>
       <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" data-hazard="lightning" checked onchange="toggleHazard(this)"> Lightning</label>
     </div>
+    <label style="margin-top:8px;">SPC Severe Layers</label>
+    <div id="spcToggles" style="display:flex;flex-direction:column;gap:6px;">
+      <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" data-spc="outlook" checked onchange="toggleSpc(this)"> Convective Outlook</label>
+      <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" data-spc="mcd" checked onchange="toggleSpc(this)"> Mesoscale Discussions</label>
+      <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" data-spc="watch" checked onchange="toggleSpc(this)"> Watch Boxes</label>
+      <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" data-spc="lsr" checked onchange="toggleSpc(this)"> Storm Reports (24h)</label>
+    </div>
     <button id="fullscreenBtn" onclick="toggleFullscreen()">Enter TV Fullscreen</button>
   </div>
 </div>
@@ -143,6 +150,7 @@
 <script>
 let lat = 42.907058, lon = -85.763014;
 let map, radarLayer, marker, alertLayerGroup, lightningLayerGroup;
+let spcOutlookLayer, mcdLayer, watchLayer, lsrLayer;
 
 function initMap(){
   map = L.map('map', {zoomControl:false, attributionControl:true}).setView([lat, lon], 8);
@@ -151,7 +159,11 @@ function initMap(){
     maxZoom:12
   }).addTo(map);
   radarLayer = L.tileLayer('', {opacity:0.85, maxZoom:12, maxNativeZoom:10, attribution:'NWS NEXRAD N0Q &copy; Iowa Environmental Mesonet'}).addTo(map);
+  spcOutlookLayer = L.layerGroup().addTo(map);
   alertLayerGroup = L.layerGroup().addTo(map);
+  watchLayer = L.layerGroup().addTo(map);
+  mcdLayer = L.layerGroup().addTo(map);
+  lsrLayer = L.layerGroup().addTo(map);
   lightningLayerGroup = L.layerGroup().addTo(map);
   marker = L.marker([lat, lon], {icon: L.divIcon({className:'', html:'<div style="width:12px;height:12px;border-radius:50%;background:#F2B705;box-shadow:0 0 10px 3px #F2B705;"></div>'})}).addTo(map);
 }
@@ -411,13 +423,123 @@ setInterval(() => {
   });
 }, 5000);
 
+/* ---------------- SPC severe-weather layers ----------------
+   Convective Outlook (risk shading), Mesoscale Discussions, Watch
+   outlines, and Local Storm Reports. Each lives in its own layer
+   group toggled from the settings panel.                        */
+const spcVisible = {outlook:true, mcd:true, watch:true, lsr:true};
+function toggleSpc(cb){
+  const key = cb.dataset.spc;
+  spcVisible[key] = cb.checked;
+  const grp = {outlook:spcOutlookLayer, mcd:mcdLayer, watch:watchLayer, lsr:lsrLayer}[key];
+  if(!grp) return;
+  if(cb.checked) map.addLayer(grp); else map.removeLayer(grp);
+}
+
+function fmtTime(iso){
+  if(!iso) return '';
+  try{ return new Date(iso).toLocaleString([], {month:'short', day:'numeric', hour:'numeric', minute:'2-digit'}); }
+  catch(e){ return iso; }
+}
+
+// SPC Day-1 categorical outlook. The GeoJSON carries the official
+// NWS fill/stroke colors per risk category, so we use them directly.
+async function loadOutlook(){
+  try{
+    const res = await fetch('https://www.spc.noaa.gov/products/outlook/day1otlk_cat.nolyr.geojson');
+    const data = await res.json();
+    spcOutlookLayer.clearLayers();
+    L.geoJSON(data, {
+      style: f => ({color: f.properties.stroke || '#888', weight: 1.5,
+                    fillColor: f.properties.fill || '#888', fillOpacity: 0.18}),
+      onEachFeature: (f, l) => l.bindPopup(`<div class="alert-popup"><b>SPC Day 1 · ${f.properties.LABEL || ''}</b>${f.properties.LABEL2 || ''}</div>`)
+    }).addTo(spcOutlookLayer);
+  }catch(e){ console.error('outlook error', e); }
+}
+
+// Active SPC Mesoscale Discussions (short-fuse "something's developing" areas).
+async function loadMCD(){
+  try{
+    const res = await fetch('https://mesonet.agron.iastate.edu/api/1/nws/spc_mcd.geojson');
+    const data = await res.json();
+    mcdLayer.clearLayers();
+    L.geoJSON(data, {
+      style: {color:'#F2B705', weight:2, fillColor:'#F2B705', fillOpacity:0.06, dashArray:'4 3'},
+      onEachFeature: (f, l) => {
+        const p = f.properties;
+        const md = String(p.num).padStart(4, '0');
+        const prob = (p.watch_confidence != null) ? `Watch probability: ${p.watch_confidence}%<br>` : '';
+        l.bindPopup(`<div class="alert-popup"><b>Mesoscale Discussion #${p.num}</b>${p.concerning || ''}<br>${prob}Until ${fmtTime(p.expire)}<br><a href="https://www.spc.noaa.gov/products/md/${p.year}/md${md}.html" target="_blank" rel="noopener">Full text ↗</a></div>`);
+      }
+    }).addTo(mcdLayer);
+  }catch(e){ console.error('mcd error', e); }
+}
+
+// Currently-active SPC watch outlines (tornado = red, severe = gold).
+async function loadWatches(){
+  try{
+    const valid = new Date().toISOString().slice(0, 19) + 'Z';
+    const res = await fetch(`https://mesonet.agron.iastate.edu/api/1/spc_watch_outline.geojson?valid=${valid}`);
+    const data = await res.json();
+    watchLayer.clearLayers();
+    L.geoJSON(data, {
+      style: f => {
+        const tor = (f.properties.type || '').toUpperCase() === 'TOR';
+        return {color: tor ? '#E10600' : '#FFD400', weight:2.5, fillColor: tor ? '#E10600' : '#FFD400', fillOpacity:0.05};
+      },
+      onEachFeature: (f, l) => {
+        const p = f.properties;
+        const tor = (p.type || '').toUpperCase() === 'TOR';
+        l.bindPopup(`<div class="alert-popup"><b>${tor ? 'Tornado' : 'Severe T-storm'} Watch #${p.num}</b>Until ${fmtTime(p.utc_expired)}</div>`);
+      }
+    }).addTo(watchLayer);
+  }catch(e){ console.error('watch error', e); }
+}
+
+function lsrColor(t){
+  t = (t || '').toUpperCase();
+  if(t.includes('TORNADO') || t.includes('FUNNEL') || t.includes('WALL CLOUD')) return '#E10600';
+  if(t.includes('HAIL')) return '#00E0D0';
+  if(t.includes('WND') || t.includes('WIND') || t.includes('GUST')) return '#3AA0FF';
+  if(t.includes('FLOOD') || t.includes('FLD') || t.includes('RAIN')) return '#2ECC71';
+  if(t.includes('SNOW') || t.includes('ICE') || t.includes('SLEET') || t.includes('BLIZZARD')) return '#CFE8FF';
+  return '#B76FFF';
+}
+
+// Local Storm Reports from the last 24 hours (national).
+async function loadLSR(){
+  try{
+    const now = new Date();
+    const past = new Date(now.getTime() - 24 * 3600 * 1000);
+    const sts = past.toISOString().slice(0, 19) + 'Z';
+    const ets = now.toISOString().slice(0, 19) + 'Z';
+    const res = await fetch(`https://mesonet.agron.iastate.edu/geojson/lsr.geojson?sts=${sts}&ets=${ets}`);
+    const data = await res.json();
+    lsrLayer.clearLayers();
+    for(const f of (data.features || [])){
+      const c = f.geometry && f.geometry.coordinates;
+      if(!c) continue;
+      const p = f.properties;
+      const color = lsrColor(p.typetext);
+      const mag = p.magnitude ? ` ${p.magnitude} ${p.unit || ''}`.trimEnd() : '';
+      const m = L.circleMarker([c[1], c[0]], {radius:4, color:color, weight:1, fillColor:color, fillOpacity:0.9});
+      m.bindPopup(`<div class="alert-popup"><b>${p.typetext || 'Report'}${mag}</b>${p.city || ''}, ${p.state || ''}<br>${fmtTime(p.valid)}<br>${p.remark || ''}</div>`);
+      m.addTo(lsrLayer);
+    }
+  }catch(e){ console.error('lsr error', e); }
+}
+
 async function boot(){
   initMap();
-  await Promise.all([loadRadar(), loadAlerts()]);
+  await Promise.all([loadRadar(), loadAlerts(), loadOutlook(), loadMCD(), loadWatches(), loadLSR()]);
   document.getElementById('loading').classList.add('hide');
   connectLightning();
   setInterval(loadRadar, 5 * 60 * 1000);
   setInterval(loadAlerts, 2 * 60 * 1000);
+  setInterval(loadOutlook, 30 * 60 * 1000);
+  setInterval(loadMCD, 5 * 60 * 1000);
+  setInterval(loadWatches, 5 * 60 * 1000);
+  setInterval(loadLSR, 5 * 60 * 1000);
 }
 
 boot();
