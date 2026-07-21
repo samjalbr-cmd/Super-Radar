@@ -102,6 +102,16 @@
   @keyframes windPulse{ 0%,100%{ stroke-opacity:1; } 50%{ stroke-opacity:0.15; } }
   .wind-pulse{ animation: windPulse 1s ease-in-out infinite; }
 
+  /* Station value labels (replace dots): colored number on the map. */
+  .stn-icon{ background:none; border:none; }
+  .stn-label{
+    font-family:monospace;font-weight:700;font-size:12px;line-height:1;
+    text-shadow:0 0 3px #000, 0 0 2px #000, 0 1px 1px #000;
+    white-space:nowrap;display:inline-block;transform:translate(-50%,-50%);
+    cursor:pointer;
+  }
+  .stn-high{ animation:windPulse 1s ease-in-out infinite; text-shadow:0 0 4px #E10600, 0 0 7px #E10600, 0 0 2px #000; }
+
   #windAlert{
     position:absolute;top:64px;left:24px;z-index:500;
     padding:8px 12px;display:none;align-items:center;gap:8px;
@@ -168,10 +178,14 @@
     <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" id="stationsChk" checked onchange="toggleStations(this)"> Show live stations</label>
     <label style="margin-top:2px;">High-wind alert threshold (mph)</label>
     <input id="windThresh" type="number" value="50" min="10" step="1" onchange="setWindThresh(this.value)" />
-    <label style="margin-top:2px;">Color stations by</label>
-    <select id="stationColor" onchange="setStationColor(this.value)">
-      <option value="wind">Wind speed</option>
-      <option value="temp">Temperature</option>
+    <label style="margin-top:2px;">Station metric</label>
+    <select id="stationMetric" onchange="setStationMetric(this.value)">
+      <option value="temp">Temperature (°F)</option>
+      <option value="feel">Feels Like (°F)</option>
+      <option value="dwpf">Dewpoint (°F)</option>
+      <option value="wind">Wind (mph)</option>
+      <option value="gust">Gust (mph)</option>
+      <option value="relh">Humidity (%)</option>
     </select>
     <label style="margin-top:8px;">SPC Severe Layers</label>
     <div id="spcToggles" style="display:flex;flex-direction:column;gap:6px;">
@@ -211,6 +225,12 @@
       <div class="legend-row"><span class="dotsw" style="background:#F2B705;"></span>65–79</div>
       <div class="legend-row"><span class="dotsw" style="background:#FF7A00;"></span>80–89</div>
       <div class="legend-row"><span class="dotsw" style="background:#E10600;"></span>≥ 90</div>
+      <div class="legend-row legend-head">Humidity (%)</div>
+      <div class="legend-row"><span class="dotsw" style="background:#FF7A00;"></span>&lt; 20</div>
+      <div class="legend-row"><span class="dotsw" style="background:#F2B705;"></span>20–39</div>
+      <div class="legend-row"><span class="dotsw" style="background:#2ECC71;"></span>40–59</div>
+      <div class="legend-row"><span class="dotsw" style="background:#3AA0FF;"></span>60–79</div>
+      <div class="legend-row"><span class="dotsw" style="background:#4169E1;"></span>≥ 80</div>
     </div>
     <button id="fullscreenBtn" onclick="toggleFullscreen()">Enter TV Fullscreen</button>
   </div>
@@ -726,7 +746,7 @@ function onProductChange(p){ singleProduct = p; updateSingleRadar(); }
 let stationsOn = true;
 let stationData = [];        // {lat, lon, p} cached from last fetch
 let windThreshMph = 50;
-let stationColorBy = 'wind'; // 'wind' | 'temp'
+let stationMetric = 'temp';  // which value each station label shows
 
 function ktToMph(kt){ return kt == null ? null : kt * 1.15078; }
 function stationWindKt(p){ return Math.max(p.sknt || 0, p.gust || 0); }
@@ -747,6 +767,24 @@ function tempColor(f){
   if(f >= 15) return '#4169E1';
   return '#A020F0';
 }
+function humColor(h){
+  if(h == null) return '#4A6FA5';
+  if(h >= 80) return '#4169E1';
+  if(h >= 60) return '#3AA0FF';
+  if(h >= 40) return '#2ECC71';
+  if(h >= 20) return '#F2B705';
+  return '#FF7A00';
+}
+
+// Each metric: how to pull its value, format the label, and color it.
+const METRICS = {
+  temp: {val: p => p.tmpf, fmt: v => Math.round(v) + '°', color: tempColor},
+  feel: {val: p => p.feel, fmt: v => Math.round(v) + '°', color: tempColor},
+  dwpf: {val: p => p.dwpf, fmt: v => Math.round(v) + '°', color: tempColor},
+  wind: {val: p => p.sknt, fmt: v => String(Math.round(ktToMph(v))), color: windColor},
+  gust: {val: p => p.gust, fmt: v => String(Math.round(ktToMph(v))), color: windColor},
+  relh: {val: p => p.relh, fmt: v => Math.round(v) + '%', color: humColor},
+};
 
 async function loadStations(){
   if(!stationsOn) return;
@@ -778,19 +816,23 @@ function renderStations(){
   if(!stationsOn || map.getZoom() < 6) return;
   const b = map.getBounds();
   const threshKt = windThreshMph / 1.15078;
+  const metric = METRICS[stationMetric] || METRICS.temp;
   for(const s of stationData){
     if(!b.contains([s.lat, s.lon])) continue;
-    const kt = stationWindKt(s.p);
-    const high = threshKt > 0 && kt >= threshKt;
-    // High-wind always shows red so the alert is never hidden by temp coloring.
-    const color = high ? '#E10600' : (stationColorBy === 'temp' ? tempColor(s.p.tmpf) : windColor(kt));
-    const m = L.circleMarker([s.lat, s.lon], {
-      radius: high ? 6 : 4, color: color, weight: high ? 2 : 1,
-      fillColor: color, fillOpacity: high ? 0.95 : 0.75,
-      className: high ? 'wind-pulse' : undefined
+    const p = s.p;
+    const v = metric.val(p);
+    const high = threshKt > 0 && stationWindKt(p) >= threshKt;
+    let text, color;
+    if(v == null){ text = '·'; color = '#5a6577'; }
+    else { text = metric.fmt(v); color = metric.color(v); }
+    // High-wind stations get a red pulsing glow so the alert shows on any metric.
+    const cls = 'stn-label' + (high ? ' stn-high' : '');
+    const icon = L.divIcon({
+      className: 'stn-icon',
+      html: `<span class="${cls}" style="color:${color}">${text}</span>`,
+      iconSize: [0, 0], iconAnchor: [0, 0]
     });
-    m.bindPopup(stationPopup(s));
-    m.addTo(stationLayer);
+    L.marker([s.lat, s.lon], {icon, keyboard: false}).bindPopup(stationPopup(s)).addTo(stationLayer);
   }
 }
 
@@ -828,7 +870,7 @@ function setWindThresh(v){
   updateHighWind();
 }
 
-function setStationColor(v){ stationColorBy = (v === 'temp') ? 'temp' : 'wind'; renderStations(); }
+function setStationMetric(v){ stationMetric = METRICS[v] ? v : 'temp'; renderStations(); }
 
 async function boot(){
   initMap();
