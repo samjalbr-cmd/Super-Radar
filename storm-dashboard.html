@@ -187,8 +187,8 @@
       <option value="temp">Temperature (°F)</option>
       <option value="feel">Feels Like (°F)</option>
       <option value="dwpf">Dewpoint (°F)</option>
-      <option value="wind">Wind (mph)</option>
-      <option value="gust">Gust (mph)</option>
+      <option value="wind">Wind — recent peak gust (mph)</option>
+      <option value="gust">Gust — current (mph)</option>
       <option value="relh">Humidity (%)</option>
     </select>
     <label style="margin-top:8px;">SPC Severe Layers</label>
@@ -821,12 +821,24 @@ function humColor(h){
   return '#FF7A00';
 }
 
+// "Recent peak gust": the day's max gust if it occurred within the last few
+// hours, else the current gust, else the sustained wind (all in knots).
+const GUST_WINDOW_MS = 3 * 60 * 60 * 1000;
+function recentPeakGustKt(p){
+  if(p.max_gust != null && p.utc_max_gust_ts){
+    const t = new Date(p.utc_max_gust_ts).getTime();
+    if(!isNaN(t) && (Date.now() - t) <= GUST_WINDOW_MS) return p.max_gust;
+  }
+  if(p.gust != null) return p.gust;
+  return p.sknt;
+}
+
 // Each metric: how to pull its value, format the label, and color it.
 const METRICS = {
   temp: {val: p => p.tmpf, fmt: v => Math.round(v) + '°', color: tempColor},
   feel: {val: p => p.feel, fmt: v => Math.round(v) + '°', color: tempColor},
   dwpf: {val: p => p.dwpf, fmt: v => Math.round(v) + '°', color: tempColor},
-  wind: {val: p => p.sknt, fmt: v => String(Math.round(ktToMph(v))), color: windColor},
+  wind: {val: p => recentPeakGustKt(p), fmt: v => String(Math.round(ktToMph(v))), color: windColor},
   gust: {val: p => p.gust, fmt: v => String(Math.round(ktToMph(v))), color: windColor},
   relh: {val: p => p.relh, fmt: v => Math.round(v) + '%', color: humColor},
 };
