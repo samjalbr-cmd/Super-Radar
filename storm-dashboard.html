@@ -135,6 +135,8 @@
       <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" data-hazard="watches" checked onchange="toggleHazard(this)"> Include Watches</label>
       <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" data-hazard="lightning" checked onchange="toggleHazard(this)"> Lightning</label>
     </div>
+    <label style="margin-top:8px;">Radar Mode</label>
+    <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" data-vel="1" onchange="toggleVelocity(this)"> Base Velocity (nearest site)</label>
     <label style="margin-top:8px;">SPC Severe Layers</label>
     <div id="spcToggles" style="display:flex;flex-direction:column;gap:6px;">
       <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" data-spc="outlook" checked onchange="toggleSpc(this)"> Convective Outlook</label>
@@ -166,6 +168,11 @@ function initMap(){
     maxZoom:12
   }).addTo(map);
   radarLayer = L.tileLayer('', {opacity:0.85, maxZoom:12, maxNativeZoom:10, attribution:'NWS NEXRAD N0Q &copy; Iowa Environmental Mesonet'}).addTo(map);
+  // Velocity overlay sits above the basemap but below the alert/SPC vectors.
+  map.createPane('velocityPane');
+  map.getPane('velocityPane').style.zIndex = 250;
+  map.getPane('velocityPane').style.pointerEvents = 'none';
+
   spcOutlookLayer = L.layerGroup().addTo(map);
   alertLayerGroup = L.layerGroup().addTo(map);
   watchLayer = L.layerGroup().addTo(map);
@@ -188,11 +195,13 @@ function loadRadar(){
   // Cache-bust with a timestamp so the periodic refresh pulls the latest ~5-min mosaic.
   const ts = Math.floor(Date.now() / 1000);
   radarLayer.setUrl(`https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913/{z}/{x}/{y}.png?t=${ts}`);
+  radarLabel = 'NEXRAD N0Q';
   updateRadarStatus();
 }
 
 // Show when the radar mosaic was last pulled, and count the minutes since.
 let lastRadarUpdate = null;
+let radarLabel = 'NEXRAD N0Q';   // becomes 'BASE VELOCITY · SITE' in velocity mode
 function updateRadarStatus(){
   lastRadarUpdate = new Date();
   renderRadarStatus();
@@ -203,7 +212,7 @@ function renderRadarStatus(){
   const t = lastRadarUpdate.toLocaleTimeString([], {hour:'numeric', minute:'2-digit', second:'2-digit'});
   const mins = Math.floor((Date.now() - lastRadarUpdate.getTime()) / 60000);
   const ago = mins <= 0 ? 'just now' : `${mins}m ago`;
-  document.getElementById('radarStatusText').textContent = `NEXRAD N0Q · ${t} · ${ago}`;
+  document.getElementById('radarStatusText').textContent = `${radarLabel} · ${t} · ${ago}`;
 }
 // Tick the "Xm ago" label every 30s without refetching tiles.
 setInterval(renderRadarStatus, 30 * 1000);
@@ -371,6 +380,7 @@ async function searchCity(){
       recenter();
       loadRadar();
       loadAlerts();
+      if(velocityOn) updateVelocity();
       document.getElementById('settingsPanel').classList.remove('open');
     }
   }catch(e){ console.error(e); }
@@ -557,9 +567,69 @@ async function loadLSR(){
   }catch(e){ console.error('lsr error', e); }
 }
 
+/* ---------------- Base velocity (single-site) ----------------
+   Velocity is a per-radar product, not a national mosaic. When enabled
+   we hide the reflectivity mosaic and overlay the nearest WSR-88D's base
+   velocity image (IEM RIDGE, 1000x1000, georeferenced by its world file). */
+let velocityOn = false;
+let velocityLayer = null;
+let nexradSites = [];
+
+async function loadNexradSites(){
+  try{
+    const res = await fetch('https://mesonet.agron.iastate.edu/geojson/network.py?network=NEXRAD');
+    const data = await res.json();
+    nexradSites = (data.features || [])
+      .filter(f => f.geometry && f.geometry.coordinates)
+      .map(f => ({id: f.id, lon: f.geometry.coordinates[0], lat: f.geometry.coordinates[1]}));
+  }catch(e){ console.error('nexrad sites error', e); }
+}
+
+function nearestSite(){
+  let best = null, bestD = Infinity;
+  for(const s of nexradSites){
+    const dLat = s.lat - lat;
+    const dLon = (s.lon - lon) * Math.cos(lat * Math.PI / 180);
+    const d = dLat * dLat + dLon * dLon;
+    if(d < bestD){ bestD = d; best = s; }
+  }
+  return best;
+}
+
+async function updateVelocity(){
+  if(!velocityOn) return;
+  const site = nearestSite();
+  if(!site) return;
+  try{
+    const base = `https://mesonet.agron.iastate.edu/data/gis/images/4326/ridge/${site.id}/N0U_0`;
+    const wldText = await (await fetch(`${base}.wld?t=${Date.now()}`)).text();
+    const w = wldText.trim().split(/\s+/).map(Number);      // A D B E C F
+    const A = w[0], E = w[3], C = w[4], F = w[5], N = 1000;  // images are 1000x1000
+    const west = C - A / 2, east = C + A * (N - 0.5);
+    const north = F - E / 2, south = F + E * (N - 0.5);
+    const bounds = [[south, west], [north, east]];
+    if(velocityLayer){ map.removeLayer(velocityLayer); velocityLayer = null; }
+    velocityLayer = L.imageOverlay(`${base}.png?t=${Date.now()}`, bounds, {opacity: 0.85, pane: 'velocityPane'}).addTo(map);
+    radarLabel = `BASE VELOCITY · ${site.id}`;
+    updateRadarStatus();
+  }catch(e){ console.error('velocity error', e); }
+}
+
+function toggleVelocity(cb){
+  velocityOn = cb.checked;
+  if(velocityOn){
+    if(map.hasLayer(radarLayer)) map.removeLayer(radarLayer);
+    updateVelocity();
+  }else{
+    if(velocityLayer){ map.removeLayer(velocityLayer); velocityLayer = null; }
+    if(!map.hasLayer(radarLayer)) radarLayer.addTo(map);
+    loadRadar();
+  }
+}
+
 async function boot(){
   initMap();
-  await Promise.all([loadRadar(), loadAlerts(), loadOutlook(), loadMCD(), loadWatches(), loadLSR()]);
+  await Promise.all([loadRadar(), loadAlerts(), loadOutlook(), loadMCD(), loadWatches(), loadLSR(), loadNexradSites()]);
   document.getElementById('loading').classList.add('hide');
   connectLightning();
   setInterval(loadRadar, 5 * 60 * 1000);
@@ -568,6 +638,7 @@ async function boot(){
   setInterval(loadMCD, 5 * 60 * 1000);
   setInterval(loadWatches, 5 * 60 * 1000);
   setInterval(loadLSR, 5 * 60 * 1000);
+  setInterval(updateVelocity, 3 * 60 * 1000);
 }
 
 boot();
