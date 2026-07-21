@@ -98,10 +98,6 @@
   }
   .flash-alert{ animation: alertFlash 1s ease-in-out 120; }
 
-  /* High-wind station markers pulse continuously while active. */
-  @keyframes windPulse{ 0%,100%{ stroke-opacity:1; } 50%{ stroke-opacity:0.15; } }
-  .wind-pulse{ animation: windPulse 1s ease-in-out infinite; }
-
   /* Station value labels (replace dots): colored number on the map. */
   .stn-icon{ background:none; border:none; }
   .stn-label{
@@ -110,16 +106,6 @@
     white-space:nowrap;display:inline-block;transform:translate(-50%,-50%);
     cursor:pointer;
   }
-  .stn-high{ animation:windPulse 1s ease-in-out infinite; text-shadow:0 0 4px #E10600, 0 0 7px #E10600, 0 0 2px #000; }
-
-  #windAlert{
-    position:absolute;top:64px;left:24px;z-index:500;
-    padding:8px 12px;display:none;align-items:center;gap:8px;
-    background:var(--panel);border:1px solid #E10600;border-radius:10px;
-    backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
-    font-family:monospace;font-size:11px;color:#FFD9D6;letter-spacing:0.03em;
-  }
-  #windAlert.show{display:flex;}
 
   .strike{
     width:8px;height:8px;border-radius:50%;
@@ -140,7 +126,6 @@
 <div id="map"></div>
 
 <div id="radarStatus"><span class="dot"></span><span id="radarStatusText">NEXRAD N0Q</span></div>
-<div id="windAlert"></div>
 
 <div id="gear">
   <div id="gearbtn" onclick="document.getElementById('settingsPanel').classList.toggle('open')">⚙</div>
@@ -176,8 +161,6 @@
     </div>
     <label style="margin-top:8px;">Weather Stations (METAR)</label>
     <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" id="stationsChk" checked onchange="toggleStations(this)"> Show live stations</label>
-    <label style="margin-top:2px;">High-wind alert threshold (mph)</label>
-    <input id="windThresh" type="number" value="50" min="10" step="1" onchange="setWindThresh(this.value)" />
     <label style="margin-top:2px;">Station metric</label>
     <select id="stationMetric" onchange="setStationMetric(this.value)">
       <option value="temp">Temperature (°F)</option>
@@ -216,7 +199,7 @@
       <div class="legend-row"><span class="dotsw" style="background:#3AA0FF;"></span>15–24 kt</div>
       <div class="legend-row"><span class="dotsw" style="background:#F2B705;"></span>25–33 kt</div>
       <div class="legend-row"><span class="dotsw" style="background:#FF7A00;"></span>34–47 kt</div>
-      <div class="legend-row"><span class="dotsw" style="background:#E10600;"></span>≥ 48 kt / over threshold</div>
+      <div class="legend-row"><span class="dotsw" style="background:#E10600;"></span>≥ 48 kt</div>
       <div class="legend-row legend-head">Station Temp (°F)</div>
       <div class="legend-row"><span class="dotsw" style="background:#A020F0;"></span>&lt; 15</div>
       <div class="legend-row"><span class="dotsw" style="background:#4169E1;"></span>15–31</div>
@@ -745,11 +728,9 @@ function onProductChange(p){ singleProduct = p; updateSingleRadar(); }
    meets the threshold pulses red and is tallied in the wind-alert badge. */
 let stationsOn = true;
 let stationData = [];        // {lat, lon, p} cached from last fetch
-let windThreshMph = 50;
 let stationMetric = 'temp';  // which value each station label shows
 
 function ktToMph(kt){ return kt == null ? null : kt * 1.15078; }
-function stationWindKt(p){ return Math.max(p.sknt || 0, p.gust || 0); }
 function windColor(kt){
   if(kt >= 48) return '#E10600';
   if(kt >= 34) return '#FF7A00';
@@ -795,7 +776,6 @@ async function loadStations(){
       .filter(f => f.geometry && f.geometry.coordinates)
       .map(f => ({lon: f.geometry.coordinates[0], lat: f.geometry.coordinates[1], p: f.properties}));
     renderStations();
-    updateHighWind();
   }catch(e){ console.error('stations error', e); }
 }
 
@@ -815,59 +795,26 @@ function renderStations(){
   stationLayer.clearLayers();
   if(!stationsOn || map.getZoom() < 6) return;
   const b = map.getBounds();
-  const threshKt = windThreshMph / 1.15078;
   const metric = METRICS[stationMetric] || METRICS.temp;
   for(const s of stationData){
     if(!b.contains([s.lat, s.lon])) continue;
-    const p = s.p;
-    const v = metric.val(p);
-    const high = threshKt > 0 && stationWindKt(p) >= threshKt;
+    const v = metric.val(s.p);
     let text, color;
     if(v == null){ text = '·'; color = '#5a6577'; }
     else { text = metric.fmt(v); color = metric.color(v); }
-    // High-wind stations get a red pulsing glow so the alert shows on any metric.
-    const cls = 'stn-label' + (high ? ' stn-high' : '');
     const icon = L.divIcon({
       className: 'stn-icon',
-      html: `<span class="${cls}" style="color:${color}">${text}</span>`,
+      html: `<span class="stn-label" style="color:${color}">${text}</span>`,
       iconSize: [0, 0], iconAnchor: [0, 0]
     });
     L.marker([s.lat, s.lon], {icon, keyboard: false}).bindPopup(stationPopup(s)).addTo(stationLayer);
   }
 }
 
-// Scan ALL stations (not just viewport) so the badge warns about high wind anywhere.
-function updateHighWind(){
-  const el = document.getElementById('windAlert');
-  if(!el) return;
-  const threshKt = windThreshMph / 1.15078;
-  let count = 0, worst = null;
-  for(const s of stationData){
-    const kt = stationWindKt(s.p);
-    if(threshKt > 0 && kt >= threshKt){
-      count++;
-      if(!worst || kt > stationWindKt(worst.p)) worst = s;
-    }
-  }
-  if(stationsOn && count > 0){
-    const w = worst ? `${Math.round(ktToMph(stationWindKt(worst.p)))} mph @ ${worst.p.station}` : '';
-    el.textContent = `💨 ${count} station${count > 1 ? 's' : ''} ≥ ${windThreshMph} mph · peak ${w}`;
-    el.classList.add('show');
-  }else{
-    el.classList.remove('show');
-  }
-}
-
 function toggleStations(cb){
   stationsOn = cb.checked;
   if(stationsOn){ map.addLayer(stationLayer); loadStations(); }
-  else{ map.removeLayer(stationLayer); document.getElementById('windAlert').classList.remove('show'); }
-}
-
-function setWindThresh(v){
-  windThreshMph = Math.max(1, Number(v) || 50);
-  renderStations();
-  updateHighWind();
+  else{ map.removeLayer(stationLayer); }
 }
 
 function setStationMetric(v){ stationMetric = METRICS[v] ? v : 'temp'; renderStations(); }
