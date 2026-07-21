@@ -32,7 +32,9 @@
     color:var(--dim);cursor:pointer;font-size:16px;
   }
   #settingsPanel{
-    position:absolute;top:46px;right:0;width:280px;
+    position:absolute;top:46px;right:0;width:280px;max-width:calc(100vw - 32px);
+    max-height:calc(100vh - 96px);overflow-y:auto;-webkit-overflow-scrolling:touch;
+    overscroll-behavior:contain;
     padding:18px;display:none;flex-direction:column;gap:10px;
     background:var(--panel);border:1px solid var(--border);border-radius:14px;
     backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
