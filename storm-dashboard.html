@@ -71,6 +71,21 @@
   #legend .row{display:flex;align-items:center;gap:8px;}
   #legend .sw{width:10px;height:10px;border-radius:2px;flex-shrink:0;}
 
+  #radarStatus{
+    position:absolute;top:28px;left:24px;z-index:500;
+    padding:8px 12px;display:none;align-items:center;gap:8px;
+    background:var(--panel);border:1px solid var(--border);border-radius:10px;
+    backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+    font-family:monospace;font-size:11px;color:#F5F3EC;letter-spacing:0.03em;
+  }
+  #radarStatus.show{display:flex;}
+  #radarStatus .dot{
+    width:7px;height:7px;border-radius:50%;background:#2ECC71;
+    box-shadow:0 0 6px 2px rgba(46,204,113,0.6);
+    animation:pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.35;}}
+
   .alert-popup{font-family:sans-serif;font-size:13px;}
   .alert-popup b{display:block;margin-bottom:2px;}
   .leaflet-popup-content-wrapper{background:#10192B;color:#F5F3EC;border:1px solid #25324a;}
@@ -93,6 +108,8 @@
 <div id="loading"><div class="mark">NIGHTWATCH</div><div class="sub">loading radar…</div></div>
 
 <div id="map"></div>
+
+<div id="radarStatus"><span class="dot"></span><span id="radarStatusText">NEXRAD N0Q</span></div>
 
 <div id="gear">
   <div id="gearbtn" onclick="document.getElementById('settingsPanel').classList.toggle('open')">⚙</div>
@@ -152,7 +169,25 @@ function loadRadar(){
   // Cache-bust with a timestamp so the periodic refresh pulls the latest ~5-min mosaic.
   const ts = Math.floor(Date.now() / 1000);
   radarLayer.setUrl(`https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913/{z}/{x}/{y}.png?t=${ts}`);
+  updateRadarStatus();
 }
+
+// Show when the radar mosaic was last pulled, and count the minutes since.
+let lastRadarUpdate = null;
+function updateRadarStatus(){
+  lastRadarUpdate = new Date();
+  renderRadarStatus();
+  document.getElementById('radarStatus').classList.add('show');
+}
+function renderRadarStatus(){
+  if(!lastRadarUpdate) return;
+  const t = lastRadarUpdate.toLocaleTimeString([], {hour:'numeric', minute:'2-digit', second:'2-digit'});
+  const mins = Math.floor((Date.now() - lastRadarUpdate.getTime()) / 60000);
+  const ago = mins <= 0 ? 'just now' : `${mins}m ago`;
+  document.getElementById('radarStatusText').textContent = `NEXRAD N0Q · ${t} · ${ago}`;
+}
+// Tick the "Xm ago" label every 30s without refetching tiles.
+setInterval(renderRadarStatus, 30 * 1000);
 
 function sevRank(sev){
   if(sev === 'warning') return 3;
