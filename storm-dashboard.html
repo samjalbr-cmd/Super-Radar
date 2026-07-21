@@ -346,8 +346,8 @@ function toggleFullscreen(){
 
 /* ---------------- Lightning (Blitzortung.org community network) ----------------
    Unofficial websocket feed. Strikes render as white/gold flashes that
-   fade out over 10 minutes. Auto-reconnects if the stream drops.       */
-const STRIKE_TTL = 10 * 60 * 1000;
+   fade out over 2 minutes. Auto-reconnects if the stream drops.        */
+const STRIKE_TTL = 2 * 60 * 1000;
 let strikes = []; // {marker, time}
 let lightningSocket = null;
 
