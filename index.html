@@ -39,7 +39,7 @@
   }
   #settingsPanel.open{display:flex;}
   #settingsPanel label{font-family:monospace;font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:0.05em;}
-  #settingsPanel input{
+  #settingsPanel input, #settingsPanel select{
     background:#0d1420;border:1px solid var(--border);border-radius:8px;
     color:#F5F3EC;padding:8px 10px;font-family:sans-serif;font-size:14px;
   }
@@ -136,7 +136,20 @@
       <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" data-hazard="lightning" checked onchange="toggleHazard(this)"> Lightning</label>
     </div>
     <label style="margin-top:8px;">Radar Mode</label>
-    <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" data-vel="1" onchange="toggleVelocity(this)"> Base Velocity (nearest site)</label>
+    <select id="radarMode" onchange="setRadarMode(this.value)">
+      <option value="national">National Mosaic</option>
+      <option value="single">Single Radar</option>
+    </select>
+    <div id="singleControls" style="display:none;flex-direction:column;gap:8px;">
+      <label style="margin-top:2px;">Radar Site</label>
+      <select id="radarSite" onchange="onSiteChange(this.value)"></select>
+      <label style="margin-top:2px;">Product</label>
+      <select id="radarProduct" onchange="onProductChange(this.value)">
+        <option value="N0Q">Reflectivity</option>
+        <option value="N0U">Base Velocity</option>
+        <option value="N0S">Storm-Relative Velocity</option>
+      </select>
+    </div>
     <label style="margin-top:8px;">SPC Severe Layers</label>
     <div id="spcToggles" style="display:flex;flex-direction:column;gap:6px;">
       <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" data-spc="outlook" checked onchange="toggleSpc(this)"> Convective Outlook</label>
@@ -189,6 +202,7 @@ function recenter(){
 }
 
 function loadRadar(){
+  if(radarMode !== 'national') return;  // single-radar mode manages its own overlay
   // Raw NWS NEXRAD base reflectivity (N0Q) national mosaic, served as XYZ tiles by the
   // Iowa Environmental Mesonet. This is the actual NWS radar product rendered with the
   // official NWS reflectivity color table (green→yellow→orange→red→magenta).
@@ -378,9 +392,8 @@ async function searchCity(){
       lat = parseFloat(results[0].lat);
       lon = parseFloat(results[0].lon);
       recenter();
-      loadRadar();
       loadAlerts();
-      if(velocityOn) updateVelocity();
+      if(radarMode === 'national') loadRadar();  // single mode keeps its selected site
       document.getElementById('settingsPanel').classList.remove('open');
     }
   }catch(e){ console.error(e); }
@@ -567,13 +580,17 @@ async function loadLSR(){
   }catch(e){ console.error('lsr error', e); }
 }
 
-/* ---------------- Base velocity (single-site) ----------------
-   Velocity is a per-radar product, not a national mosaic. When enabled
-   we hide the reflectivity mosaic and overlay the nearest WSR-88D's base
-   velocity image (IEM RIDGE, 1000x1000, georeferenced by its world file). */
-let velocityOn = false;
-let velocityLayer = null;
+/* ---------------- Single-radar mode ----------------
+   National reflectivity can't show velocity (that's a per-site product), so
+   this mode focuses on one WSR-88D and lets you flip between its products:
+   reflectivity (N0Q), base velocity (N0U), storm-relative velocity (N0S).
+   Each is an IEM RIDGE image (1000x1000) georeferenced by its world file. */
+let radarMode = 'national';   // 'national' | 'single'
+let singleSite = null;        // selected radar id, e.g. 'GRR'
+let singleProduct = 'N0Q';    // N0Q | N0U | N0S
+let singleLayer = null;       // L.imageOverlay
 let nexradSites = [];
+const PRODUCT_NAME = {N0Q:'Reflectivity', N0U:'Base Velocity', N0S:'Storm-Rel Velocity'};
 
 async function loadNexradSites(){
   try{
@@ -581,7 +598,8 @@ async function loadNexradSites(){
     const data = await res.json();
     nexradSites = (data.features || [])
       .filter(f => f.geometry && f.geometry.coordinates)
-      .map(f => ({id: f.id, lon: f.geometry.coordinates[0], lat: f.geometry.coordinates[1]}));
+      .map(f => ({id: f.id, lon: f.geometry.coordinates[0], lat: f.geometry.coordinates[1],
+                  sname: f.properties && f.properties.sname, state: f.properties && f.properties.state}));
   }catch(e){ console.error('nexrad sites error', e); }
 }
 
@@ -596,41 +614,68 @@ function nearestSite(){
   return best;
 }
 
-async function updateVelocity(){
-  if(!velocityOn) return;
-  const site = nearestSite();
+function populateSiteDropdown(){
+  const sel = document.getElementById('radarSite');
+  if(!sel || !nexradSites.length) return;
+  const sorted = [...nexradSites].sort((a, b) => a.id.localeCompare(b.id));
+  sel.innerHTML = sorted.map(s =>
+    `<option value="${s.id}">${s.id} — ${s.sname || ''}${s.state ? ', ' + s.state : ''}</option>`).join('');
+  if(singleSite) sel.value = singleSite;
+}
+
+// Overlay the selected site + product, georeferenced from its world file.
+async function updateSingleRadar(){
+  if(radarMode !== 'single' || !singleSite) return;
+  const site = nexradSites.find(s => s.id === singleSite);
   if(!site) return;
   try{
-    const base = `https://mesonet.agron.iastate.edu/data/gis/images/4326/ridge/${site.id}/N0U_0`;
+    const base = `https://mesonet.agron.iastate.edu/data/gis/images/4326/ridge/${singleSite}/${singleProduct}_0`;
     const wldText = await (await fetch(`${base}.wld?t=${Date.now()}`)).text();
     const w = wldText.trim().split(/\s+/).map(Number);      // A D B E C F
     const A = w[0], E = w[3], C = w[4], F = w[5], N = 1000;  // images are 1000x1000
     const west = C - A / 2, east = C + A * (N - 0.5);
     const north = F - E / 2, south = F + E * (N - 0.5);
     const bounds = [[south, west], [north, east]];
-    if(velocityLayer){ map.removeLayer(velocityLayer); velocityLayer = null; }
-    velocityLayer = L.imageOverlay(`${base}.png?t=${Date.now()}`, bounds, {opacity: 0.85, pane: 'velocityPane'}).addTo(map);
-    radarLabel = `BASE VELOCITY · ${site.id}`;
+    if(singleLayer){ map.removeLayer(singleLayer); singleLayer = null; }
+    singleLayer = L.imageOverlay(`${base}.png?t=${Date.now()}`, bounds, {opacity: 0.88, pane: 'velocityPane'}).addTo(map);
+    radarLabel = `${singleSite} · ${PRODUCT_NAME[singleProduct]}`;
     updateRadarStatus();
-  }catch(e){ console.error('velocity error', e); }
+  }catch(e){ console.error('single radar error', e); }
 }
 
-function toggleVelocity(cb){
-  velocityOn = cb.checked;
-  if(velocityOn){
+function setRadarMode(mode){
+  radarMode = mode;
+  const sc = document.getElementById('singleControls');
+  if(mode === 'single'){
+    sc.style.display = 'flex';
     if(map.hasLayer(radarLayer)) map.removeLayer(radarLayer);
-    updateVelocity();
+    if(!singleSite){ const n = nearestSite(); singleSite = n ? n.id : (nexradSites[0] && nexradSites[0].id); }
+    const sel = document.getElementById('radarSite'); if(sel) sel.value = singleSite;
+    const site = nexradSites.find(s => s.id === singleSite);
+    if(site) map.setView([site.lat, site.lon], 7);
+    updateSingleRadar();
   }else{
-    if(velocityLayer){ map.removeLayer(velocityLayer); velocityLayer = null; }
+    sc.style.display = 'none';
+    if(singleLayer){ map.removeLayer(singleLayer); singleLayer = null; }
     if(!map.hasLayer(radarLayer)) radarLayer.addTo(map);
     loadRadar();
   }
 }
 
+function onSiteChange(id){
+  singleSite = id;
+  const site = nexradSites.find(s => s.id === id);
+  if(site) map.setView([site.lat, site.lon], 7);
+  updateSingleRadar();
+}
+
+function onProductChange(p){ singleProduct = p; updateSingleRadar(); }
+
 async function boot(){
   initMap();
   await Promise.all([loadRadar(), loadAlerts(), loadOutlook(), loadMCD(), loadWatches(), loadLSR(), loadNexradSites()]);
   document.getElementById('loading').classList.add('hide');
+  populateSiteDropdown();
   connectLightning();
   setInterval(loadRadar, 5 * 60 * 1000);
   setInterval(loadAlerts, 2 * 60 * 1000);
@@ -638,7 +683,7 @@ async function boot(){
   setInterval(loadMCD, 5 * 60 * 1000);
   setInterval(loadWatches, 5 * 60 * 1000);
   setInterval(loadLSR, 5 * 60 * 1000);
-  setInterval(updateVelocity, 3 * 60 * 1000);
+  setInterval(updateSingleRadar, 3 * 60 * 1000);
 }
 
 boot();
