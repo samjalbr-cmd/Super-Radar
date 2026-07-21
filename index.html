@@ -154,7 +154,9 @@ async function loadRadar(){
     const latest = past[past.length - 1];
     if(latest){
       // size 512 = HD tiles, scheme 6 = NEXRAD Level-III (classic green→yellow→red)
-      radarLayer.setUrl(`${host}${latest.path}/512/{z}/{x}/{y}/6/1_1.png`);
+      // options = {smooth}_{snow}; snow=0 so the whole field uses the NEXRAD
+      // reflectivity ramp instead of RainViewer's separate blue "snow" coloring
+      radarLayer.setUrl(`${host}${latest.path}/512/{z}/{x}/{y}/6/1_0.png`);
     }
   }catch(e){
     console.error('radar error', e);
