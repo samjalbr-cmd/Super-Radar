@@ -60,16 +60,14 @@
   #loading .mark{font-size:28px;color:var(--amber);letter-spacing:0.04em;}
   #loading .sub{font-family:monospace;font-size:12px;color:var(--dim);}
 
-  #legend{
-    position:absolute;bottom:24px;left:24px;z-index:500;
-    padding:10px 14px;display:none;flex-direction:column;gap:6px;
-    background:var(--panel);border:1px solid var(--border);border-radius:10px;
-    backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  #settingsPanel .legend-row{
+    display:flex;align-items:center;gap:8px;
     font-family:monospace;font-size:11px;color:#F5F3EC;
+    text-transform:none;letter-spacing:0;
   }
-  #legend.show{display:flex;}
-  #legend .row{display:flex;align-items:center;gap:8px;}
-  #legend .sw{width:10px;height:10px;border-radius:2px;flex-shrink:0;}
+  #settingsPanel .legend-head{color:var(--dim);text-transform:uppercase;letter-spacing:0.05em;margin-top:4px;}
+  #settingsPanel .sw{width:11px;height:11px;border-radius:2px;flex-shrink:0;}
+  #settingsPanel .dotsw{width:11px;height:11px;border-radius:50%;flex-shrink:0;}
 
   #radarStatus{
     position:absolute;top:28px;left:24px;z-index:500;
@@ -157,15 +155,26 @@
       <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" data-spc="watch" checked onchange="toggleSpc(this)"> Watch Boxes</label>
       <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" data-spc="lsr" checked onchange="toggleSpc(this)"> Storm Reports (24h)</label>
     </div>
+    <label style="margin-top:8px;">Legend</label>
+    <div style="display:flex;flex-direction:column;gap:5px;">
+      <div class="legend-row legend-head">Warnings / Watches</div>
+      <div class="legend-row"><span class="sw" style="background:#E10600;"></span>Tornado</div>
+      <div class="legend-row"><span class="sw" style="background:#FFD400;"></span>Thunderstorm</div>
+      <div class="legend-row"><span class="sw" style="background:#2ECC71;"></span>Flood</div>
+      <div class="legend-row"><span class="sw" style="background:#6FB7FF;"></span>Winter</div>
+      <div class="legend-row"><span class="sw" style="background:#FF7A00;"></span>Heat</div>
+      <div class="legend-row"><span class="sw" style="background:#B76FFF;"></span>Other</div>
+      <div class="legend-row" style="color:var(--dim);">solid = warning · dashed = watch</div>
+      <div class="legend-row legend-head">Storm Reports</div>
+      <div class="legend-row"><span class="dotsw" style="background:#E10600;"></span>Tornado</div>
+      <div class="legend-row"><span class="dotsw" style="background:#00E0D0;"></span>Hail</div>
+      <div class="legend-row"><span class="dotsw" style="background:#3AA0FF;"></span>Wind</div>
+      <div class="legend-row"><span class="dotsw" style="background:#2ECC71;"></span>Flood / Rain</div>
+      <div class="legend-row"><span class="dotsw" style="background:#CFE8FF;"></span>Snow / Ice</div>
+      <div class="legend-row"><span class="dotsw" style="background:#B76FFF;"></span>Other</div>
+    </div>
     <button id="fullscreenBtn" onclick="toggleFullscreen()">Enter TV Fullscreen</button>
   </div>
-</div>
-
-<div id="legend">
-  <div class="row"><div class="sw" style="background:#E10600;"></div>Tornado</div>
-  <div class="row"><div class="sw" style="background:#FFD400;"></div>Thunderstorm</div>
-  <div class="row"><div class="sw" style="background:#2ECC71;"></div>Flood</div>
-  <div class="row" style="color:#8A93A6;">solid = warning · dashed = watch</div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
@@ -357,7 +366,6 @@ async function loadAlerts(){
 
 function renderAlerts(){
   alertLayerGroup.clearLayers();
-  let drawnCount = 0;
 
   for(const f of lastAlertFeats){
     if(!f._geoms || !f._geoms.length) continue;
@@ -376,10 +384,7 @@ function renderAlerts(){
       layer.bindPopup(`<div class="alert-popup"><b>${f.properties.event}</b>${f.properties.headline || ''}</div>`);
       layer.addTo(alertLayerGroup);
     }
-    drawnCount++;
   }
-
-  document.getElementById('legend').classList.toggle('show', drawnCount > 0);
 }
 
 async function searchCity(){
