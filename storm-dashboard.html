@@ -127,6 +127,15 @@
   @keyframes toastIn{from{opacity:0;transform:translateX(-24px);}to{opacity:1;transform:translateX(0);}}
   @keyframes toastOut{from{opacity:1;transform:translateX(0);}to{opacity:0;transform:translateX(-24px);}}
 
+  /* Pressure high/low center markers. */
+  .hl-icon{ background:none; border:none; }
+  .hl-mark{
+    font-family:sans-serif;font-weight:800;font-size:24px;line-height:0.9;
+    text-shadow:0 0 4px #000, 0 0 2px #000;
+    transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;
+  }
+  .hl-mark .hl-mb{ font-size:10px;font-weight:700; }
+
   .strike{
     width:8px;height:8px;border-radius:50%;
     background:#FFFFFF;
@@ -198,6 +207,14 @@
       <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" data-spc="watch" checked onchange="toggleSpc(this)"> Watch Boxes</label>
       <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" data-spc="lsr" checked onchange="toggleSpc(this)"> Storm Reports (24h)</label>
     </div>
+    <label style="margin-top:8px;">Model Layers</label>
+    <select id="modelField" onchange="setModelField(this.value)">
+      <option value="off">Off</option>
+      <option value="cape">CAPE (J/kg)</option>
+      <option value="shear">Deep-Layer Shear (kt)</option>
+      <option value="mslp">Pressure MSLP + H/L</option>
+      <option value="wave">Wave Height (m)</option>
+    </select>
     <label style="margin-top:8px;">Legend</label>
     <div style="display:flex;flex-direction:column;gap:5px;">
       <div class="legend-row legend-head">Warnings / Watches</div>
@@ -235,6 +252,28 @@
       <div class="legend-row"><span class="dotsw" style="background:#2ECC71;"></span>40–59</div>
       <div class="legend-row"><span class="dotsw" style="background:#3AA0FF;"></span>60–79</div>
       <div class="legend-row"><span class="dotsw" style="background:#4169E1;"></span>≥ 80</div>
+      <div class="legend-row legend-head">CAPE (J/kg)</div>
+      <div class="legend-row"><span class="sw" style="background:#2ECC71;"></span>500–1000</div>
+      <div class="legend-row"><span class="sw" style="background:#F2B705;"></span>1000–2000</div>
+      <div class="legend-row"><span class="sw" style="background:#FF7A00;"></span>2000–3000</div>
+      <div class="legend-row"><span class="sw" style="background:#E10600;"></span>3000–4000</div>
+      <div class="legend-row"><span class="sw" style="background:#FF3AF5;"></span>≥ 4000</div>
+      <div class="legend-row legend-head">Deep-Layer Shear (kt)</div>
+      <div class="legend-row"><span class="sw" style="background:#3AA0FF;"></span>20–30</div>
+      <div class="legend-row"><span class="sw" style="background:#F2B705;"></span>30–40</div>
+      <div class="legend-row"><span class="sw" style="background:#FF7A00;"></span>40–50</div>
+      <div class="legend-row"><span class="sw" style="background:#E10600;"></span>≥ 50</div>
+      <div class="legend-row legend-head">Pressure MSLP</div>
+      <div class="legend-row"><span class="sw" style="background:#4169E1;"></span>low (&lt; 1006)</div>
+      <div class="legend-row"><span class="sw" style="background:#2ECC71;"></span>~1008</div>
+      <div class="legend-row"><span class="sw" style="background:#F2B705;"></span>~1014</div>
+      <div class="legend-row"><span class="sw" style="background:#E10600;"></span>high (&gt; 1022)</div>
+      <div class="legend-row"><span style="color:#E10600;font-weight:800;">L</span> / <span style="color:#3A6FE0;font-weight:800;">H</span> pressure centers</div>
+      <div class="legend-row legend-head">Wave Height (m)</div>
+      <div class="legend-row"><span class="sw" style="background:#3AA0FF;"></span>0.3–1</div>
+      <div class="legend-row"><span class="sw" style="background:#2ECC71;"></span>1–2</div>
+      <div class="legend-row"><span class="sw" style="background:#F2B705;"></span>2–3</div>
+      <div class="legend-row"><span class="sw" style="background:#E10600;"></span>4–6</div>
     </div>
     <button id="fullscreenBtn" onclick="toggleFullscreen()">Enter TV Fullscreen</button>
   </div>
@@ -244,7 +283,7 @@
 <script>
 let lat = 42.907058, lon = -85.763014;
 let map, radarLayer, marker, alertLayerGroup, lightningLayerGroup;
-let spcOutlookLayer, mcdLayer, watchLayer, lsrLayer, stationLayer;
+let spcOutlookLayer, mcdLayer, watchLayer, lsrLayer, stationLayer, modelLayer, modelMarkers;
 
 function initMap(){
   map = L.map('map', {zoomControl:false, attributionControl:true}).setView([lat, lon], 8);
@@ -257,7 +296,13 @@ function initMap(){
   map.createPane('velocityPane');
   map.getPane('velocityPane').style.zIndex = 250;
   map.getPane('velocityPane').style.pointerEvents = 'none';
+  // Model field cells sit just above the radar tiles, below the vector overlays.
+  map.createPane('modelPane');
+  map.getPane('modelPane').style.zIndex = 240;
+  map.getPane('modelPane').style.pointerEvents = 'none';
 
+  modelLayer = L.layerGroup().addTo(map);
+  modelMarkers = L.layerGroup().addTo(map);
   spcOutlookLayer = L.layerGroup().addTo(map);
   alertLayerGroup = L.layerGroup().addTo(map);
   watchLayer = L.layerGroup().addTo(map);
@@ -267,6 +312,7 @@ function initMap(){
   lightningLayerGroup = L.layerGroup().addTo(map);
   // Re-filter station markers to the viewport when the map moves (no refetch).
   map.on('moveend', renderStations);
+  map.on('moveend', scheduleModelRefresh);
   marker = L.marker([lat, lon], {icon: L.divIcon({className:'', html:'<div style="width:12px;height:12px;border-radius:50%;background:#F2B705;box-shadow:0 0 10px 3px #F2B705;"></div>'})}).addTo(map);
 }
 
@@ -895,6 +941,142 @@ function toggleStations(cb){
 
 function setStationMetric(v){ stationMetric = METRICS[v] ? v : 'temp'; renderStations(); }
 
+/* ---------------- Model layers (Open-Meteo grid) ----------------
+   Samples a coarse grid across the current view in one API call and paints
+   each cell: CAPE, deep-layer shear (10m→500hPa), MSLP pressure (with auto
+   H/L centers), or wave height. CORS-open, no key. */
+let modelField = 'off';
+let modelFetchTimer = null;
+
+function modelColor(field, v){
+  if(field === 'cape'){
+    if(v >= 4000) return '#FF3AF5'; if(v >= 3000) return '#E10600'; if(v >= 2000) return '#FF7A00';
+    if(v >= 1000) return '#F2B705'; if(v >= 500) return '#2ECC71'; if(v >= 250) return '#1F7A3F'; return null;
+  }
+  if(field === 'shear'){
+    if(v >= 60) return '#FF3AF5'; if(v >= 50) return '#E10600'; if(v >= 40) return '#FF7A00';
+    if(v >= 30) return '#F2B705'; if(v >= 20) return '#3AA0FF'; if(v >= 10) return '#4A6FA5'; return null;
+  }
+  if(field === 'wave'){
+    if(v >= 6) return '#7030A0'; if(v >= 4) return '#E10600'; if(v >= 3) return '#FF7A00';
+    if(v >= 2) return '#F2B705'; if(v >= 1) return '#2ECC71'; if(v >= 0.3) return '#3AA0FF'; return null;
+  }
+  // mslp (hPa): low = blue/purple, high = orange/red
+  if(v >= 1028) return '#B03060'; if(v >= 1022) return '#E10600'; if(v >= 1018) return '#FF7A00';
+  if(v >= 1014) return '#F2B705'; if(v >= 1010) return '#A9D18E'; if(v >= 1006) return '#2ECC71';
+  if(v >= 1002) return '#3AA0FF'; if(v >= 996) return '#4169E1'; return '#7030A0';
+}
+
+function currentHourIndex(times){
+  const now = Date.now();
+  let best = 0, bd = Infinity;
+  for(let i = 0; i < times.length; i++){
+    const t = new Date(times[i] + 'Z').getTime();   // times are GMT
+    const d = Math.abs(t - now);
+    if(d < bd){ bd = d; best = i; }
+  }
+  return best;
+}
+
+async function fetchModel(){
+  if(modelField === 'off' || !modelLayer) return;
+  const field = modelField;
+  const b = map.getBounds();
+  const cols = 10, rows = 7;
+  const south = b.getSouth(), north = b.getNorth(), west = b.getWest(), east = b.getEast();
+  const dLat = (north - south) / rows, dLon = (east - west) / cols;
+  const lats = [], lons = [], rects = [];
+  for(let r = 0; r < rows; r++){
+    for(let c = 0; c < cols; c++){
+      lats.push((south + (r + 0.5) * dLat).toFixed(3));
+      lons.push((west + (c + 0.5) * dLon).toFixed(3));
+      rects.push([[south + r * dLat, west + c * dLon], [south + (r + 1) * dLat, west + (c + 1) * dLon]]);
+    }
+  }
+  const la = lats.join(','), lo = lons.join(',');
+  let url;
+  if(field === 'wave')       url = `https://marine-api.open-meteo.com/v1/marine?latitude=${la}&longitude=${lo}&hourly=wave_height&timezone=GMT&forecast_days=1`;
+  else if(field === 'shear') url = `https://api.open-meteo.com/v1/forecast?latitude=${la}&longitude=${lo}&hourly=windspeed_10m,winddirection_10m,windspeed_500hPa,winddirection_500hPa&timezone=GMT&forecast_days=1`;
+  else if(field === 'cape')  url = `https://api.open-meteo.com/v1/forecast?latitude=${la}&longitude=${lo}&hourly=cape&timezone=GMT&forecast_days=1`;
+  else                       url = `https://api.open-meteo.com/v1/forecast?latitude=${la}&longitude=${lo}&hourly=pressure_msl&timezone=GMT&forecast_days=1`;
+  try{
+    const data = await (await fetch(url)).json();
+    const arr = Array.isArray(data) ? data : [data];
+    if(field !== modelField) return;   // user changed selection mid-flight
+    renderModel(field, arr, rects, cols, rows);
+  }catch(e){ console.error('model error', e); }
+}
+
+function modelValue(field, h, idx){
+  if(field === 'shear'){
+    const s10 = h.windspeed_10m[idx], d10 = h.winddirection_10m[idx];
+    const s5 = h.windspeed_500hPa[idx], d5 = h.winddirection_500hPa[idx];
+    if(s10 == null || s5 == null) return null;
+    const rad = Math.PI / 180;
+    const u = (-s5 * Math.sin(d5 * rad)) - (-s10 * Math.sin(d10 * rad));
+    const v = (-s5 * Math.cos(d5 * rad)) - (-s10 * Math.cos(d10 * rad));
+    return Math.sqrt(u * u + v * v) * 0.539957;   // km/h -> kt
+  }
+  const key = field === 'cape' ? 'cape' : (field === 'wave' ? 'wave_height' : 'pressure_msl');
+  return h[key] ? h[key][idx] : null;
+}
+
+function renderModel(field, arr, rects, cols, rows){
+  modelLayer.clearLayers();
+  modelMarkers.clearLayers();
+  if(!arr.length || !arr[0].hourly) return;
+  const idx = currentHourIndex(arr[0].hourly.time);
+  const vals = arr.map(loc => modelValue(field, loc.hourly, idx));
+  for(let i = 0; i < rects.length; i++){
+    if(vals[i] == null) continue;
+    const col = modelColor(field, vals[i]);
+    if(!col) continue;
+    L.rectangle(rects[i], {stroke: false, fillColor: col, fillOpacity: 0.38, pane: 'modelPane', interactive: false}).addTo(modelLayer);
+  }
+  if(field === 'mslp') placePressureHL(vals, rects, cols, rows);
+}
+
+// Mark interior grid cells that are strict local min (Low) / max (High).
+function placePressureHL(vals, rects, cols, rows){
+  const at = (r, c) => (r < 0 || c < 0 || r >= rows || c >= cols) ? null : vals[r * cols + c];
+  for(let r = 1; r < rows - 1; r++){
+    for(let c = 1; c < cols - 1; c++){
+      const v = at(r, c); if(v == null) continue;
+      let isMin = true, isMax = true;
+      for(let dr = -1; dr <= 1; dr++) for(let dc = -1; dc <= 1; dc++){
+        if(!dr && !dc) continue;
+        const n = at(r + dr, c + dc); if(n == null) continue;
+        if(n <= v) isMax = false;
+        if(n >= v) isMin = false;
+      }
+      if(!isMin && !isMax) continue;
+      const rect = rects[r * cols + c];
+      const latC = (rect[0][0] + rect[1][0]) / 2, lonC = (rect[0][1] + rect[1][1]) / 2;
+      const letter = isMin ? 'L' : 'H';
+      const color = isMin ? '#E10600' : '#3A6FE0';
+      const icon = L.divIcon({
+        className: 'hl-icon',
+        html: `<div class="hl-mark" style="color:${color}">${letter}<span class="hl-mb">${Math.round(v)}</span></div>`,
+        iconSize: [0, 0], iconAnchor: [0, 0]
+      });
+      L.marker([latC, lonC], {icon, interactive: false}).addTo(modelMarkers);
+    }
+  }
+}
+
+function setModelField(v){
+  modelField = v;
+  modelLayer.clearLayers();
+  modelMarkers.clearLayers();
+  if(v !== 'off') fetchModel();
+}
+
+function scheduleModelRefresh(){
+  if(modelField === 'off') return;
+  clearTimeout(modelFetchTimer);
+  modelFetchTimer = setTimeout(fetchModel, 600);   // debounce panning
+}
+
 async function boot(){
   initMap();
   await Promise.all([loadRadar(), loadAlerts(), loadOutlook(), loadMCD(), loadWatches(), loadLSR(), loadNexradSites()]);
@@ -910,6 +1092,7 @@ async function boot(){
   setInterval(loadLSR, 5 * 60 * 1000);
   setInterval(updateSingleRadar, 3 * 60 * 1000);
   setInterval(loadStations, 5 * 60 * 1000);
+  setInterval(fetchModel, 15 * 60 * 1000);
 }
 
 boot();
