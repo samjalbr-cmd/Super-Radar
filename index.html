@@ -135,6 +135,12 @@
     transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;
   }
   .hl-mark .hl-mb{ font-size:10px;font-weight:700; }
+  .iso-icon{ background:none; border:none; }
+  .iso-label{
+    font-family:monospace;font-size:9px;color:#DFE6F0;
+    text-shadow:0 0 3px #000, 0 0 2px #000;
+    transform:translate(-50%,-50%);display:inline-block;white-space:nowrap;
+  }
 
   .strike{
     width:8px;height:8px;border-radius:50%;
@@ -1033,7 +1039,59 @@ function renderModel(field, arr, rects, cols, rows){
     if(!col) continue;
     L.rectangle(rects[i], {stroke: false, fillColor: col, fillOpacity: 0.38, pane: 'modelPane', interactive: false}).addTo(modelLayer);
   }
-  if(field === 'mslp') placePressureHL(vals, rects, cols, rows);
+  if(field === 'mslp'){
+    drawIsobars(vals, rects, cols, rows);
+    placePressureHL(vals, rects, cols, rows);
+  }
+}
+
+// Marching-squares isobars over the pressure grid, every 4 hPa, with labels.
+function isoPoint(rects, r, c, cols){
+  const rect = rects[r * cols + c];
+  return {lat: (rect[0][0] + rect[1][0]) / 2, lon: (rect[0][1] + rect[1][1]) / 2};
+}
+function isoInterp(a, b, lvl){
+  const t = (lvl - a.v) / (b.v - a.v);
+  return [a.p.lat + (b.p.lat - a.p.lat) * t, a.p.lon + (b.p.lon - a.p.lon) * t];
+}
+function drawIsobars(vals, rects, cols, rows){
+  const INTERVAL = 4;
+  let mn = Infinity, mx = -Infinity;
+  for(const v of vals){ if(v == null) continue; if(v < mn) mn = v; if(v > mx) mx = v; }
+  if(!isFinite(mn)) return;
+  const style = {color: '#DFE6F0', weight: 1, opacity: 0.65, interactive: false};
+  const first = Math.ceil(mn / INTERVAL) * INTERVAL;
+  const labeled = {};
+  for(let lvl = first; lvl <= mx; lvl += INTERVAL){
+    for(let r = 0; r < rows - 1; r++){
+      for(let c = 0; c < cols - 1; c++){
+        const corners = [
+          {p: isoPoint(rects, r, c, cols),         v: vals[r * cols + c]},
+          {p: isoPoint(rects, r, c + 1, cols),     v: vals[r * cols + c + 1]},
+          {p: isoPoint(rects, r + 1, c + 1, cols), v: vals[(r + 1) * cols + c + 1]},
+          {p: isoPoint(rects, r + 1, c, cols),     v: vals[(r + 1) * cols + c]},
+        ];
+        if(corners.some(x => x.v == null)) continue;
+        const cross = [];
+        for(let e = 0; e < 4; e++){
+          const a = corners[e], b = corners[(e + 1) % 4];
+          if((a.v < lvl) !== (b.v < lvl)) cross.push(isoInterp(a, b, lvl));
+        }
+        if(cross.length === 2){
+          L.polyline(cross, style).addTo(modelLayer);
+          if(!labeled[lvl]){
+            labeled[lvl] = true;
+            const mid = [(cross[0][0] + cross[1][0]) / 2, (cross[0][1] + cross[1][1]) / 2];
+            const icon = L.divIcon({className: 'iso-icon', html: `<span class="iso-label">${lvl}</span>`, iconSize: [0, 0], iconAnchor: [0, 0]});
+            L.marker(mid, {icon, interactive: false}).addTo(modelMarkers);
+          }
+        }else if(cross.length === 4){
+          L.polyline([cross[0], cross[1]], style).addTo(modelLayer);
+          L.polyline([cross[2], cross[3]], style).addTo(modelLayer);
+        }
+      }
+    }
+  }
 }
 
 // Mark interior grid cells that are strict local min (Low) / max (High).
