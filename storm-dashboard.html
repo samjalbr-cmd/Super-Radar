@@ -184,18 +184,6 @@
     0%{transform:scale(3.2);opacity:1;}
     100%{transform:scale(1);opacity:1;}
   }
-  /* Thunder shockwave ring expanding from the strike point. */
-  .boom{
-    width:14px;height:14px;border-radius:50%;
-    border:2px solid rgba(255,233,107,0.9);
-    transform:translate(-50%,-50%) scale(0.2);
-    animation:boomExpand 1.8s ease-out forwards;
-  }
-  @keyframes boomExpand{
-    0%{transform:translate(-50%,-50%) scale(0.2);opacity:0.95;border-width:3px;}
-    70%{opacity:0.35;}
-    100%{transform:translate(-50%,-50%) scale(11);opacity:0;border-width:0.5px;}
-  }
 </style>
 </head>
 <body>
@@ -673,23 +661,39 @@ function connectLightning(){
   }
 }
 
-let boomCount = 0;   // cap concurrent shockwave rings for performance
+// Thunder wavefront: a ring expanding at the speed of sound from the strike.
+const SOUND_MPS = 343;              // speed of sound
+const BOOM_MAX_M = 12000;           // ~audible range of thunder (~7.5 mi)
+const BOOM_MAX_MS = BOOM_MAX_M / SOUND_MPS * 1000;
+let booms = [];                     // {circle, start}
+let boomTimer = null;
+function addBoom(lat, lon){
+  if(booms.length >= 25) return;    // cap concurrent rings
+  const circle = L.circle([lat, lon], {radius: 1, color: '#FFE96B', weight: 2, fill: false, opacity: 0.9, interactive: false}).addTo(lightningLayerGroup);
+  booms.push({circle, start: performance.now()});
+  if(!boomTimer) boomTimer = setInterval(stepBooms, 50);
+}
+function stepBooms(){
+  const now = performance.now();
+  booms = booms.filter(b => {
+    const age = now - b.start;
+    if(age >= BOOM_MAX_MS){ lightningLayerGroup.removeLayer(b.circle); return false; }
+    const f = age / BOOM_MAX_MS;
+    b.circle.setRadius(SOUND_MPS * (age / 1000));
+    b.circle.setStyle({opacity: 0.9 * (1 - f), weight: Math.max(0.5, 2 * (1 - f))});
+    return true;
+  });
+  if(!booms.length){ clearInterval(boomTimer); boomTimer = null; }
+}
+
 function addStrike(sLat, sLon){
   const m = L.marker([sLat, sLon], {
     icon: L.divIcon({className:'', html:'<div class="strike"></div>', iconSize:[8,8], iconAnchor:[4,4]}),
     interactive: false
   }).addTo(lightningLayerGroup);
   strikes.push({marker: m, time: Date.now()});
-
-  // Thunder shockwave ripple — only for in-view strikes, and capped.
-  if(boomCount < 40 && map.getBounds().contains([sLat, sLon])){
-    boomCount++;
-    const boom = L.marker([sLat, sLon], {
-      icon: L.divIcon({className:'', html:'<div class="boom"></div>', iconSize:[0,0]}),
-      interactive: false
-    }).addTo(lightningLayerGroup);
-    setTimeout(() => { lightningLayerGroup.removeLayer(boom); boomCount--; }, 1800);
-  }
+  // Speed-of-sound thunder wavefront — in-view strikes only.
+  if(map.getBounds().contains([sLat, sLon])) addBoom(sLat, sLon);
 }
 
 // Age out strikes: fade opacity with age, remove after TTL
