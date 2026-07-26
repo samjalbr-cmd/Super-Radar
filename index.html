@@ -184,6 +184,18 @@
     0%{transform:scale(3.2);opacity:1;}
     100%{transform:scale(1);opacity:1;}
   }
+  /* Thunder shockwave ring expanding from the strike point. */
+  .boom{
+    width:14px;height:14px;border-radius:50%;
+    border:2px solid rgba(255,233,107,0.9);
+    transform:translate(-50%,-50%) scale(0.2);
+    animation:boomExpand 1.8s ease-out forwards;
+  }
+  @keyframes boomExpand{
+    0%{transform:translate(-50%,-50%) scale(0.2);opacity:0.95;border-width:3px;}
+    70%{opacity:0.35;}
+    100%{transform:translate(-50%,-50%) scale(11);opacity:0;border-width:0.5px;}
+  }
 </style>
 </head>
 <body>
@@ -661,12 +673,23 @@ function connectLightning(){
   }
 }
 
+let boomCount = 0;   // cap concurrent shockwave rings for performance
 function addStrike(sLat, sLon){
   const m = L.marker([sLat, sLon], {
     icon: L.divIcon({className:'', html:'<div class="strike"></div>', iconSize:[8,8], iconAnchor:[4,4]}),
     interactive: false
   }).addTo(lightningLayerGroup);
   strikes.push({marker: m, time: Date.now()});
+
+  // Thunder shockwave ripple — only for in-view strikes, and capped.
+  if(boomCount < 40 && map.getBounds().contains([sLat, sLon])){
+    boomCount++;
+    const boom = L.marker([sLat, sLon], {
+      icon: L.divIcon({className:'', html:'<div class="boom"></div>', iconSize:[0,0]}),
+      interactive: false
+    }).addTo(lightningLayerGroup);
+    setTimeout(() => { lightningLayerGroup.removeLayer(boom); boomCount--; }, 1800);
+  }
 }
 
 // Age out strikes: fade opacity with age, remove after TTL
