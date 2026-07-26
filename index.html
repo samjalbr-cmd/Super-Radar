@@ -283,13 +283,17 @@
       <div class="legend-row"><span class="dotsw" style="background:#FF7A00;"></span>34–47 kt</div>
       <div class="legend-row"><span class="dotsw" style="background:#E10600;"></span>≥ 48 kt</div>
       <div class="legend-row legend-head">Station Temp (°F)</div>
-      <div class="legend-row"><span class="dotsw" style="background:#A020F0;"></span>&lt; 15</div>
-      <div class="legend-row"><span class="dotsw" style="background:#4169E1;"></span>15–31</div>
-      <div class="legend-row"><span class="dotsw" style="background:#00BFFF;"></span>32–49</div>
-      <div class="legend-row"><span class="dotsw" style="background:#2ECC71;"></span>50–64</div>
-      <div class="legend-row"><span class="dotsw" style="background:#F2B705;"></span>65–79</div>
-      <div class="legend-row"><span class="dotsw" style="background:#FF7A00;"></span>80–89</div>
-      <div class="legend-row"><span class="dotsw" style="background:#E10600;"></span>≥ 90</div>
+      <div class="legend-row"><span class="dotsw" style="background:#800080;"></span>&lt; 15</div>
+      <div class="legend-row"><span class="dotsw" style="background:#663399;"></span>15–25</div>
+      <div class="legend-row"><span class="dotsw" style="background:#3366FF;"></span>25–35</div>
+      <div class="legend-row"><span class="dotsw" style="background:#0099FF;"></span>35–45</div>
+      <div class="legend-row"><span class="dotsw" style="background:#00CCCC;"></span>45–55</div>
+      <div class="legend-row"><span class="dotsw" style="background:#33E633;"></span>55–65</div>
+      <div class="legend-row"><span class="dotsw" style="background:#99FF33;"></span>65–75</div>
+      <div class="legend-row"><span class="dotsw" style="background:#FFE600;"></span>75–85</div>
+      <div class="legend-row"><span class="dotsw" style="background:#FF9900;"></span>85–95</div>
+      <div class="legend-row"><span class="dotsw" style="background:#FF6600;"></span>95–105</div>
+      <div class="legend-row"><span class="dotsw" style="background:#FF0000;"></span>≥ 105</div>
       <div class="legend-row legend-head">Humidity (%)</div>
       <div class="legend-row"><span class="dotsw" style="background:#FF7A00;"></span>&lt; 20</div>
       <div class="legend-row"><span class="dotsw" style="background:#F2B705;"></span>20–39</div>
@@ -327,7 +331,7 @@
 <script>
 let lat = 42.907058, lon = -85.763014;
 let map, radarLayer, marker, alertLayerGroup, lightningLayerGroup;
-let spcOutlookLayer, mcdLayer, watchLayer, lsrLayer, stationLayer, modelLayer, modelMarkers;
+let spcOutlookLayer, mcdLayer, watchLayer, lsrLayer, stationLayer, modelLayer, modelMarkers, feedHighlightLayer;
 
 function initMap(){
   map = L.map('map', {zoomControl:false, attributionControl:true}).setView([lat, lon], 8);
@@ -353,6 +357,7 @@ function initMap(){
   mcdLayer = L.layerGroup().addTo(map);
   lsrLayer = L.layerGroup().addTo(map);
   stationLayer = L.layerGroup().addTo(map);
+  feedHighlightLayer = L.layerGroup().addTo(map);
   lightningLayerGroup = L.layerGroup().addTo(map);
   // Re-filter station markers to the viewport when the map moves (no refetch).
   map.on('moveend', renderStations);
@@ -795,6 +800,7 @@ function toggleFeed(){
   feedOpen = !feedOpen;
   document.getElementById('feedPanel').classList.toggle('open', feedOpen);
   if(feedOpen) renderFeed();
+  else feedHighlightLayer.clearLayers();
 }
 function flyTo(lat, lon){ map.setView([lat, lon], Math.max(map.getZoom(), 9)); }
 function feedRow(color, main, sub, lat, lon){
@@ -821,6 +827,18 @@ function renderFeed(){
     reps.push(f);
   }
   reps.sort((a, b) => new Date(b.properties.valid) - new Date(a.properties.valid));
+
+  // Mark the listed spots on the map so the list and map line up.
+  feedHighlightLayer.clearLayers();
+  for(const w of winds.slice(0, 20)){
+    L.circleMarker([w.s.lat, w.s.lon], {radius: 11, color: windColor(w.kt), weight: 2.5,
+      fillColor: windColor(w.kt), fillOpacity: 0.12, interactive: false}).addTo(feedHighlightLayer);
+  }
+  for(const f of reps.slice(0, 40)){
+    const c = f.geometry.coordinates;
+    L.circleMarker([c[1], c[0]], {radius: 11, color: lsrColor(f.properties.typetext), weight: 2.5,
+      fill: false, interactive: false}).addTo(feedHighlightLayer);
+  }
 
   let html = `<div class="feed-section">Notable Wind · ${winds.length}</div>`;
   if(!winds.length) html += `<div class="feed-empty">No gusts ≥ 30 mph in view</div>`;
@@ -951,13 +969,17 @@ function windColor(kt){
 }
 function tempColor(f){
   if(f == null) return '#4A6FA5';
-  if(f >= 90) return '#E10600';
-  if(f >= 80) return '#FF7A00';
-  if(f >= 65) return '#F2B705';
-  if(f >= 50) return '#2ECC71';
-  if(f >= 32) return '#00BFFF';
-  if(f >= 15) return '#4169E1';
-  return '#A020F0';
+  if(f >= 105) return '#FF0000';
+  if(f >= 95)  return '#FF6600';
+  if(f >= 85)  return '#FF9900';
+  if(f >= 75)  return '#FFE600';
+  if(f >= 65)  return '#99FF33';
+  if(f >= 55)  return '#33E633';
+  if(f >= 45)  return '#00CCCC';
+  if(f >= 35)  return '#0099FF';
+  if(f >= 25)  return '#3366FF';
+  if(f >= 15)  return '#663399';
+  return '#800080';
 }
 function humColor(h){
   if(h == null) return '#4A6FA5';
