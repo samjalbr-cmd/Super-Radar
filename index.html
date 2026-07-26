@@ -988,7 +988,7 @@ async function fetchModel(){
   if(modelField === 'off' || !modelLayer) return;
   const field = modelField;
   const b = map.getBounds();
-  const cols = 10, rows = 7;
+  const cols = 14, rows = 10;
   const south = b.getSouth(), north = b.getNorth(), west = b.getWest(), east = b.getEast();
   const dLat = (north - south) / rows, dLon = (east - west) / cols;
   const lats = [], lons = [], rects = [];
@@ -1027,18 +1027,46 @@ function modelValue(field, h, idx){
   return h[key] ? h[key][idx] : null;
 }
 
+// Render the coarse grid to a bilinearly-interpolated canvas and return it as a
+// smooth image overlay (filled-contour look instead of blocky cells).
+function fieldOverlay(field, vals, cols, rows, rects){
+  const W = 280, H = Math.max(1, Math.round(W * (rows - 1) / (cols - 1)));
+  const cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  const ctx = cv.getContext('2d');
+  const img = ctx.createImageData(W, H);
+  const V = (r, c) => vals[r * cols + c];
+  for(let py = 0; py < H; py++){
+    const rowf = (rows - 1) * (1 - py / (H - 1));   // top of image = north = highest row
+    const r0 = Math.floor(rowf), r1 = Math.min(r0 + 1, rows - 1), fr = rowf - r0;
+    for(let px = 0; px < W; px++){
+      const colf = (cols - 1) * (px / (W - 1));
+      const c0 = Math.floor(colf), c1 = Math.min(c0 + 1, cols - 1), fc = colf - c0;
+      const q = [[V(r0, c0), (1 - fr) * (1 - fc)], [V(r0, c1), (1 - fr) * fc],
+                 [V(r1, c0), fr * (1 - fc)], [V(r1, c1), fr * fc]];
+      let sum = 0, wsum = 0;
+      for(const [v, w] of q){ if(v == null || w === 0) continue; sum += v * w; wsum += w; }
+      const o = (py * W + px) * 4;
+      if(wsum < 0.5){ img.data[o + 3] = 0; continue; }   // mostly no-data -> transparent
+      const hex = modelColor(field, sum / wsum);
+      if(!hex){ img.data[o + 3] = 0; continue; }
+      const n = parseInt(hex.slice(1), 16);
+      img.data[o] = (n >> 16) & 255; img.data[o + 1] = (n >> 8) & 255; img.data[o + 2] = n & 255; img.data[o + 3] = 150;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  const sw = isoPoint(rects, 0, 0, cols), ne = isoPoint(rects, rows - 1, cols - 1, cols);
+  return L.imageOverlay(cv.toDataURL(), [[sw.lat, sw.lon], [ne.lat, ne.lon]],
+    {opacity: 1, pane: 'modelPane', interactive: false});
+}
+
 function renderModel(field, arr, rects, cols, rows){
   modelLayer.clearLayers();
   modelMarkers.clearLayers();
   if(!arr.length || !arr[0].hourly) return;
   const idx = currentHourIndex(arr[0].hourly.time);
   const vals = arr.map(loc => modelValue(field, loc.hourly, idx));
-  for(let i = 0; i < rects.length; i++){
-    if(vals[i] == null) continue;
-    const col = modelColor(field, vals[i]);
-    if(!col) continue;
-    L.rectangle(rects[i], {stroke: false, fillColor: col, fillOpacity: 0.38, pane: 'modelPane', interactive: false}).addTo(modelLayer);
-  }
+  fieldOverlay(field, vals, cols, rows, rects).addTo(modelLayer);
   if(field === 'mslp'){
     drawIsobars(vals, rects, cols, rows);
     placePressureHL(vals, rects, cols, rows);
@@ -1100,14 +1128,16 @@ function placePressureHL(vals, rects, cols, rows){
   for(let r = 1; r < rows - 1; r++){
     for(let c = 1; c < cols - 1; c++){
       const v = at(r, c); if(v == null) continue;
-      let isMin = true, isMax = true;
+      let isMin = true, isMax = true, sum = 0, cnt = 0;
       for(let dr = -1; dr <= 1; dr++) for(let dc = -1; dc <= 1; dc++){
         if(!dr && !dc) continue;
         const n = at(r + dr, c + dc); if(n == null) continue;
+        sum += n; cnt++;
         if(n <= v) isMax = false;
         if(n >= v) isMin = false;
       }
       if(!isMin && !isMax) continue;
+      if(cnt && Math.abs(v - sum / cnt) < 0.5) continue;   // too weak — skip noise
       const rect = rects[r * cols + c];
       const latC = (rect[0][0] + rect[1][0]) / 2, lonC = (rect[0][1] + rect[1][1]) / 2;
       const letter = isMin ? 'L' : 'H';
