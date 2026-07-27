@@ -54,6 +54,15 @@
     background:#0d1420;border:1px solid var(--border);border-radius:8px;
     color:#F5F3EC;padding:8px 10px;font-family:sans-serif;font-size:14px;
   }
+  #pairDot{
+    position:absolute;top:72px;right:40px;z-index:600;
+    display:none;align-items:center;gap:6px;
+    background:var(--panel);border:1px solid var(--border);border-radius:10px;
+    padding:5px 9px;font-family:monospace;font-size:10px;color:var(--dim);
+    backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  }
+  #pairDot.show{display:flex;}
+  #pairDot .d{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
   #pairStatus{
     font-family:monospace;font-size:12px;color:var(--dim);white-space:pre-line;text-align:center;
   }
@@ -245,6 +254,7 @@
 </div>
 
 <div id="radarStatus"><span class="dot"></span><span id="radarStatusText">NEXRAD N0Q</span></div>
+<div id="pairDot"><span class="d"></span><span id="pairDotTxt"></span></div>
 <div id="toasts"></div>
 <div id="lightningBadge"></div>
 
@@ -1691,6 +1701,18 @@ function genCode(){
   return s;
 }
 function pairInfo(html){ const el = document.getElementById('pairStatus'); if(el) el.innerHTML = html; }
+// state: 'ok' (green), 'warn' (amber), 'bad' (red), or null to hide.
+function setPairDot(state, text){
+  const el = document.getElementById('pairDot');
+  if(!el) return;
+  if(!state){ el.classList.remove('show'); return; }
+  el.classList.add('show');
+  const color = state === 'ok' ? '#2ECC71' : (state === 'warn' ? '#F2B705' : '#E10600');
+  const d = el.querySelector('.d');
+  d.style.background = color;
+  d.style.boxShadow = `0 0 6px 1px ${color}`;
+  document.getElementById('pairDotTxt').textContent = text;
+}
 
 function startTV(){
   if(typeof Peer === 'undefined'){ pairInfo('Pairing library not loaded — reload.'); return; }
@@ -1705,16 +1727,17 @@ function startTV(){
     pairInfo(`Scan with your phone (or enter the code):<span class="code">${code}</span><div id="qrbox"></div>${UNPAIR_BTN}`);
     const box = document.getElementById('qrbox');
     if(box && typeof QRCode !== 'undefined') new QRCode(box, {text: url, width: 168, height: 168, colorDark: '#000000', colorLight: '#ffffff'});
+    setPairDot('warn', 'waiting for phone');
   };
   peer.on('open', showCode);
   peer.on('disconnected', () => { if(!intentionalClose && peer && !peer.destroyed){ try{ peer.reconnect(); }catch(e){} } });
   peer.on('connection', c => {
     conn = c;
-    c.on('open', () => pairInfo(`📱 Phone connected ✓ (code ${code})${UNPAIR_BTN}`));
+    c.on('open', () => { pairInfo(`📱 Phone connected ✓ (code ${code})${UNPAIR_BTN}`); setPairDot('ok', 'phone linked'); });
     c.on('data', d => applyState(d));
     c.on('close', () => { if(!intentionalClose) showCode(); });   // wait for the phone to reconnect
   });
-  peer.on('error', e => pairInfo('Pair error: ' + e.type + ' — try again' + UNPAIR_BTN));
+  peer.on('error', e => { pairInfo('Pair error: ' + e.type + ' — try again' + UNPAIR_BTN); setPairDot('bad', 'pair error'); });
 }
 
 function startPhone(codeArg){
@@ -1724,6 +1747,7 @@ function startPhone(codeArg){
   if(peer) peer.destroy();
   intentionalClose = false;
   pairCode = code;
+  setPairDot('warn', 'connecting…');
   peer = new Peer();
   peer.on('open', connectToTV);
   peer.on('disconnected', () => { if(!intentionalClose && peer && !peer.destroyed){ try{ peer.reconnect(); }catch(e){} } });
@@ -1740,10 +1764,11 @@ function connectToTV(){
     syncRole = 'phone';
     clearTimeout(reconnectTimer); reconnectTimer = null;
     pairInfo('📺 Connected to TV ✓ — this phone drives it' + UNPAIR_BTN);
+    setPairDot('ok', 'driving TV');
     hookSync();
     broadcastState();
   });
-  conn.on('close', () => { if(!intentionalClose){ pairInfo('Reconnecting to TV…' + UNPAIR_BTN); scheduleReconnect(); } });
+  conn.on('close', () => { if(!intentionalClose){ pairInfo('Reconnecting to TV…' + UNPAIR_BTN); setPairDot('warn', 'reconnecting…'); scheduleReconnect(); } });
   conn.on('error', () => { if(!intentionalClose) scheduleReconnect(); });
 }
 
@@ -1768,6 +1793,7 @@ function unpair(){
   if(peer){ try{ peer.destroy(); }catch(e){} peer = null; }
   syncRole = null; pairCode = null;
   pairInfo('Mirroring stopped. Pick a button above to pair again.');
+  setPairDot(null);
 }
 
 function send(obj){ if(conn && conn.open) try{ conn.send(obj); }catch(e){} }
