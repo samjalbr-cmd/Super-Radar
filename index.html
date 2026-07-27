@@ -357,9 +357,9 @@ function initMap(){
   }).setView([lat, lon], 8);
   basemap = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
     attribution:'&copy; OpenStreetMap &copy; CARTO',
-    maxZoom:12
+    maxZoom:12, keepBuffer:6, updateWhenIdle:false
   }).addTo(map);
-  radarLayer = L.tileLayer('', {opacity:0.85, maxZoom:12, maxNativeZoom:10, attribution:'NWS NEXRAD N0Q &copy; Iowa Environmental Mesonet'}).addTo(map);
+  radarLayer = L.tileLayer('', {opacity:0.85, maxZoom:12, maxNativeZoom:10, keepBuffer:6, attribution:'NWS NEXRAD N0Q &copy; Iowa Environmental Mesonet'}).addTo(map);
   // Velocity overlay sits above the basemap but below the alert/SPC vectors.
   map.createPane('velocityPane');
   map.getPane('velocityPane').style.zIndex = 250;
