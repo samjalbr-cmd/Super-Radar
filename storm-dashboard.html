@@ -107,6 +107,20 @@
     cursor:pointer;
   }
 
+  /* Lightning intelligence badge (bottom-left). */
+  #lightningBadge{
+    position:absolute;bottom:24px;left:24px;z-index:500;
+    padding:8px 12px;display:none;flex-direction:column;gap:2px;
+    background:var(--panel);border:1px solid var(--border);border-radius:10px;
+    backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+    font-family:monospace;font-size:11px;color:#F5F3EC;letter-spacing:0.02em;
+  }
+  #lightningBadge.show{display:flex;}
+  #lightningBadge .lb-rate{font-weight:700;}
+  #lightningBadge .lb-jump{color:#FFE96B;font-weight:700;}
+  #lightningBadge .lb-f2b{color:var(--dim);}
+  #lightningBadge .lb-close{color:#FF6B6B;font-weight:700;}
+
   /* Toast notifications for newly-issued alerts (left side, auto-dismiss). */
   #toasts{
     position:absolute;top:64px;left:24px;z-index:700;
@@ -194,6 +208,7 @@
 
 <div id="radarStatus"><span class="dot"></span><span id="radarStatusText">NEXRAD N0Q</span></div>
 <div id="toasts"></div>
+<div id="lightningBadge"></div>
 
 <div id="feedTab" onclick="toggleFeed()">REPORTS</div>
 <div id="feedPanel">
@@ -1310,6 +1325,56 @@ function scheduleModelRefresh(){
   modelFetchTimer = setTimeout(fetchModel, 600);   // debounce panning
 }
 
+/* ---------------- Lightning intelligence ----------------
+   Strike-rate in view (with lightning-jump detection) + flash-to-bang
+   distance/time to the nearest recent strike from the pinned location.
+   All derived from the live strike buffer (`strikes`). */
+function haversineKm(la1, lo1, la2, lo2){
+  const R = 6371, rad = Math.PI / 180;
+  const dLa = (la2 - la1) * rad, dLo = (lo2 - lo1) * rad;
+  const a = Math.sin(dLa / 2) ** 2 + Math.cos(la1 * rad) * Math.cos(la2 * rad) * Math.sin(dLo / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+let lightRateHistory = [];
+function computeLightning(){
+  const el = document.getElementById('lightningBadge');
+  if(!el) return;
+  if(!hazardVisible.lightning){ el.classList.remove('show'); return; }
+  const now = Date.now();
+  const b = map.getBounds();
+  let rate = 0, nearestKm = Infinity;
+  for(const s of strikes){
+    const ll = s.marker.getLatLng();
+    const age = now - s.time;
+    if(age <= 60000 && b.contains(ll)) rate++;                 // strikes/min in view
+    if(age <= 30000){
+      const d = haversineKm(lat, lon, ll.lat, ll.lng);
+      if(d < nearestKm) nearestKm = d;
+    }
+  }
+  // Lightning jump: current rate well above the recent baseline.
+  const base = lightRateHistory.length ? lightRateHistory.reduce((a, c) => a + c, 0) / lightRateHistory.length : 0;
+  lightRateHistory.push(rate);
+  if(lightRateHistory.length > 6) lightRateHistory.shift();
+  const isJump = rate >= 15 && rate >= base * 2 && (rate - base) >= 10;
+
+  if(rate === 0 && !isFinite(nearestKm)){ el.classList.remove('show'); return; }
+  let html = `<div class="lb-rate">⚡ ${rate}/min in view${isJump ? ' <span class="lb-jump">▲ JUMP</span>' : ''}</div>`;
+  if(isFinite(nearestKm)){
+    const mi = nearestKm * 0.621371;
+    if(nearestKm < 0.8){
+      html += `<div class="lb-close">⚠ strike overhead — take cover</div>`;
+    }else if(nearestKm <= 16){
+      const secs = Math.round(nearestKm * 1000 / 343);
+      html += `<div class="lb-f2b">nearest ${mi.toFixed(1)} mi · thunder ~${secs}s</div>`;
+    }else{
+      html += `<div class="lb-f2b">nearest ${Math.round(mi)} mi</div>`;
+    }
+  }
+  el.innerHTML = html;
+  el.classList.add('show');
+}
+
 async function boot(){
   initMap();
   await Promise.all([loadRadar(), loadAlerts(), loadOutlook(), loadMCD(), loadWatches(), loadLSR(), loadNexradSites()]);
@@ -1326,6 +1391,7 @@ async function boot(){
   setInterval(updateSingleRadar, 3 * 60 * 1000);
   setInterval(loadStations, 3 * 60 * 1000);
   setInterval(fetchModel, 15 * 60 * 1000);
+  setInterval(computeLightning, 3000);
 }
 
 boot();
