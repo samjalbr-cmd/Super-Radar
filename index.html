@@ -135,13 +135,17 @@
 
   /* Station value labels (replace dots): colored number on the map. */
   .stn-icon{ background:none; border:none; }
-  .stn-barb{ position:relative; transform:translate(-50%,-50%); }
-  .stn-barb svg{ display:block; }
-  .stn-barb-lbl{
-    position:absolute; top:29px; left:50%; transform:translateX(-50%);
-    font-family:monospace; font-weight:700; font-size:calc(7px * var(--lblscale, 1)); line-height:1;
-    white-space:nowrap; text-shadow:0 0 3px #000, 0 0 2px #000, 0 1px 1px #000;
+  /* Full station model: temp UL, dewpoint LL, coded pressure UR, barb center. */
+  .stn-model{ position:relative; width:28px; height:28px; transform:translate(-50%,-50%); }
+  .stn-model svg{ position:absolute; top:0; left:0; }
+  .stn-model span{
+    position:absolute; font-family:monospace; font-weight:700;
+    font-size:calc(7px * var(--lblscale, 1)); line-height:1; white-space:nowrap;
+    text-shadow:0 0 3px #000, 0 0 2px #000, 0 1px 1px #000;
   }
+  .stn-model .sm-t{ right:18px; top:1px; text-align:right; }        /* temp — upper left */
+  .stn-model .sm-d{ right:18px; bottom:1px; color:#5FD98A; }        /* dewpoint — lower left */
+  .stn-model .sm-p{ left:18px; top:1px; color:#b8c4d4; }            /* pressure — upper right */
   .stn-label{
     font-family:monospace;font-weight:700;font-size:calc(7px * var(--lblscale, 1));line-height:1;
     text-shadow:0 0 3px #000, 0 0 2px #000, 0 1px 1px #000;
@@ -344,7 +348,7 @@
     <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" id="planesChk" checked onchange="togglePlanes(this)"> Live flights (ADS-B)</label>
     <label style="margin-top:8px;">Weather Stations (METAR)</label>
     <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" id="stationsChk" checked onchange="toggleStations(this)"> Show live stations</label>
-    <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" id="windBarbsChk" onchange="setWindBarbs(this)"> Wind barbs</label>
+    <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" id="windBarbsChk" onchange="setWindBarbs(this)"> Station model (barb · temp · dewpt · pres)</label>
     <label style="margin-top:2px;">Station metric</label>
     <select id="stationMetric" onchange="setStationMetric(this.value)">
       <option value="temp">Temperature (°F)</option>
@@ -1140,6 +1144,11 @@ function windBarb(spd, dir){
   for(let i = 0; i < p5; i++){ const off = (p10 === 0 && p50 === 0) ? gap : 0; parts.push(`<line x1="${cx}" y1="${y + off}" x2="${cx - len / 2}" y2="${y + off + 1.5}" stroke="${col}" stroke-width="${sw}"/>`); y += gap; }
   return `<svg viewBox="0 0 40 40" width="28" height="28"><g transform="rotate(${dir} ${cx} ${cy})">${parts.join('')}</g></svg>`;
 }
+// Station-plot pressure code: last 3 digits of MSLP in tenths of mb (1013.2 -> "132").
+function pressCode(mb){
+  if(mb == null) return '';
+  return String(Math.round(mb * 10) % 1000).padStart(3, '0');
+}
 
 function tempColor(f){
   if(f == null) return '#4A6FA5';
@@ -1242,9 +1251,18 @@ function renderStations(){
     let text, color;
     if(v == null){ text = '·'; color = '#5a6577'; }
     else { text = metric.fmt(v); color = metric.color(v); }
-    const html = windBarbsOn
-      ? `<div class="stn-barb">${windBarb(s.p.sknt, s.p.drct)}<span class="stn-barb-lbl" style="color:${color}">${text}</span></div>`
-      : `<span class="stn-label" style="color:${color}">${text}</span>`;
+    let html;
+    if(windBarbsOn){
+      const p = s.p;
+      const t = (p.tmpf != null) ? Math.round(p.tmpf) : '';
+      const dp = (p.dwpf != null) ? Math.round(p.dwpf) : '';
+      const pr = pressCode(p.mslp);
+      html = `<div class="stn-model">${windBarb(p.sknt, p.drct)}` +
+        `<span class="sm-t" style="color:${tempColor(p.tmpf)}">${t}</span>` +
+        `<span class="sm-d">${dp}</span><span class="sm-p">${pr}</span></div>`;
+    }else{
+      html = `<span class="stn-label" style="color:${color}">${text}</span>`;
+    }
     const icon = L.divIcon({className: 'stn-icon', html, iconSize: [0, 0], iconAnchor: [0, 0]});
     L.marker([s.lat, s.lon], {icon, keyboard: false}).bindPopup(stationPopup(s)).addTo(stationLayer);
   }
