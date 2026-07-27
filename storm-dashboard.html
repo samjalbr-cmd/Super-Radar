@@ -1265,7 +1265,7 @@ function fieldOverlay(field, vals, cols, rows, rects){
       const hex = modelColor(field, sum / wsum);
       if(!hex){ img.data[o + 3] = 0; continue; }
       const n = parseInt(hex.slice(1), 16);
-      img.data[o] = (n >> 16) & 255; img.data[o + 1] = (n >> 8) & 255; img.data[o + 2] = n & 255; img.data[o + 3] = 150;
+      img.data[o] = (n >> 16) & 255; img.data[o + 1] = (n >> 8) & 255; img.data[o + 2] = n & 255; img.data[o + 3] = 90;
     }
   }
   ctx.putImageData(img, 0, 0);
