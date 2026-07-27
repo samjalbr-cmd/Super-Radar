@@ -1682,6 +1682,8 @@ function setLabelScale(v){ document.documentElement.style.setProperty('--lblscal
    The phone is the controller (sends map view + settings); the TV mirrors.
    Peer-to-peer over the local network; a public server is used only to pair. */
 let peer = null, conn = null, syncRole = null, syncTimer = null, syncHooked = false;
+let pairCode = null, reconnectTimer = null, intentionalClose = false;
+const UNPAIR_BTN = '<br><button onclick="unpair()" style="margin-top:10px;background:transparent;border:1px solid var(--border);color:var(--dim);border-radius:8px;padding:6px 12px;font-size:12px;cursor:pointer;">✕ Stop mirroring</button>';
 
 function genCode(){
   const c = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -1693,22 +1695,26 @@ function pairInfo(html){ const el = document.getElementById('pairStatus'); if(el
 function startTV(){
   if(typeof Peer === 'undefined'){ pairInfo('Pairing library not loaded — reload.'); return; }
   if(peer) peer.destroy();
+  intentionalClose = false;
   const code = genCode();
+  pairCode = code;
   peer = new Peer('superradar-' + code);
   syncRole = 'tv';
-  peer.on('open', () => {
+  const showCode = () => {
     const url = `${location.origin}${location.pathname}?join=${code}`;
-    pairInfo(`Scan with your phone (or enter the code):<span class="code">${code}</span><div id="qrbox"></div>`);
+    pairInfo(`Scan with your phone (or enter the code):<span class="code">${code}</span><div id="qrbox"></div>${UNPAIR_BTN}`);
     const box = document.getElementById('qrbox');
     if(box && typeof QRCode !== 'undefined') new QRCode(box, {text: url, width: 168, height: 168, colorDark: '#000000', colorLight: '#ffffff'});
-  });
+  };
+  peer.on('open', showCode);
+  peer.on('disconnected', () => { if(!intentionalClose && peer && !peer.destroyed){ try{ peer.reconnect(); }catch(e){} } });
   peer.on('connection', c => {
     conn = c;
-    c.on('open', () => pairInfo(`📱 Phone connected ✓<br>(code ${code})`));
+    c.on('open', () => pairInfo(`📱 Phone connected ✓ (code ${code})${UNPAIR_BTN}`));
     c.on('data', d => applyState(d));
-    c.on('close', () => pairInfo(`Phone disconnected — code still ${code}`));
+    c.on('close', () => { if(!intentionalClose) showCode(); });   // wait for the phone to reconnect
   });
-  peer.on('error', e => pairInfo('Pair error: ' + e.type + ' — try again'));
+  peer.on('error', e => pairInfo('Pair error: ' + e.type + ' — try again' + UNPAIR_BTN));
 }
 
 function startPhone(codeArg){
@@ -1716,19 +1722,52 @@ function startPhone(codeArg){
   const code = (codeArg || prompt('Enter the code shown on your TV:') || '').trim().toUpperCase();
   if(!code) return;
   if(peer) peer.destroy();
+  intentionalClose = false;
+  pairCode = code;
   peer = new Peer();
-  peer.on('open', () => {
-    conn = peer.connect('superradar-' + code);
-    conn.on('open', () => {
-      syncRole = 'phone';
-      pairInfo('📺 Connected to TV ✓ — this phone now drives it');
-      hookSync();
-      broadcastState();
-    });
-    conn.on('close', () => pairInfo('Disconnected from TV'));
-    conn.on('error', () => pairInfo('Could not connect — check the code'));
+  peer.on('open', connectToTV);
+  peer.on('disconnected', () => { if(!intentionalClose && peer && !peer.destroyed){ try{ peer.reconnect(); }catch(e){} } });
+  peer.on('error', e => {
+    pairInfo('Pair error: ' + e.type + (e.type === 'peer-unavailable' ? ' (wrong code / TV not ready)' : '') + UNPAIR_BTN);
+    if(!intentionalClose) scheduleReconnect();
   });
-  peer.on('error', e => pairInfo('Pair error: ' + e.type + (e.type === 'peer-unavailable' ? ' (wrong code?)' : '')));
+}
+
+function connectToTV(){
+  if(!peer || peer.destroyed || !pairCode || intentionalClose) return;
+  conn = peer.connect('superradar-' + pairCode);
+  conn.on('open', () => {
+    syncRole = 'phone';
+    clearTimeout(reconnectTimer); reconnectTimer = null;
+    pairInfo('📺 Connected to TV ✓ — this phone drives it' + UNPAIR_BTN);
+    hookSync();
+    broadcastState();
+  });
+  conn.on('close', () => { if(!intentionalClose){ pairInfo('Reconnecting to TV…' + UNPAIR_BTN); scheduleReconnect(); } });
+  conn.on('error', () => { if(!intentionalClose) scheduleReconnect(); });
+}
+
+function scheduleReconnect(){
+  if(intentionalClose) return;
+  clearTimeout(reconnectTimer);
+  reconnectTimer = setTimeout(attemptReconnect, 3500);
+}
+function attemptReconnect(){
+  reconnectTimer = null;
+  if(intentionalClose || (conn && conn.open)) return;
+  pairInfo('Reconnecting to TV…' + UNPAIR_BTN);
+  try{ if(peer && peer.disconnected && !peer.destroyed) peer.reconnect(); }catch(e){}
+  if(peer && !peer.destroyed) connectToTV();
+  scheduleReconnect();   // keep retrying until it opens (which clears the timer)
+}
+
+function unpair(){
+  intentionalClose = true;
+  clearTimeout(reconnectTimer); reconnectTimer = null;
+  if(conn){ try{ conn.close(); }catch(e){} conn = null; }
+  if(peer){ try{ peer.destroy(); }catch(e){} peer = null; }
+  syncRole = null; pairCode = null;
+  pairInfo('Mirroring stopped. Pick a button above to pair again.');
 }
 
 function send(obj){ if(conn && conn.open) try{ conn.send(obj); }catch(e){} }
