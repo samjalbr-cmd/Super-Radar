@@ -15,7 +15,11 @@
   }
   *{box-sizing:border-box;margin:0;padding:0;}
   html,body{height:100%;background:var(--void);overflow:hidden;font-family:sans-serif;}
-  #map{position:absolute;inset:0;}
+  #map{position:absolute;inset:0;background:var(--void);}
+  /* Leaflet's default container bg is light gray (#ddd) and flashes through on
+     tile reloads — force it dark so refreshes never flash white. */
+  .leaflet-container{background:var(--void);}
+  .leaflet-tile-container{background:var(--void);}
   .leaflet-control-attribution{background:rgba(10,14,26,0.6)!important;color:var(--dim)!important;font-size:9px!important;}
   .leaflet-control-attribution a{color:var(--dim)!important;}
   .leaflet-control-zoom{display:none;}
