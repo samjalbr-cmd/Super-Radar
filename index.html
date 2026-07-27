@@ -379,21 +379,26 @@ function initMap(){
   // Keep Leaflet's idea of the container size correct. Without this the map can
   // load tiles for only part of the viewport (half-rendered), especially on
   // mobile where layout settles after first paint, and on fullscreen/rotate.
-  const fixSize = () => map.invalidateSize();
-  // ResizeObserver reliably catches the container reaching its true size (the
-  // root cause of half-rendered tiles); re-assert the view since a 0-size
-  // container at startup can clamp zoom to the whole world.
+  // Re-fit AND force every tile layer to reload — tiles fetched before the
+  // container reached full size stay stale (a darker half), so a plain
+  // invalidateSize isn't enough; redraw() clears and refetches them.
+  const settle = () => {
+    map.invalidateSize();
+    map.setView([lat, lon], 8);
+    map.eachLayer(l => { if(l.redraw) l.redraw(); });
+  };
   if(window.ResizeObserver){
     let firstFit = true;
     new ResizeObserver(() => {
       map.invalidateSize();
-      if(firstFit){ firstFit = false; map.setView([lat, lon], 8); }
+      if(firstFit){ firstFit = false; settle(); }
     }).observe(document.getElementById('map'));
   }
-  setTimeout(() => { map.invalidateSize(); map.setView([lat, lon], 8); }, 400);
-  window.addEventListener('resize', fixSize);
-  window.addEventListener('orientationchange', () => setTimeout(fixSize, 300));
-  document.addEventListener('fullscreenchange', () => setTimeout(fixSize, 250));
+  setTimeout(settle, 400);
+  setTimeout(settle, 1200);
+  window.addEventListener('resize', () => map.invalidateSize());
+  window.addEventListener('orientationchange', () => setTimeout(settle, 300));
+  document.addEventListener('fullscreenchange', () => setTimeout(() => map.invalidateSize(), 250));
   marker = L.marker([lat, lon], {icon: L.divIcon({className:'', html:'<div style="width:12px;height:12px;border-radius:50%;background:#F2B705;box-shadow:0 0 10px 3px #F2B705;"></div>'})}).addTo(map);
 }
 
@@ -1460,6 +1465,9 @@ function cycleBrightness(){
 }
 
 async function boot(){
+  // Wait for layout to paint so the map container is full-size before Leaflet
+  // measures it — prevents the half-rendered (stale-tile) map on mobile.
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
   initMap();
   await Promise.all([loadRadar(), loadAlerts(), loadOutlook(), loadMCD(), loadWatches(), loadLSR(), loadNexradSites()]);
   document.getElementById('loading').classList.add('hide');
