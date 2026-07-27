@@ -821,9 +821,11 @@ async function loadOutlook(){
     const res = await fetch('https://www.spc.noaa.gov/products/outlook/day1otlk_cat.nolyr.geojson');
     const data = await res.json();
     spcOutlookLayer.clearLayers();
+    // Very light fill (these areas nest/stack, so opacity compounds) + a clear
+    // colored outline so the risk areas read without washing out the map.
     L.geoJSON(data, {
-      style: f => ({color: f.properties.stroke || '#888', weight: 1.5,
-                    fillColor: f.properties.fill || '#888', fillOpacity: 0.18}),
+      style: f => ({color: f.properties.stroke || '#888', weight: 2,
+                    fillColor: f.properties.fill || '#888', fillOpacity: 0.06}),
       onEachFeature: (f, l) => l.bindPopup(`<div class="alert-popup"><b>SPC Day 1 · ${f.properties.LABEL || ''}</b>${f.properties.LABEL2 || ''}</div>`)
     }).addTo(spcOutlookLayer);
   }catch(e){ console.error('outlook error', e); }
