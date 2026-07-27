@@ -1476,6 +1476,17 @@ function cycleBrightness(){
   btn.title = `Brightness ${Math.round((1 - b.o) * 100)}%`;
 }
 
+// Rebuild the tile layers from scratch: drop and refetch the basemap + radar
+// (basemap under radar) so any leftover/half-rendered startup tiles are gone.
+function rebuildTiles(){
+  if(!map || !basemap) return;
+  const radarOn = map.hasLayer(radarLayer);
+  basemap.remove();
+  if(radarOn) radarLayer.remove();
+  basemap.addTo(map);
+  if(radarOn){ radarLayer.addTo(map); loadRadar(); }
+}
+
 async function boot(){
   // Wait for layout to paint so the map container is full-size before Leaflet
   // measures it — prevents the half-rendered (stale-tile) map on mobile.
@@ -1486,6 +1497,10 @@ async function boot(){
   populateSiteDropdown();
   loadStations();   // heavy national fetch — fire after the map is visible
   connectLightning();
+  // Clean tile rebuild once the container is fully settled, to clear any
+  // lighter half-rendered startup block; a second pass catches slow connections.
+  setTimeout(rebuildTiles, 1500);
+  setTimeout(rebuildTiles, 4000);
   setInterval(loadRadar, 5 * 60 * 1000);
   setInterval(loadAlerts, 2 * 60 * 1000);
   setInterval(loadOutlook, 30 * 60 * 1000);
