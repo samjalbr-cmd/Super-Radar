@@ -349,7 +349,12 @@ let map, basemap, radarLayer, marker, alertLayerGroup, lightningLayerGroup;
 let spcOutlookLayer, mcdLayer, watchLayer, lsrLayer, stationLayer, modelLayer, modelMarkers;
 
 function initMap(){
-  map = L.map('map', {zoomControl:false, attributionControl:true}).setView([lat, lon], 8);
+  // Bound the map so you can't pan off the tiles into empty space or zoom out
+  // past the map (that's the "lighter rectangle floating in black" effect).
+  map = L.map('map', {
+    zoomControl:false, attributionControl:true,
+    minZoom:4, maxBounds:[[15, -140], [55, -55]], maxBoundsViscosity:1.0
+  }).setView([lat, lon], 8);
   basemap = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
     attribution:'&copy; OpenStreetMap &copy; CARTO',
     maxZoom:12
