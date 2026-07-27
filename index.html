@@ -1527,6 +1527,32 @@ function planePopupHTML(a, route){
   return `<div class="alert-popup"><b>${call}${a.t ? ' · ' + a.t : ''}</b>${alt}${gs ? ' · ' + gs : ''}${a.ownOp ? '<br>' + a.ownOp : ''}${r}</div>`;
 }
 
+// adsbdb maps callsign->typical route, which is often a stale/wrong city pair
+// (flight numbers get reused). Only trust it if the plane is actually near the
+// origin->destination great-circle line and between its endpoints.
+function routeValid(route, lat, lon, track){
+  const o = route.origin, d = route.destination;
+  if(!o || !d) return false;
+  const R = 3440.065, toRad = x => x * Math.PI / 180;   // R in nm
+  const ang = (la1, lo1, la2, lo2) => {
+    const a = Math.sin(toRad(la2 - la1) / 2) ** 2 + Math.cos(toRad(la1)) * Math.cos(toRad(la2)) * Math.sin(toRad(lo2 - lo1) / 2) ** 2;
+    return 2 * Math.asin(Math.min(1, Math.sqrt(a)));
+  };
+  const brg = (la1, lo1, la2, lo2) => {
+    const y = Math.sin(toRad(lo2 - lo1)) * Math.cos(toRad(la2));
+    const x = Math.cos(toRad(la1)) * Math.sin(toRad(la2)) - Math.sin(toRad(la1)) * Math.cos(toRad(la2)) * Math.cos(toRad(lo2 - lo1));
+    return Math.atan2(y, x);
+  };
+  const d13 = ang(o.latitude, o.longitude, lat, lon);
+  const xtd = Math.abs(Math.asin(Math.sin(d13) * Math.sin(brg(o.latitude, o.longitude, lat, lon) - brg(o.latitude, o.longitude, d.latitude, d.longitude)))) * R;
+  const atd = Math.acos(Math.max(-1, Math.min(1, Math.cos(d13) / Math.cos(xtd / R)))) * R;
+  const len = ang(o.latitude, o.longitude, d.latitude, d.longitude) * R;
+  // Also require the plane to be flying roughly toward its destination.
+  const bDest = (brg(lat, lon, d.latitude, d.longitude) * 180 / Math.PI + 360) % 360;
+  let hd = Math.abs((track || 0) - bDest) % 360; if(hd > 180) hd = 360 - hd;
+  return xtd < 160 && atd > -120 && atd < len + 120 && hd < 75;
+}
+
 // Look up a callsign's route once (cached). null = no route / pending.
 function ensureRoute(cs){
   if(routeCache[cs] !== undefined) return false;
@@ -1563,9 +1589,10 @@ function renderPlanes(resetPos){
     if(!cs) continue;
     if(routeCache[cs] === undefined && newFetches < 25){ if(ensureRoute(cs)) newFetches++; }
     const route = routeCache[cs];
-    if(!route || !route.origin || !route.destination) continue;   // filter: no route → hide
-    seen[hex] = true;
+    if(!route || !route.origin || !route.destination) continue;   // no route → hide
     const track = (a.track != null) ? a.track : (a.dir || 0);
+    if(!routeValid(route, a.lat, a.lon, track)) continue;         // route doesn't match position/heading → hide
+    seen[hex] = true;
     const gs = (typeof a.gs === 'number') ? a.gs : 0;
     const icon = planeIcon(track, planeColor(a.alt_baro), routeLabel(route));
     const base = planePopupHTML(a, route);
