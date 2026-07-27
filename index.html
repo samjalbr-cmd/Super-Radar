@@ -380,8 +380,17 @@ function initMap(){
   // load tiles for only part of the viewport (half-rendered), especially on
   // mobile where layout settles after first paint, and on fullscreen/rotate.
   const fixSize = () => map.invalidateSize();
-  setTimeout(fixSize, 200);
-  setTimeout(fixSize, 900);
+  // ResizeObserver reliably catches the container reaching its true size (the
+  // root cause of half-rendered tiles); re-assert the view since a 0-size
+  // container at startup can clamp zoom to the whole world.
+  if(window.ResizeObserver){
+    let firstFit = true;
+    new ResizeObserver(() => {
+      map.invalidateSize();
+      if(firstFit){ firstFit = false; map.setView([lat, lon], 8); }
+    }).observe(document.getElementById('map'));
+  }
+  setTimeout(() => { map.invalidateSize(); map.setView([lat, lon], 8); }, 400);
   window.addEventListener('resize', fixSize);
   window.addEventListener('orientationchange', () => setTimeout(fixSize, 300));
   document.addEventListener('fullscreenchange', () => setTimeout(fixSize, 250));
