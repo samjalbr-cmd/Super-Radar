@@ -16,10 +16,10 @@
   *{box-sizing:border-box;margin:0;padding:0;}
   html,body{height:100%;background:var(--void);overflow:hidden;font-family:sans-serif;}
   #map{position:absolute;inset:0;background:var(--void);z-index:0;}
-  /* Night dimmer: black overlay over the whole map (above #map's stacking
-     context, below the controls). */
+  /* Night dimmer: black overlay above EVERYTHING (map, tabs, panels, controls)
+     so the whole display dims together. pointer-events:none keeps it tappable. */
   #dimOverlay{
-    position:absolute;inset:0;z-index:1;pointer-events:none;
+    position:absolute;inset:0;z-index:9999;pointer-events:none;
     background:#000;opacity:0;transition:opacity 0.3s ease;
   }
   /* Leaflet's default container bg is light gray (#ddd) and flashes through on
