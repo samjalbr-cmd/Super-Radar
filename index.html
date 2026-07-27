@@ -15,11 +15,11 @@
   }
   *{box-sizing:border-box;margin:0;padding:0;}
   html,body{height:100%;background:var(--void);overflow:hidden;font-family:sans-serif;}
-  #map{position:absolute;inset:0;background:var(--void);z-index:0;}
-  /* Night dimmer: a black overlay over the map (not a CSS filter, which can
-     stop Leaflet tiles from painting). Sits above the map, below the controls. */
+  #map{position:absolute;inset:0;background:var(--void);}
+  /* Night dimmer: black overlay above the radar tiles (z 250) but below the
+     vector overlays, labels and UI — so #map needs no stacking context. */
   #dimOverlay{
-    position:absolute;inset:0;z-index:1;pointer-events:none;
+    position:absolute;inset:0;z-index:250;pointer-events:none;
     background:#000;opacity:0;transition:opacity 0.3s ease;
   }
   /* Leaflet's default container bg is light gray (#ddd) and flashes through on
