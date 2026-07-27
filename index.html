@@ -387,7 +387,9 @@ function initMap(){
     if(settled) return;
     settled = true;
     map.setView([lat, lon], 8);
-    if(basemap){ basemap.remove(); basemap.addTo(map); }
+    // Clear stale startup tiles WITHOUT re-adding layers (redraw preserves order,
+    // so the radar stays above the basemap instead of being hidden behind it).
+    map.eachLayer(l => { if(l.redraw) l.redraw(); });
   };
   if(window.ResizeObserver){
     new ResizeObserver(settle).observe(document.getElementById('map'));
