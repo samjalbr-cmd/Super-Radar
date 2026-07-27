@@ -124,6 +124,11 @@
     cursor:pointer;
   }
 
+  /* Live aircraft icons (rotated to heading). */
+  .plane-icon{ background:none; border:none; }
+  .plane-icon .plane{ width:15px;height:15px; }
+  .plane-icon svg{ fill:#8FD3FF; filter:drop-shadow(0 0 2px #000); }
+
   /* Mesoscale Discussion labels. */
   .mcd-icon{ background:none; border:none; }
   .mcd-label{
@@ -262,6 +267,8 @@
         <option value="N0S">Storm-Relative Velocity</option>
       </select>
     </div>
+    <label style="margin-top:8px;">Aircraft</label>
+    <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" id="planesChk" checked onchange="togglePlanes(this)"> Live flights (ADS-B)</label>
     <label style="margin-top:8px;">Weather Stations (METAR)</label>
     <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" id="stationsChk" checked onchange="toggleStations(this)"> Show live stations</label>
     <label style="margin-top:2px;">Station metric</label>
@@ -344,7 +351,7 @@
 <script>
 let lat = 42.907058, lon = -85.763014;
 let map, basemap, radarLayer, marker, alertLayerGroup, lightningLayerGroup;
-let spcOutlookLayer, mcdLayer, watchLayer, lsrLayer, stationLayer, modelLayer, modelMarkers;
+let spcOutlookLayer, mcdLayer, watchLayer, lsrLayer, stationLayer, modelLayer, modelMarkers, planeLayer;
 
 function initMap(){
   // Bound the map so you can't pan off the tiles into empty space or zoom out
@@ -375,10 +382,12 @@ function initMap(){
   mcdLayer = L.layerGroup().addTo(map);
   lsrLayer = L.layerGroup().addTo(map);
   stationLayer = L.layerGroup().addTo(map);
+  planeLayer = L.layerGroup().addTo(map);
   lightningLayerGroup = L.layerGroup().addTo(map);
   // Re-filter station markers to the viewport when the map moves (no refetch).
   map.on('moveend', renderStations);
   map.on('moveend', scheduleModelRefresh);
+  map.on('moveend', schedulePlanes);
   // Keep Leaflet's idea of the container size correct. Without this the map can
   // load tiles for only part of the viewport (half-rendered), especially on
   // mobile where layout settles after first paint, and on fullscreen/rotate.
@@ -1488,6 +1497,50 @@ function rebuildTiles(){
   if(radarOn){ radarLayer.addTo(map); loadRadar(); }
 }
 
+/* ---------------- Live aircraft (airplanes.live ADS-B) ----------------
+   Free, no key, CORS-open. Queried by map-center + radius (capped 250 nm);
+   drawn at zoom >= 6 to stay readable. Icons rotate to heading. */
+let planesOn = true;
+let planeTimer = null;
+const PLANE_SVG = '<svg viewBox="0 0 24 24" width="15" height="15"><path d="M22 16v-2l-8.5-5V3.5C13.5 2.67 12.83 2 12 2s-1.5.67-1.5 1.5V9L2 14v2l8.5-2.5V19L8 20.5V22l4-1 4 1v-1.5L13.5 19v-5.5L22 16z"/></svg>';
+
+async function loadPlanes(){
+  if(!planeLayer) return;
+  if(!planesOn || map.getZoom() < 6){ planeLayer.clearLayers(); return; }
+  const c = map.getCenter(), b = map.getBounds();
+  const nm = Math.min(250, Math.ceil(haversineKm(c.lat, c.lng, b.getNorth(), b.getEast()) * 0.539957));
+  try{
+    const res = await fetch(`https://api.airplanes.live/v2/point/${c.lat.toFixed(3)}/${c.lng.toFixed(3)}/${nm}`);
+    const data = await res.json();
+    planeLayer.clearLayers();
+    for(const a of (data.ac || [])){
+      if(a.lat == null || a.lon == null) continue;
+      const track = (a.track != null) ? a.track : (a.dir || 0);
+      const icon = L.divIcon({
+        className: 'plane-icon',
+        html: `<div class="plane" style="transform:rotate(${track}deg)">${PLANE_SVG}</div>`,
+        iconSize: [15, 15], iconAnchor: [7.5, 7.5]
+      });
+      const alt = (typeof a.alt_baro === 'number') ? `${a.alt_baro.toLocaleString()} ft` : (a.alt_baro || '—');
+      const call = (a.flight || a.r || a.hex || '').trim();
+      const gs = (a.gs != null) ? `${Math.round(a.gs)} kt` : '';
+      L.marker([a.lat, a.lon], {icon, keyboard: false})
+        .bindPopup(`<div class="alert-popup"><b>${call}${a.t ? ' · ' + a.t : ''}</b>${alt}${gs ? ' · ' + gs : ''}${a.ownOp ? '<br>' + a.ownOp : ''}</div>`)
+        .addTo(planeLayer);
+    }
+  }catch(e){ console.error('planes error', e); }
+}
+function schedulePlanes(){
+  if(!planesOn) return;
+  clearTimeout(planeTimer);
+  planeTimer = setTimeout(loadPlanes, 700);
+}
+function togglePlanes(cb){
+  planesOn = cb.checked;
+  if(planesOn){ map.addLayer(planeLayer); loadPlanes(); }
+  else{ map.removeLayer(planeLayer); planeLayer.clearLayers(); }
+}
+
 async function boot(){
   // Wait for layout to paint so the map container is full-size before Leaflet
   // measures it — prevents the half-rendered (stale-tile) map on mobile.
@@ -1512,6 +1565,8 @@ async function boot(){
   setInterval(loadStations, 3 * 60 * 1000);
   setInterval(fetchModel, 15 * 60 * 1000);
   setInterval(computeLightning, 3000);
+  loadPlanes();
+  setInterval(loadPlanes, 15 * 1000);
 }
 
 boot();
