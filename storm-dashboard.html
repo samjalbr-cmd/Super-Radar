@@ -49,10 +49,18 @@
     background:var(--amber);color:#181205;border:none;border-radius:8px;
     padding:9px;font-weight:600;font-size:13px;cursor:pointer;margin-top:4px;
   }
-  #fullscreenBtn{
-    background:transparent;color:var(--dim);border:1px solid var(--border);
-    border-radius:8px;padding:8px;font-family:monospace;font-size:11px;cursor:pointer;
+  #topControls{
+    position:absolute;top:24px;left:50%;transform:translateX(-50%);z-index:600;
+    display:flex;gap:8px;
   }
+  #topControls button{
+    width:36px;height:36px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    background:var(--panel);border:1px solid var(--border);
+    color:var(--dim);cursor:pointer;font-size:19px;line-height:1;
+    backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  }
+  #topControls button:hover{color:#F5F3EC;}
 
   #loading{
     position:absolute;inset:0;background:var(--void);z-index:900;
@@ -191,6 +199,12 @@
 
 <div id="map"></div>
 
+<div id="topControls">
+  <button onclick="map.zoomOut()" title="Zoom out">−</button>
+  <button onclick="map.zoomIn()" title="Zoom in">+</button>
+  <button onclick="toggleFullscreen()" title="Toggle fullscreen">⛶</button>
+</div>
+
 <div id="radarStatus"><span class="dot"></span><span id="radarStatusText">NEXRAD N0Q</span></div>
 <div id="toasts"></div>
 <div id="lightningBadge"></div>
@@ -303,7 +317,6 @@
       <div class="legend-row"><span class="dotsw" style="background:#4169E1;"></span>≥ 80</div>
       <div class="legend-row" style="color:var(--dim);margin-top:4px;">Model layer scales appear under the selector above.</div>
     </div>
-    <button id="fullscreenBtn" onclick="toggleFullscreen()">Enter TV Fullscreen</button>
   </div>
 </div>
 
