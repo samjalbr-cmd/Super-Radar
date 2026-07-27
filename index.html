@@ -113,11 +113,21 @@
   /* Station value labels (replace dots): colored number on the map. */
   .stn-icon{ background:none; border:none; }
   .stn-label{
-    font-family:monospace;font-weight:700;font-size:12px;line-height:1;
+    font-family:monospace;font-weight:700;font-size:10px;line-height:1;
     text-shadow:0 0 3px #000, 0 0 2px #000, 0 1px 1px #000;
     white-space:nowrap;display:inline-block;transform:translate(-50%,-50%);
     cursor:pointer;
   }
+
+  /* Mesoscale Discussion labels. */
+  .mcd-icon{ background:none; border:none; }
+  .mcd-label{
+    transform:translate(-50%,-50%);text-align:center;font-family:sans-serif;
+    color:#F2B705;text-shadow:0 0 3px #000, 0 0 2px #000, 0 1px 1px #000;
+    white-space:nowrap;pointer-events:none;
+  }
+  .mcd-label .mcd-title{font-weight:800;font-size:11px;letter-spacing:0.03em;}
+  .mcd-label .mcd-sub{font-weight:700;font-size:10px;color:#fff;opacity:0.9;}
 
   /* Lightning intelligence badge (bottom-left). */
   #lightningBadge{
@@ -358,6 +368,9 @@ function initMap(){
   // Re-filter station markers to the viewport when the map moves (no refetch).
   map.on('moveend', renderStations);
   map.on('moveend', scheduleModelRefresh);
+  // Fullscreen (e.g. on a TV) resizes the map container — re-fit so labels/tiles
+  // render at the right scale instead of looking oversized.
+  document.addEventListener('fullscreenchange', () => setTimeout(() => map.invalidateSize(), 250));
   marker = L.marker([lat, lon], {icon: L.divIcon({className:'', html:'<div style="width:12px;height:12px;border-radius:50%;background:#F2B705;box-shadow:0 0 10px 3px #F2B705;"></div>'})}).addTo(map);
 }
 
@@ -799,6 +812,15 @@ async function loadMCD(){
         const md = String(p.num).padStart(4, '0');
         const prob = (p.watch_confidence != null) ? `Watch probability: ${p.watch_confidence}%<br>` : '';
         l.bindPopup(`<div class="alert-popup"><b>Mesoscale Discussion #${p.num}</b>${p.concerning || ''}<br>${prob}Until ${fmtTime(p.expire)}<br><a href="https://www.spc.noaa.gov/products/md/${p.year}/md${md}.html" target="_blank" rel="noopener">Full text ↗</a></div>`);
+        // On-map text label at the MD center.
+        try{
+          const center = l.getBounds().getCenter();
+          let sub = (p.concerning || '').replace(/\.\.\./g, ' · ');
+          if(sub.length > 46) sub = sub.slice(0, 46) + '…';
+          if(p.watch_confidence != null) sub += ` (${p.watch_confidence}%)`;
+          const html = `<div class="mcd-label"><div class="mcd-title">MD ${p.num}</div><div class="mcd-sub">${sub}</div></div>`;
+          L.marker(center, {icon: L.divIcon({className: 'mcd-icon', html, iconSize: [0, 0], iconAnchor: [0, 0]}), interactive: false, keyboard: false}).addTo(mcdLayer);
+        }catch(e){}
       }
     }).addTo(mcdLayer);
   }catch(e){ console.error('mcd error', e); }
