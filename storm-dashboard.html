@@ -1277,8 +1277,11 @@ function fieldOverlay(field, vals, cols, rows, rects){
     }
   }
   ctx.putImageData(img, 0, 0);
-  const sw = isoPoint(rects, 0, 0, cols), ne = isoPoint(rects, rows - 1, cols - 1, cols);
-  return L.imageOverlay(cv.toDataURL(), [[sw.lat, sw.lon], [ne.lat, ne.lon]],
+  // Span the full grid extent (outer cell corners) so the field reaches the
+  // viewport edges instead of looking like an inset floating square.
+  const swCorner = rects[0][0];                    // [south, west]
+  const neCorner = rects[rects.length - 1][1];     // [north, east]
+  return L.imageOverlay(cv.toDataURL(), [swCorner, neCorner],
     {opacity: 1, pane: 'modelPane', interactive: false});
 }
 
