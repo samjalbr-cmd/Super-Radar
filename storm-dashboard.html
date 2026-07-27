@@ -350,7 +350,7 @@
 <script>
 let lat = 42.907058, lon = -85.763014;
 let map, basemap, radarLayer, marker, alertLayerGroup, lightningLayerGroup;
-let spcOutlookLayer, mcdLayer, lsrLayer, stationLayer, modelLayer, modelMarkers, planeLayer;
+let spcOutlookLayer, mcdLayer, lsrLayer, stationLayer, modelLayer, modelMarkers, planeLayer, routeLayer;
 
 function initMap(){
   // Bound the map so you can't pan off the tiles into empty space or zoom out
@@ -380,6 +380,7 @@ function initMap(){
   mcdLayer = L.layerGroup().addTo(map);
   lsrLayer = L.layerGroup().addTo(map);
   stationLayer = L.layerGroup().addTo(map);
+  routeLayer = L.layerGroup().addTo(map);
   planeLayer = L.layerGroup().addTo(map);
   lightningLayerGroup = L.layerGroup().addTo(map);
   // Re-filter station markers to the viewport when the map moves (no refetch).
@@ -1478,35 +1479,112 @@ function rebuildTiles(){
    Free, no key, CORS-open. Queried by map-center + radius (capped 250 nm);
    drawn at zoom >= 6 to stay readable. Icons rotate to heading. */
 let planesOn = true;
-let planeTimer = null;
+let planeTimer = null;         // moveend debounce
+let planeMoveTimer = null;     // motion loop
+let planesLastTs = 0;
+let planes = {};               // hex -> {marker, lat, lon, track, gs, callsign, baseHTML}
+const routeCache = {};         // callsign -> flightroute | null
 const PLANE_SVG = '<svg viewBox="0 0 24 24" width="15" height="15"><path d="M22 16v-2l-8.5-5V3.5C13.5 2.67 12.83 2 12 2s-1.5.67-1.5 1.5V9L2 14v2l8.5-2.5V19L8 20.5V22l4-1 4 1v-1.5L13.5 19v-5.5L22 16z"/></svg>';
+
+function planeIcon(track){
+  return L.divIcon({className:'plane-icon', html:`<div class="plane" style="transform:rotate(${track}deg)">${PLANE_SVG}</div>`, iconSize:[15,15], iconAnchor:[7.5,7.5]});
+}
+function planePopupHTML(a){
+  const alt = (typeof a.alt_baro === 'number') ? `${a.alt_baro.toLocaleString()} ft` : (a.alt_baro || '—');
+  const call = (a.flight || a.r || a.hex || '').trim();
+  const gs = (a.gs != null) ? `${Math.round(a.gs)} kt` : '';
+  return `<div class="alert-popup"><b>${call}${a.t ? ' · ' + a.t : ''}</b>${alt}${gs ? ' · ' + gs : ''}${a.ownOp ? '<br>' + a.ownOp : ''}</div>`;
+}
 
 async function loadPlanes(){
   if(!planeLayer) return;
-  if(!planesOn || map.getZoom() < 6){ planeLayer.clearLayers(); return; }
+  if(!planesOn || map.getZoom() < 6){ clearPlanes(); return; }
   const c = map.getCenter(), b = map.getBounds();
   const nm = Math.min(250, Math.ceil(haversineKm(c.lat, c.lng, b.getNorth(), b.getEast()) * 0.539957));
   try{
     const res = await fetch(`https://api.airplanes.live/v2/point/${c.lat.toFixed(3)}/${c.lng.toFixed(3)}/${nm}`);
     const data = await res.json();
-    planeLayer.clearLayers();
+    const seen = {};
     for(const a of (data.ac || [])){
       if(a.lat == null || a.lon == null) continue;
+      const hex = a.hex; if(!hex) continue;
+      seen[hex] = true;
       const track = (a.track != null) ? a.track : (a.dir || 0);
-      const icon = L.divIcon({
-        className: 'plane-icon',
-        html: `<div class="plane" style="transform:rotate(${track}deg)">${PLANE_SVG}</div>`,
-        iconSize: [15, 15], iconAnchor: [7.5, 7.5]
-      });
-      const alt = (typeof a.alt_baro === 'number') ? `${a.alt_baro.toLocaleString()} ft` : (a.alt_baro || '—');
-      const call = (a.flight || a.r || a.hex || '').trim();
-      const gs = (a.gs != null) ? `${Math.round(a.gs)} kt` : '';
-      L.marker([a.lat, a.lon], {icon, keyboard: false})
-        .bindPopup(`<div class="alert-popup"><b>${call}${a.t ? ' · ' + a.t : ''}</b>${alt}${gs ? ' · ' + gs : ''}${a.ownOp ? '<br>' + a.ownOp : ''}</div>`)
-        .addTo(planeLayer);
+      const gs = (typeof a.gs === 'number') ? a.gs : 0;
+      const base = planePopupHTML(a);
+      let p = planes[hex];
+      if(!p){
+        const marker = L.marker([a.lat, a.lon], {icon: planeIcon(track), keyboard:false}).bindPopup(base).addTo(planeLayer);
+        marker.on('popupopen', () => showPlaneRoute(hex));
+        marker.on('popupclose', clearRoute);
+        p = planes[hex] = {marker, lat:a.lat, lon:a.lon, track, gs, callsign:(a.flight||'').trim(), baseHTML:base};
+      }else{
+        p.lat = a.lat; p.lon = a.lon; p.marker.setLatLng([a.lat, a.lon]);
+        if(Math.abs((p.track || 0) - track) > 3) p.marker.setIcon(planeIcon(track));
+        p.track = track; p.gs = gs; p.callsign = (a.flight||'').trim(); p.baseHTML = base;
+        if(!p.marker.isPopupOpen()) p.marker.setPopupContent(base);
+      }
     }
+    for(const hex in planes){ if(!seen[hex]){ planeLayer.removeLayer(planes[hex].marker); delete planes[hex]; } }
+    planesLastTs = performance.now();
+    if(!planeMoveTimer && Object.keys(planes).length) planeMoveTimer = setInterval(movePlanes, 150);
   }catch(e){ console.error('planes error', e); }
 }
+
+// Dead-reckon each plane forward between fetches so they glide smoothly.
+function movePlanes(){
+  const now = performance.now();
+  const dt = (now - planesLastTs) / 1000;
+  planesLastTs = now;
+  const keys = Object.keys(planes);
+  if(!keys.length){ clearInterval(planeMoveTimer); planeMoveTimer = null; return; }
+  for(const hex of keys){
+    const p = planes[hex];
+    if(p.gs > 1){
+      const distNm = p.gs * dt / 3600;
+      const rad = p.track * Math.PI / 180;
+      p.lat += (distNm / 60) * Math.cos(rad);
+      p.lon += (distNm / 60) * Math.sin(rad) / Math.cos(p.lat * Math.PI / 180);
+      p.marker.setLatLng([p.lat, p.lon]);
+    }
+  }
+}
+
+function clearPlanes(){
+  for(const hex in planes){ planeLayer.removeLayer(planes[hex].marker); }
+  planes = {};
+  clearRoute();
+  if(planeMoveTimer){ clearInterval(planeMoveTimer); planeMoveTimer = null; }
+}
+function clearRoute(){ if(routeLayer) routeLayer.clearLayers(); }
+
+// On tapping a plane, look up its route and draw origin -> destination.
+async function showPlaneRoute(hex){
+  const p = planes[hex];
+  if(!p || !p.callsign) return;
+  const cs = p.callsign;
+  let route = routeCache[cs];
+  if(route === undefined){
+    try{
+      const d = await (await fetch(`https://api.adsbdb.com/v0/callsign/${encodeURIComponent(cs)}`)).json();
+      route = routeCache[cs] = (d.response && d.response.flightroute) ? d.response.flightroute : null;
+    }catch(e){ route = routeCache[cs] = null; }
+  }
+  if(!route || !planes[hex] || !planes[hex].marker.isPopupOpen()) return;
+  const o = route.origin, dst = route.destination;
+  const ap = a => `${a.iata_code || a.icao_code}${a.municipality ? ' · ' + a.municipality : ''}`;
+  let extra = route.airline ? route.airline.name : '';
+  if(o && dst){
+    extra += `${extra ? '<br>' : ''}${ap(o)} → ${ap(dst)}`;
+    clearRoute();
+    routeLayer.addLayer(L.polyline([[o.latitude, o.longitude], [dst.latitude, dst.longitude]],
+      {color:'#8FD3FF', weight:1.5, opacity:0.85, dashArray:'6 5'}));
+    routeLayer.addLayer(L.circleMarker([o.latitude, o.longitude], {radius:4, color:'#8FD3FF', weight:2, fillColor:'#0A0E1A', fillOpacity:1}).bindTooltip(o.iata_code || o.icao_code));
+    routeLayer.addLayer(L.circleMarker([dst.latitude, dst.longitude], {radius:4, color:'#FFD400', weight:2, fillColor:'#0A0E1A', fillOpacity:1}).bindTooltip(dst.iata_code || dst.icao_code));
+  }
+  if(extra) p.marker.setPopupContent(p.baseHTML.replace('</div>', `<br><span style="color:#8FD3FF">${extra}</span></div>`));
+}
+
 function schedulePlanes(){
   if(!planesOn) return;
   clearTimeout(planeTimer);
@@ -1515,7 +1593,7 @@ function schedulePlanes(){
 function togglePlanes(cb){
   planesOn = cb.checked;
   if(planesOn){ map.addLayer(planeLayer); loadPlanes(); }
-  else{ map.removeLayer(planeLayer); planeLayer.clearLayers(); }
+  else{ map.removeLayer(planeLayer); clearPlanes(); }
 }
 
 async function boot(){
