@@ -15,7 +15,13 @@
   }
   *{box-sizing:border-box;margin:0;padding:0;}
   html,body{height:100%;background:var(--void);overflow:hidden;font-family:sans-serif;}
-  #map{position:absolute;inset:0;background:var(--void);}
+  #map{position:absolute;inset:0;background:var(--void);z-index:0;}
+  /* Night dimmer: a black overlay over the map (not a CSS filter, which can
+     stop Leaflet tiles from painting). Sits above the map, below the controls. */
+  #dimOverlay{
+    position:absolute;inset:0;z-index:1;pointer-events:none;
+    background:#000;opacity:0;transition:opacity 0.3s ease;
+  }
   /* Leaflet's default container bg is light gray (#ddd) and flashes through on
      tile reloads — force it dark so refreshes never flash white. */
   .leaflet-container{background:var(--void);}
@@ -212,6 +218,7 @@
 <div id="loading"><div class="mark">NIGHTWATCH</div><div class="sub">loading radar…</div></div>
 
 <div id="map"></div>
+<div id="dimOverlay"></div>
 
 <div id="topControls">
   <button onclick="map.zoomOut()" title="Zoom out">−</button>
@@ -1425,16 +1432,16 @@ function computeLightning(){
   el.classList.add('show');
 }
 
-// Dim the map (not the controls) for night viewing — cycles bright/dim/night.
-const BRIGHTNESS = [{v: 1, icon: '☀'}, {v: 0.55, icon: '◐'}, {v: 0.15, icon: '☾'}];
+// Dim the map (not the controls) for night viewing via a black overlay.
+const BRIGHTNESS = [{o: 0, icon: '☀'}, {o: 0.45, icon: '◐'}, {o: 0.82, icon: '☾'}];
 let brightnessIdx = 0;
 function cycleBrightness(){
   brightnessIdx = (brightnessIdx + 1) % BRIGHTNESS.length;
   const b = BRIGHTNESS[brightnessIdx];
-  document.getElementById('map').style.filter = b.v === 1 ? '' : `brightness(${b.v})`;
+  document.getElementById('dimOverlay').style.opacity = b.o;
   const btn = document.getElementById('brightnessBtn');
   btn.textContent = b.icon;
-  btn.title = `Brightness ${Math.round(b.v * 100)}%`;
+  btn.title = `Brightness ${Math.round((1 - b.o) * 100)}%`;
 }
 
 async function boot(){
