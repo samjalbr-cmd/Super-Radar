@@ -1505,7 +1505,7 @@ function planeColor(alt){
 }
 function planeIcon(track, color, label){
   const svg = `<svg viewBox="0 0 24 24" width="15" height="15" style="fill:${color};filter:drop-shadow(0 0 2px #000)"><path d="${PLANE_PATH}"/></svg>`;
-  const lbl = label ? `<div class="plane-lbl">${label}</div>` : '';
+  const lbl = label ? `<div class="plane-lbl" style="color:${color}">${label}</div>` : '';
   return L.divIcon({className:'plane-icon', html:`<div class="plane-wrap"><div class="plane" style="transform:rotate(${track}deg)">${svg}</div>${lbl}</div>`, iconSize:[15,15], iconAnchor:[7.5,7.5]});
 }
 function routeLabel(route){
