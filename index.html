@@ -156,14 +156,13 @@
     transform:translate(-50%,-50%);display:inline-block;white-space:nowrap;
   }
 
-  /* Storm-report markers: colored dot at the report point + its value. */
+  /* Storm-report value label, sits beside its circle marker, colored per type. */
   .lsr-icon{ background:none; border:none; }
-  .lsr-label{
-    display:flex;align-items:center;gap:3px;transform:translateY(-50%);
-    white-space:nowrap;font-family:monospace;font-weight:700;font-size:11px;color:#fff;
-    text-shadow:0 0 3px #000, 0 1px 1px #000;cursor:pointer;
+  .lsr-val{
+    transform:translateY(-50%);padding-left:9px;
+    font-family:monospace;font-weight:700;font-size:11px;white-space:nowrap;
+    text-shadow:0 0 3px #000, 0 0 2px #000, 0 1px 1px #000;
   }
-  .lsr-label .lsr-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;box-shadow:0 0 3px #000;}
 
   .strike{
     width:8px;height:8px;border-radius:50%;
@@ -795,14 +794,13 @@ async function loadLSR(){
       const p = f.properties;
       const color = lsrColor(p.typetext);
       const magFull = p.magnitude ? ` ${p.magnitude} ${p.unit || ''}`.trimEnd() : '';
-      const icon = L.divIcon({
-        className: 'lsr-icon',
-        html: `<span class="lsr-label"><span class="lsr-dot" style="background:${color}"></span>${lsrValue(p)}</span>`,
-        iconSize: [0, 0], iconAnchor: [0, 0]
-      });
-      L.marker([c[1], c[0]], {icon, keyboard: false})
-        .bindPopup(`<div class="alert-popup"><b>${p.typetext || 'Report'}${magFull}</b>${p.city || ''}, ${p.state || ''}<br>${fmtTime(p.valid)}<br>${p.remark || ''}</div>`)
-        .addTo(lsrLayer);
+      const popup = `<div class="alert-popup"><b>${p.typetext || 'Report'}${magFull}</b>${p.city || ''}, ${p.state || ''}<br>${fmtTime(p.valid)}<br>${p.remark || ''}</div>`;
+      // Original circle marker (distinct from stations) ...
+      L.circleMarker([c[1], c[0]], {radius: 4, color: color, weight: 1, fillColor: color, fillOpacity: 0.9})
+        .bindPopup(popup).addTo(lsrLayer);
+      // ... plus the value label beside it, in the same color.
+      const label = L.divIcon({className: 'lsr-icon', html: `<span class="lsr-val" style="color:${color}">${lsrValue(p)}</span>`, iconSize: [0, 0], iconAnchor: [0, 0]});
+      L.marker([c[1], c[0]], {icon: label, keyboard: false}).bindPopup(popup).addTo(lsrLayer);
     }
   }catch(e){ console.error('lsr error', e); }
 }
@@ -813,14 +811,17 @@ function lsrValue(p){
   const u = (p.unit || '').toUpperCase();
   const mag = Number(p.magnitude);
   if(p.magnitude != null && p.magnitude !== '' && mag > 0){
-    if(u.includes('INCH') || t.includes('HAIL') || t.includes('SNOW') || t.includes('RAIN') || t.includes('FLOOD')) return `${p.magnitude}"`;
-    if(u.includes('MPH') || t.includes('WND') || t.includes('WIND') || t.includes('GUST')) return `${Math.round(mag)}`;
-    return `${p.magnitude}`;
+    if(u.includes('MPH') || t.includes('WND') || t.includes('WIND') || t.includes('GUST')) return `${Math.round(mag)} mph`;
+    if(t.includes('HAIL')) return `${p.magnitude}" hail`;
+    if(t.includes('SNOW')) return `${p.magnitude}" snow`;
+    if(t.includes('RAIN') || t.includes('FLOOD')) return `${p.magnitude}" rain`;
+    if(u.includes('INCH')) return `${p.magnitude} in`;
+    return `${p.magnitude}${u ? ' ' + u.toLowerCase() : ''}`;
   }
   if(t.includes('TORNADO')) return 'TOR';
-  if(t.includes('FUNNEL')) return 'FNL';
-  if(t.includes('FLOOD') || t.includes('WATER')) return 'FLD';
-  return '•';
+  if(t.includes('FUNNEL')) return 'funnel';
+  if(t.includes('FLOOD') || t.includes('WATER')) return 'flood';
+  return t ? t.toLowerCase() : '•';
 }
 
 /* ---------------- Single-radar mode ----------------
