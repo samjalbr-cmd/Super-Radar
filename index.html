@@ -54,6 +54,13 @@
     background:#0d1420;border:1px solid var(--border);border-radius:8px;
     color:#F5F3EC;padding:8px 10px;font-family:sans-serif;font-size:14px;
   }
+  #pairStatus{
+    font-family:monospace;font-size:12px;color:var(--dim);white-space:pre-line;text-align:center;
+  }
+  #pairStatus .code{
+    display:block;font-size:30px;font-weight:800;color:var(--amber);
+    letter-spacing:0.12em;margin-top:4px;
+  }
   #settingsPanel button{
     background:var(--amber);color:#181205;border:none;border-radius:8px;
     padding:9px;font-weight:600;font-size:13px;cursor:pointer;margin-top:4px;
@@ -243,7 +250,11 @@
 <div id="gear">
   <div id="gearbtn" onclick="document.getElementById('settingsPanel').classList.toggle('open')">⚙</div>
   <div id="settingsPanel">
-    <label>Change Location</label>
+    <label>Phone ↔ TV Mirror</label>
+    <button onclick="startTV()">📺 This is my TV (show code)</button>
+    <button onclick="startPhone()">📱 Control a TV (enter code)</button>
+    <div id="pairStatus"></div>
+    <label style="margin-top:8px;">Change Location</label>
     <input id="cityInput" type="text" placeholder="City, State" />
     <button onclick="searchCity()">Set Location</button>
     <label style="margin-top:8px;">Show Alert Types</label>
@@ -354,6 +365,7 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js"></script>
 <script>
 let lat = 42.907058, lon = -85.763014;
 let map, basemap, radarLayer, marker, alertLayerGroup, lightningLayerGroup;
@@ -1469,6 +1481,7 @@ function cycleBrightness(){
   const btn = document.getElementById('brightnessBtn');
   btn.textContent = b.icon;
   btn.title = `Brightness ${Math.round((1 - b.o) * 100)}%`;
+  if(syncRole === 'phone') broadcastState();
 }
 
 // Rebuild the tile layers from scratch: drop and refetch the basemap + radar
@@ -1660,7 +1673,140 @@ function schedulePlanes(){
   clearTimeout(planeTimer);
   planeTimer = setTimeout(loadPlanes, 700);
 }
-function setLabelScale(v){ document.documentElement.style.setProperty('--lblscale', v); }
+function setLabelScale(v){ document.documentElement.style.setProperty('--lblscale', v); if(syncRole === 'phone') broadcastState(); }
+
+/* ---------------- Phone -> TV mirror (WebRTC via PeerJS) ----------------
+   The phone is the controller (sends map view + settings); the TV mirrors.
+   Peer-to-peer over the local network; a public server is used only to pair. */
+let peer = null, conn = null, syncRole = null, syncTimer = null, syncHooked = false;
+
+function genCode(){
+  const c = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let s = ''; for(let i = 0; i < 5; i++) s += c[Math.floor(Math.random() * c.length)];
+  return s;
+}
+function pairInfo(html){ const el = document.getElementById('pairStatus'); if(el) el.innerHTML = html; }
+
+function startTV(){
+  if(typeof Peer === 'undefined'){ pairInfo('Pairing library not loaded — reload.'); return; }
+  if(peer) peer.destroy();
+  const code = genCode();
+  peer = new Peer('superradar-' + code);
+  syncRole = 'tv';
+  peer.on('open', () => pairInfo(`On your phone, tap “Control a TV” and enter:<span class="code">${code}</span>`));
+  peer.on('connection', c => {
+    conn = c;
+    c.on('open', () => pairInfo(`📱 Phone connected ✓<br>(code ${code})`));
+    c.on('data', d => applyState(d));
+    c.on('close', () => pairInfo(`Phone disconnected — code still ${code}`));
+  });
+  peer.on('error', e => pairInfo('Pair error: ' + e.type + ' — try again'));
+}
+
+function startPhone(){
+  if(typeof Peer === 'undefined'){ pairInfo('Pairing library not loaded — reload.'); return; }
+  const code = (prompt('Enter the code shown on your TV:') || '').trim().toUpperCase();
+  if(!code) return;
+  if(peer) peer.destroy();
+  peer = new Peer();
+  peer.on('open', () => {
+    conn = peer.connect('superradar-' + code);
+    conn.on('open', () => {
+      syncRole = 'phone';
+      pairInfo('📺 Connected to TV ✓ — this phone now drives it');
+      hookSync();
+      broadcastState();
+    });
+    conn.on('close', () => pairInfo('Disconnected from TV'));
+    conn.on('error', () => pairInfo('Could not connect — check the code'));
+  });
+  peer.on('error', e => pairInfo('Pair error: ' + e.type + (e.type === 'peer-unavailable' ? ' (wrong code?)' : '')));
+}
+
+function send(obj){ if(conn && conn.open) try{ conn.send(obj); }catch(e){} }
+function broadcastState(){ if(syncRole === 'phone') send(getSyncState()); }
+
+function getSyncState(){
+  const c = map.getCenter();
+  return {
+    view: {lat: +c.lat.toFixed(5), lon: +c.lng.toFixed(5), zoom: map.getZoom()},
+    hazard: Object.assign({}, hazardVisible),
+    spc: Object.assign({}, spcVisible),
+    stationsOn, stationMetric, planesOn,
+    radarMode, singleSite, singleProduct, modelField, brightnessIdx,
+    lblScale: document.documentElement.style.getPropertyValue('--lblscale') || '1'
+  };
+}
+
+function applyState(s){
+  if(!s) return;
+  if(s.view) map.setView([s.view.lat, s.view.lon], s.view.zoom);
+  if(s.hazard){
+    for(const k in s.hazard){
+      hazardVisible[k] = s.hazard[k];
+      const cb = document.querySelector(`#hazardToggles input[data-hazard="${k}"]`);
+      if(cb) cb.checked = s.hazard[k];
+    }
+    if('lightning' in s.hazard){ s.hazard.lightning ? map.addLayer(lightningLayerGroup) : map.removeLayer(lightningLayerGroup); }
+    renderAlerts();
+  }
+  if(s.spc){
+    const groups = {outlook: spcOutlookLayer, mcd: mcdLayer, lsr: lsrLayer};
+    for(const k in s.spc){
+      spcVisible[k] = s.spc[k];
+      const cb = document.querySelector(`#spcToggles input[data-spc="${k}"]`);
+      if(cb) cb.checked = s.spc[k];
+      if(groups[k]){ s.spc[k] ? map.addLayer(groups[k]) : map.removeLayer(groups[k]); }
+    }
+  }
+  if('stationsOn' in s && s.stationsOn !== stationsOn){
+    stationsOn = s.stationsOn;
+    const cb = document.getElementById('stationsChk'); if(cb) cb.checked = stationsOn;
+    stationsOn ? (map.addLayer(stationLayer), loadStations()) : map.removeLayer(stationLayer);
+  }
+  if(s.stationMetric && s.stationMetric !== stationMetric){
+    stationMetric = s.stationMetric;
+    const sel = document.getElementById('stationMetric'); if(sel) sel.value = stationMetric;
+    renderStations();
+  }
+  if('planesOn' in s && s.planesOn !== planesOn){
+    planesOn = s.planesOn;
+    const cb = document.getElementById('planesChk'); if(cb) cb.checked = planesOn;
+    planesOn ? (map.addLayer(planeLayer), loadPlanes()) : (map.removeLayer(planeLayer), clearPlanes());
+  }
+  if(s.radarMode){
+    singleSite = s.singleSite || singleSite;
+    singleProduct = s.singleProduct || singleProduct;
+    const mSel = document.getElementById('radarMode'); if(mSel) mSel.value = s.radarMode;
+    const stSel = document.getElementById('radarSite'); if(stSel && singleSite) stSel.value = singleSite;
+    const pSel = document.getElementById('radarProduct'); if(pSel) pSel.value = singleProduct;
+    if(s.radarMode !== radarMode || s.radarMode === 'single') setRadarMode(s.radarMode);
+  }
+  if('modelField' in s && s.modelField !== modelField){
+    const mf = document.getElementById('modelField'); if(mf) mf.value = s.modelField;
+    setModelField(s.modelField);
+  }
+  if('brightnessIdx' in s && s.brightnessIdx !== brightnessIdx){
+    brightnessIdx = s.brightnessIdx;
+    const b = BRIGHTNESS[brightnessIdx] || BRIGHTNESS[0];
+    document.getElementById('dimOverlay').style.opacity = b.o;
+    const btn = document.getElementById('brightnessBtn'); if(btn){ btn.textContent = b.icon; btn.title = `Brightness ${Math.round((1 - b.o) * 100)}%`; }
+  }
+  if(s.lblScale){
+    const ls = document.getElementById('lblScale'); if(ls) ls.value = s.lblScale;
+    document.documentElement.style.setProperty('--lblscale', s.lblScale);
+  }
+}
+
+// Phone side only: broadcast on map move and any settings change.
+function hookSync(){
+  if(syncHooked) return;
+  syncHooked = true;
+  map.on('moveend', () => { if(syncRole === 'phone'){ clearTimeout(syncTimer); syncTimer = setTimeout(broadcastState, 200); } });
+  const panel = document.getElementById('settingsPanel');
+  panel.addEventListener('change', () => { if(syncRole === 'phone') broadcastState(); });
+  panel.addEventListener('input', () => { if(syncRole === 'phone'){ clearTimeout(syncTimer); syncTimer = setTimeout(broadcastState, 150); } });
+}
 
 function togglePlanes(cb){
   planesOn = cb.checked;
