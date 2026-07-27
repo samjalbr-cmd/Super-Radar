@@ -995,6 +995,9 @@ async function updateSingleRadar(){
     const west = C - A / 2, east = C + A * (N - 0.5);
     const north = F - E / 2, south = F + E * (N - 0.5);
     const bounds = [[south, west], [north, east]];
+    // The fetch above is async — if the user left single-radar mode while it was
+    // in flight, bail so we don't re-add a stuck overlay after cleanup ran.
+    if(radarMode !== 'single'){ if(singleLayer){ map.removeLayer(singleLayer); singleLayer = null; } return; }
     if(singleLayer){ map.removeLayer(singleLayer); singleLayer = null; }
     singleLayer = L.imageOverlay(`${base}.png?t=${Date.now()}`, bounds, {opacity: 0.88, pane: 'velocityPane'}).addTo(map);
     radarLabel = `${singleSite} · ${PRODUCT_NAME[singleProduct]}`;
