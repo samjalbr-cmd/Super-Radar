@@ -164,6 +164,15 @@
     text-shadow:0 0 3px #000, 0 0 2px #000, 0 1px 1px #000;
   }
 
+  /* Warning detail label at the polygon center. */
+  .alert-icon{ background:none; border:none; }
+  .alert-label{
+    transform:translate(-50%,-50%);text-align:center;font-family:sans-serif;
+    text-shadow:0 0 3px #000, 0 0 2px #000, 0 1px 1px #000;white-space:nowrap;pointer-events:none;
+  }
+  .alert-label .al-title{font-weight:800;font-size:11px;letter-spacing:0.03em;}
+  .alert-label .al-det{font-weight:700;font-size:10px;color:#fff;opacity:0.92;}
+
   .strike{
     width:8px;height:8px;border-radius:50%;
     background:#FFFFFF;
@@ -553,6 +562,39 @@ function showAlertToast(f){
   setTimeout(remove, TOAST_MS);
 }
 
+// Short warning name for the on-map label.
+function alertShort(event){
+  const e = (event || '').toLowerCase();
+  if(e.includes('tornado')) return 'TORNADO WARNING';
+  if(e.includes('severe thunderstorm')) return 'SEVERE T-STORM';
+  if(e.includes('flash flood')) return 'FLASH FLOOD';
+  if(e.includes('snow squall')) return 'SNOW SQUALL';
+  if(e.includes('special marine')) return 'MARINE WARNING';
+  if(e.includes('dust storm')) return 'DUST STORM';
+  return (event || '').replace(/ Warning/i, '').toUpperCase();
+}
+// Key impact details pulled from the NWS alert parameters.
+function alertDetails(props){
+  const P = props.parameters || {};
+  const g = k => (P[k] && P[k][0]) ? String(P[k][0]).trim() : null;
+  const bits = [];
+  const torDet = g('tornadoDetection');        // RADAR INDICATED / OBSERVED
+  const torThreat = g('tornadoDamageThreat');   // CONSIDERABLE / CATASTROPHIC
+  const gust = g('maxWindGust');                // "60 MPH"
+  const hail = g('maxHailSize');                // "1.00" or "Up to .75"
+  const tstm = g('thunderstormDamageThreat');   // CONSIDERABLE / DESTRUCTIVE
+  const ffThreat = g('flashFloodDamageThreat');
+  const ffDet = g('flashFloodDetection');
+  if(torDet) bits.push(torDet);
+  if(torThreat) bits.push(torThreat);
+  if(gust) bits.push(gust);
+  if(hail && parseFloat(hail) !== 0) bits.push((/[a-z]/i.test(hail) ? hail : hail + '"') + ' hail');
+  if(tstm) bits.push(tstm);
+  if(ffThreat) bits.push('flood ' + ffThreat);
+  else if(ffDet) bits.push('flood ' + ffDet);
+  return bits.join(' · ');
+}
+
 function renderAlerts(){
   alertLayerGroup.clearLayers();
 
@@ -572,6 +614,19 @@ function renderAlerts(){
       });
       layer.bindPopup(`<div class="alert-popup"><b>${f.properties.event}</b>${f.properties.headline || ''}</div>`);
       layer.addTo(alertLayerGroup);
+    }
+
+    // Warnings get a detail label (event + wind/hail/tornado impacts) at center.
+    if(f._cls === 'warning'){
+      let lb = null;
+      for(const g of f._geoms){
+        try{ const gb = L.geoJSON(g).getBounds(); lb = lb ? lb.extend(gb) : gb; }catch(e){}
+      }
+      if(lb && lb.isValid()){
+        const det = alertDetails(f.properties);
+        const html = `<div class="alert-label" style="color:${color}"><div class="al-title">${alertShort(f.properties.event)}</div>${det ? `<div class="al-det">${det}</div>` : ''}</div>`;
+        L.marker(lb.getCenter(), {icon: L.divIcon({className: 'alert-icon', html, iconSize: [0, 0], iconAnchor: [0, 0]}), interactive: false, keyboard: false}).addTo(alertLayerGroup);
+      }
     }
   }
 }
