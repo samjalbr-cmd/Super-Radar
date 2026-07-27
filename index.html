@@ -135,6 +135,13 @@
 
   /* Station value labels (replace dots): colored number on the map. */
   .stn-icon{ background:none; border:none; }
+  .stn-barb{ position:relative; transform:translate(-50%,-50%); }
+  .stn-barb svg{ display:block; }
+  .stn-barb-lbl{
+    position:absolute; top:29px; left:50%; transform:translateX(-50%);
+    font-family:monospace; font-weight:700; font-size:calc(7px * var(--lblscale, 1)); line-height:1;
+    white-space:nowrap; text-shadow:0 0 3px #000, 0 0 2px #000, 0 1px 1px #000;
+  }
   .stn-label{
     font-family:monospace;font-weight:700;font-size:calc(7px * var(--lblscale, 1));line-height:1;
     text-shadow:0 0 3px #000, 0 0 2px #000, 0 1px 1px #000;
@@ -337,6 +344,7 @@
     <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" id="planesChk" checked onchange="togglePlanes(this)"> Live flights (ADS-B)</label>
     <label style="margin-top:8px;">Weather Stations (METAR)</label>
     <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" id="stationsChk" checked onchange="toggleStations(this)"> Show live stations</label>
+    <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" id="windBarbsChk" onchange="setWindBarbs(this)"> Wind barbs</label>
     <label style="margin-top:2px;">Station metric</label>
     <select id="stationMetric" onchange="setStationMetric(this.value)">
       <option value="temp">Temperature (°F)</option>
@@ -1103,6 +1111,7 @@ function onProductChange(p){ singleProduct = p; updateSingleRadar(); }
 let stationsOn = true;
 let stationData = [];        // {lat, lon, p} cached from last fetch
 let stationMetric = 'temp';  // which value each station label shows
+let windBarbsOn = false;     // draw a wind barb at each station
 
 function ktToMph(kt){ return kt == null ? null : kt * 1.15078; }
 function windColor(kt){
@@ -1112,6 +1121,26 @@ function windColor(kt){
   if(kt >= 15) return '#3AA0FF';
   return '#4A6FA5';
 }
+// Meteorological wind barb SVG (shaft points FROM-direction; half=5, full=10, pennant=50 kt).
+function windBarb(spd, dir){
+  const cx = 20, cy = 20, top = 4, sw = 1.4;
+  const col = (spd != null && spd >= 3) ? windColor(spd) : '#7f92a6';
+  if(spd == null || spd < 3 || dir == null){
+    return `<svg viewBox="0 0 40 40" width="28" height="28"><circle cx="20" cy="20" r="3" fill="none" stroke="${col}" stroke-width="${sw}"/></svg>`;
+  }
+  let s = Math.round(spd / 5) * 5;
+  const parts = [`<line x1="${cx}" y1="${cy}" x2="${cx}" y2="${top}" stroke="${col}" stroke-width="${sw}"/>`];
+  let y = top;
+  const gap = 3.4, len = 9;
+  const p50 = Math.floor(s / 50); s -= p50 * 50;
+  const p10 = Math.floor(s / 10); s -= p10 * 10;
+  const p5 = Math.floor(s / 5);
+  for(let i = 0; i < p50; i++){ parts.push(`<polygon points="${cx},${y} ${cx - len},${y + 2} ${cx},${y + gap}" fill="${col}"/>`); y += gap + 1.5; }
+  for(let i = 0; i < p10; i++){ parts.push(`<line x1="${cx}" y1="${y}" x2="${cx - len}" y2="${y + 3}" stroke="${col}" stroke-width="${sw}"/>`); y += gap; }
+  for(let i = 0; i < p5; i++){ const off = (p10 === 0 && p50 === 0) ? gap : 0; parts.push(`<line x1="${cx}" y1="${y + off}" x2="${cx - len / 2}" y2="${y + off + 1.5}" stroke="${col}" stroke-width="${sw}"/>`); y += gap; }
+  return `<svg viewBox="0 0 40 40" width="28" height="28"><g transform="rotate(${dir} ${cx} ${cy})">${parts.join('')}</g></svg>`;
+}
+
 function tempColor(f){
   if(f == null) return '#4A6FA5';
   if(f >= 105) return '#FF0000';
@@ -1213,11 +1242,10 @@ function renderStations(){
     let text, color;
     if(v == null){ text = '·'; color = '#5a6577'; }
     else { text = metric.fmt(v); color = metric.color(v); }
-    const icon = L.divIcon({
-      className: 'stn-icon',
-      html: `<span class="stn-label" style="color:${color}">${text}</span>`,
-      iconSize: [0, 0], iconAnchor: [0, 0]
-    });
+    const html = windBarbsOn
+      ? `<div class="stn-barb">${windBarb(s.p.sknt, s.p.drct)}<span class="stn-barb-lbl" style="color:${color}">${text}</span></div>`
+      : `<span class="stn-label" style="color:${color}">${text}</span>`;
+    const icon = L.divIcon({className: 'stn-icon', html, iconSize: [0, 0], iconAnchor: [0, 0]});
     L.marker([s.lat, s.lon], {icon, keyboard: false}).bindPopup(stationPopup(s)).addTo(stationLayer);
   }
 }
@@ -1229,6 +1257,7 @@ function toggleStations(cb){
 }
 
 function setStationMetric(v){ stationMetric = METRICS[v] ? v : 'temp'; renderStations(); }
+function setWindBarbs(cb){ windBarbsOn = cb.checked; renderStations(); }
 
 /* ---------------- Model layers (Open-Meteo grid) ----------------
    Samples a coarse grid across the current view in one API call and paints
@@ -1870,7 +1899,7 @@ function getSyncState(){
     view: {lat: +c.lat.toFixed(5), lon: +c.lng.toFixed(5), zoom: map.getZoom()},
     hazard: Object.assign({}, hazardVisible),
     spc: Object.assign({}, spcVisible),
-    stationsOn, stationMetric, planesOn,
+    stationsOn, stationMetric, windBarbsOn, planesOn,
     radarMode, singleSite, singleProduct, modelField, brightnessIdx,
     lblScale: document.documentElement.style.getPropertyValue('--lblscale') || '1'
   };
@@ -1905,6 +1934,11 @@ function applyState(s){
   if(s.stationMetric && s.stationMetric !== stationMetric){
     stationMetric = s.stationMetric;
     const sel = document.getElementById('stationMetric'); if(sel) sel.value = stationMetric;
+    renderStations();
+  }
+  if('windBarbsOn' in s && s.windBarbsOn !== windBarbsOn){
+    windBarbsOn = s.windBarbsOn;
+    const cb = document.getElementById('windBarbsChk'); if(cb) cb.checked = windBarbsOn;
     renderStations();
   }
   if('planesOn' in s && s.planesOn !== planesOn){
