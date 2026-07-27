@@ -1426,7 +1426,7 @@ function computeLightning(){
 }
 
 // Dim the map (not the controls) for night viewing — cycles bright/dim/night.
-const BRIGHTNESS = [{v: 1, icon: '☀'}, {v: 0.6, icon: '◐'}, {v: 0.32, icon: '☾'}];
+const BRIGHTNESS = [{v: 1, icon: '☀'}, {v: 0.55, icon: '◐'}, {v: 0.15, icon: '☾'}];
 let brightnessIdx = 0;
 function cycleBrightness(){
   brightnessIdx = (brightnessIdx + 1) % BRIGHTNESS.length;
