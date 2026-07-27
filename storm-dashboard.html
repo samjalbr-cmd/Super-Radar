@@ -216,6 +216,7 @@
 <div id="topControls">
   <button onclick="map.zoomOut()" title="Zoom out">−</button>
   <button onclick="map.zoomIn()" title="Zoom in">+</button>
+  <button id="brightnessBtn" onclick="cycleBrightness()" title="Brightness">☀</button>
   <button onclick="toggleFullscreen()" title="Toggle fullscreen">⛶</button>
 </div>
 
@@ -1422,6 +1423,18 @@ function computeLightning(){
   }
   el.innerHTML = html;
   el.classList.add('show');
+}
+
+// Dim the map (not the controls) for night viewing — cycles bright/dim/night.
+const BRIGHTNESS = [{v: 1, icon: '☀'}, {v: 0.6, icon: '◐'}, {v: 0.32, icon: '☾'}];
+let brightnessIdx = 0;
+function cycleBrightness(){
+  brightnessIdx = (brightnessIdx + 1) % BRIGHTNESS.length;
+  const b = BRIGHTNESS[brightnessIdx];
+  document.getElementById('map').style.filter = b.v === 1 ? '' : `brightness(${b.v})`;
+  const btn = document.getElementById('brightnessBtn');
+  btn.textContent = b.icon;
+  btn.title = `Brightness ${Math.round(b.v * 100)}%`;
 }
 
 async function boot(){
