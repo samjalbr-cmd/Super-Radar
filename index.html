@@ -118,7 +118,7 @@
   /* Station value labels (replace dots): colored number on the map. */
   .stn-icon{ background:none; border:none; }
   .stn-label{
-    font-family:monospace;font-weight:700;font-size:7px;line-height:1;
+    font-family:monospace;font-weight:700;font-size:calc(7px * var(--lblscale, 1));line-height:1;
     text-shadow:0 0 3px #000, 0 0 2px #000, 0 1px 1px #000;
     white-space:nowrap;display:inline-block;transform:translate(-50%,-50%);
     cursor:pointer;
@@ -130,7 +130,7 @@
   .plane-wrap .plane{ width:15px;height:15px; }
   .plane-lbl{
     position:absolute; top:15px; left:50%; transform:translateX(-50%);
-    font-family:monospace; font-size:6px; line-height:1; color:#cfe6ff;
+    font-family:monospace; font-size:calc(7px * var(--lblscale, 1)); line-height:1; color:#cfe6ff;
     white-space:nowrap; text-shadow:0 0 2px #000, 0 0 2px #000, 0 0 2px #000;
   }
 
@@ -197,7 +197,7 @@
   .lsr-icon{ background:none; border:none; }
   .lsr-val{
     transform:translateY(-50%);padding-left:8px;
-    font-family:monospace;font-weight:700;font-size:7px;white-space:nowrap;
+    font-family:monospace;font-weight:700;font-size:calc(7px * var(--lblscale, 1));white-space:nowrap;
     text-shadow:0 0 3px #000, 0 0 2px #000, 0 1px 1px #000;
   }
 
@@ -257,6 +257,8 @@
       <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" data-hazard="watches" checked onchange="toggleHazard(this)"> Include Watches</label>
       <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" data-hazard="lightning" checked onchange="toggleHazard(this)"> Lightning</label>
     </div>
+    <label style="margin-top:8px;">Map label size</label>
+    <input id="lblScale" type="range" min="0.8" max="2" step="0.1" value="1" oninput="setLabelScale(this.value)" style="width:100%;padding:0;background:transparent;border:none;" />
     <label style="margin-top:8px;">Radar Mode</label>
     <select id="radarMode" onchange="setRadarMode(this.value)">
       <option value="national">National Mosaic</option>
@@ -1631,6 +1633,8 @@ function schedulePlanes(){
   clearTimeout(planeTimer);
   planeTimer = setTimeout(loadPlanes, 700);
 }
+function setLabelScale(v){ document.documentElement.style.setProperty('--lblscale', v); }
+
 function togglePlanes(cb){
   planesOn = cb.checked;
   if(planesOn){ map.addLayer(planeLayer); loadPlanes(); }
