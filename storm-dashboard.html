@@ -156,37 +156,14 @@
     transform:translate(-50%,-50%);display:inline-block;white-space:nowrap;
   }
 
-  /* Live reports side panel + edge tab. */
-  #feedTab{
-    position:absolute;top:50%;right:0;transform:translateY(-50%);z-index:600;
-    writing-mode:vertical-rl;cursor:pointer;
-    background:var(--panel);border:1px solid var(--border);border-right:none;
-    border-radius:10px 0 0 10px;padding:14px 7px;
-    color:var(--dim);font-family:monospace;font-size:11px;letter-spacing:0.15em;
-    backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  /* Storm-report markers: colored dot at the report point + its value. */
+  .lsr-icon{ background:none; border:none; }
+  .lsr-label{
+    display:flex;align-items:center;gap:3px;transform:translateY(-50%);
+    white-space:nowrap;font-family:monospace;font-weight:700;font-size:11px;color:#fff;
+    text-shadow:0 0 3px #000, 0 1px 1px #000;cursor:pointer;
   }
-  #feedPanel{
-    position:absolute;top:0;right:0;height:100%;width:310px;max-width:85vw;z-index:650;
-    transform:translateX(100%);transition:transform 0.3s ease;
-    background:var(--panel);border-left:1px solid var(--border);
-    backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
-    display:flex;flex-direction:column;
-  }
-  #feedPanel.open{transform:translateX(0);}
-  #feedPanel .feed-head{display:flex;align-items:center;justify-content:space-between;
-    padding:14px 16px;border-bottom:1px solid var(--border);}
-  #feedPanel .feed-title{font-family:sans-serif;font-weight:700;color:#F5F3EC;font-size:15px;}
-  #feedClose{background:none;border:none;color:var(--dim);font-size:18px;cursor:pointer;line-height:1;}
-  #feedBody{overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding-bottom:16px;}
-  .feed-section{font-family:monospace;font-size:11px;color:var(--dim);text-transform:uppercase;
-    letter-spacing:0.05em;padding:14px 16px 6px;position:sticky;top:0;background:var(--panel);}
-  .feed-item{display:flex;gap:10px;padding:8px 16px;cursor:pointer;
-    border-bottom:1px solid rgba(255,255,255,0.05);}
-  .feed-item:active,.feed-item:hover{background:rgba(255,255,255,0.05);}
-  .feed-item .bar{width:4px;border-radius:2px;flex-shrink:0;}
-  .feed-item .fi-main{font-family:sans-serif;font-size:13px;color:#F5F3EC;}
-  .feed-item .fi-sub{font-family:sans-serif;font-size:11px;color:var(--dim);margin-top:2px;}
-  .feed-empty{padding:8px 16px;color:var(--dim);font-family:sans-serif;font-size:12px;font-style:italic;}
+  .lsr-label .lsr-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;box-shadow:0 0 3px #000;}
 
   .strike{
     width:8px;height:8px;border-radius:50%;
@@ -210,11 +187,6 @@
 <div id="toasts"></div>
 <div id="lightningBadge"></div>
 
-<div id="feedTab" onclick="toggleFeed()">REPORTS</div>
-<div id="feedPanel">
-  <div class="feed-head"><span class="feed-title">Live Reports · in view</span><button id="feedClose" onclick="toggleFeed()">✕</button></div>
-  <div id="feedBody"></div>
-</div>
 
 <div id="gear">
   <div id="gearbtn" onclick="document.getElementById('settingsPanel').classList.toggle('open')">⚙</div>
@@ -346,7 +318,7 @@
 <script>
 let lat = 42.907058, lon = -85.763014;
 let map, radarLayer, marker, alertLayerGroup, lightningLayerGroup;
-let spcOutlookLayer, mcdLayer, watchLayer, lsrLayer, stationLayer, modelLayer, modelMarkers, feedHighlightLayer;
+let spcOutlookLayer, mcdLayer, watchLayer, lsrLayer, stationLayer, modelLayer, modelMarkers;
 
 function initMap(){
   map = L.map('map', {zoomControl:false, attributionControl:true}).setView([lat, lon], 8);
@@ -372,12 +344,10 @@ function initMap(){
   mcdLayer = L.layerGroup().addTo(map);
   lsrLayer = L.layerGroup().addTo(map);
   stationLayer = L.layerGroup().addTo(map);
-  feedHighlightLayer = L.layerGroup().addTo(map);
   lightningLayerGroup = L.layerGroup().addTo(map);
   // Re-filter station markers to the viewport when the map moves (no refetch).
   map.on('moveend', renderStations);
   map.on('moveend', scheduleModelRefresh);
-  map.on('moveend', () => { if(feedOpen) renderFeed(); });
   marker = L.marker([lat, lon], {icon: L.divIcon({className:'', html:'<div style="width:12px;height:12px;border-radius:50%;background:#F2B705;box-shadow:0 0 10px 3px #F2B705;"></div>'})}).addTo(map);
 }
 
@@ -810,7 +780,6 @@ function lsrColor(t){
 }
 
 // Local Storm Reports from the last 24 hours (national).
-let lsrData = [];
 async function loadLSR(){
   try{
     const now = new Date();
@@ -819,86 +788,39 @@ async function loadLSR(){
     const ets = now.toISOString().slice(0, 19) + 'Z';
     const res = await fetch(`https://mesonet.agron.iastate.edu/geojson/lsr.geojson?sts=${sts}&ets=${ets}`);
     const data = await res.json();
-    lsrData = data.features || [];
     lsrLayer.clearLayers();
-    for(const f of lsrData){
+    for(const f of (data.features || [])){
       const c = f.geometry && f.geometry.coordinates;
       if(!c) continue;
       const p = f.properties;
       const color = lsrColor(p.typetext);
-      const mag = p.magnitude ? ` ${p.magnitude} ${p.unit || ''}`.trimEnd() : '';
-      const m = L.circleMarker([c[1], c[0]], {radius:4, color:color, weight:1, fillColor:color, fillOpacity:0.9});
-      m.bindPopup(`<div class="alert-popup"><b>${p.typetext || 'Report'}${mag}</b>${p.city || ''}, ${p.state || ''}<br>${fmtTime(p.valid)}<br>${p.remark || ''}</div>`);
-      m.addTo(lsrLayer);
+      const magFull = p.magnitude ? ` ${p.magnitude} ${p.unit || ''}`.trimEnd() : '';
+      const icon = L.divIcon({
+        className: 'lsr-icon',
+        html: `<span class="lsr-label"><span class="lsr-dot" style="background:${color}"></span>${lsrValue(p)}</span>`,
+        iconSize: [0, 0], iconAnchor: [0, 0]
+      });
+      L.marker([c[1], c[0]], {icon, keyboard: false})
+        .bindPopup(`<div class="alert-popup"><b>${p.typetext || 'Report'}${magFull}</b>${p.city || ''}, ${p.state || ''}<br>${fmtTime(p.valid)}<br>${p.remark || ''}</div>`)
+        .addTo(lsrLayer);
     }
-    if(feedOpen) renderFeed();
   }catch(e){ console.error('lsr error', e); }
 }
 
-/* ---------------- Live reports side panel ----------------
-   Lists notable wind gusts + storm reports currently in the map view. */
-let feedOpen = false;
-function toggleFeed(){
-  feedOpen = !feedOpen;
-  document.getElementById('feedPanel').classList.toggle('open', feedOpen);
-  if(feedOpen) renderFeed();
-  else feedHighlightLayer.clearLayers();
-}
-function flyTo(lat, lon){ map.setView([lat, lon], Math.max(map.getZoom(), 9)); }
-function feedRow(color, main, sub, lat, lon){
-  return `<div class="feed-item" onclick="flyTo(${lat},${lon})"><div class="bar" style="background:${color}"></div>` +
-         `<div><div class="fi-main">${main}</div><div class="fi-sub">${sub}</div></div></div>`;
-}
-function renderFeed(){
-  if(!feedOpen) return;
-  const b = map.getBounds();
-
-  const winds = [];
-  for(const s of stationData){
-    if(!b.contains([s.lat, s.lon])) continue;
-    const kt = recentPeakGustKt(s.p);
-    const mph = (kt != null) ? ktToMph(kt) : 0;
-    if(mph >= 30) winds.push({s, mph, kt});
+// Short value label for a storm report, formatted by type/unit.
+function lsrValue(p){
+  const t = (p.typetext || '').toUpperCase();
+  const u = (p.unit || '').toUpperCase();
+  const mag = Number(p.magnitude);
+  if(p.magnitude != null && p.magnitude !== '' && mag > 0){
+    if(u.includes('INCH') || t.includes('HAIL') || t.includes('SNOW') || t.includes('RAIN') || t.includes('FLOOD')) return `${p.magnitude}"`;
+    if(u.includes('MPH') || t.includes('WND') || t.includes('WIND') || t.includes('GUST')) return `${Math.round(mag)}`;
+    return `${p.magnitude}`;
   }
-  winds.sort((a, b) => b.mph - a.mph);
-
-  const reps = [];
-  for(const f of lsrData){
-    const c = f.geometry && f.geometry.coordinates;
-    if(!c || !b.contains([c[1], c[0]])) continue;
-    reps.push(f);
-  }
-  reps.sort((a, b) => new Date(b.properties.valid) - new Date(a.properties.valid));
-
-  // Mark the listed spots on the map so the list and map line up.
-  feedHighlightLayer.clearLayers();
-  for(const w of winds.slice(0, 20)){
-    L.circleMarker([w.s.lat, w.s.lon], {radius: 11, color: windColor(w.kt), weight: 2.5,
-      fillColor: windColor(w.kt), fillOpacity: 0.12, interactive: false}).addTo(feedHighlightLayer);
-  }
-  for(const f of reps.slice(0, 40)){
-    const c = f.geometry.coordinates;
-    L.circleMarker([c[1], c[0]], {radius: 11, color: lsrColor(f.properties.typetext), weight: 2.5,
-      fill: false, interactive: false}).addTo(feedHighlightLayer);
-  }
-
-  let html = `<div class="feed-section">Notable Wind · ${winds.length}</div>`;
-  if(!winds.length) html += `<div class="feed-empty">No gusts ≥ 30 mph in view</div>`;
-  for(const w of winds.slice(0, 20)){
-    const p = w.s.p;
-    html += feedRow(windColor(w.kt), `${Math.round(w.mph)} mph — ${p.name || p.station}`,
-      fmtTime(p.utc_valid), w.s.lat, w.s.lon);
-  }
-
-  html += `<div class="feed-section">Storm Reports · ${reps.length}</div>`;
-  if(!reps.length) html += `<div class="feed-empty">No storm reports in view (last 24h)</div>`;
-  for(const f of reps.slice(0, 40)){
-    const p = f.properties, c = f.geometry.coordinates;
-    const mag = p.magnitude ? ` ${p.magnitude} ${p.unit || ''}`.trimEnd() : '';
-    html += feedRow(lsrColor(p.typetext), `${p.typetext || 'Report'}${mag}`,
-      `${p.city || ''}, ${p.state || ''} · ${fmtTime(p.valid)}`, c[1], c[0]);
-  }
-  document.getElementById('feedBody').innerHTML = html;
+  if(t.includes('TORNADO')) return 'TOR';
+  if(t.includes('FUNNEL')) return 'FNL';
+  if(t.includes('FLOOD') || t.includes('WATER')) return 'FLD';
+  return '•';
 }
 
 /* ---------------- Single-radar mode ----------------
@@ -1063,7 +985,6 @@ async function loadStations(){
       .filter(f => f.geometry && f.geometry.coordinates)
       .map(f => ({lon: f.geometry.coordinates[0], lat: f.geometry.coordinates[1], p: f.properties}));
     renderStations();
-    if(feedOpen) renderFeed();
   }catch(e){ console.error('stations error', e); }
 }
 
