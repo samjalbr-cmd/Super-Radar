@@ -349,9 +349,7 @@ let map, basemap, radarLayer, marker, alertLayerGroup, lightningLayerGroup;
 let spcOutlookLayer, mcdLayer, watchLayer, lsrLayer, stationLayer, modelLayer, modelMarkers;
 
 function initMap(){
-  // fadeAnimation:false prevents interrupted tile fade-ins from leaving lighter
-  // half-rendered blocks when the container resizes during startup.
-  map = L.map('map', {zoomControl:false, attributionControl:true, fadeAnimation:false}).setView([lat, lon], 8);
+  map = L.map('map', {zoomControl:false, attributionControl:true}).setView([lat, lon], 8);
   basemap = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
     attribution:'&copy; OpenStreetMap &copy; CARTO',
     maxZoom:12
@@ -381,29 +379,22 @@ function initMap(){
   // Keep Leaflet's idea of the container size correct. Without this the map can
   // load tiles for only part of the viewport (half-rendered), especially on
   // mobile where layout settles after first paint, and on fullscreen/rotate.
-  // Re-fit AND force every tile layer to reload — tiles fetched before the
-  // container reached full size stay stale (a darker half), so a plain
-  // invalidateSize isn't enough; redraw() clears and refetches them.
-  let hardReloaded = false;
+  // The first time the container reaches full size, re-assert the view and drop
+  // any stale startup tiles once; after that just re-fit on resize (no snapping).
+  let settled = false;
   const settle = () => {
     map.invalidateSize();
+    if(settled) return;
+    settled = true;
     map.setView([lat, lon], 8);
-    // Once, fully drop and re-add the basemap so any leftover stale tile block
-    // from the startup zoom is discarded and refetched at the correct zoom.
-    if(!hardReloaded && basemap){ hardReloaded = true; basemap.remove(); basemap.addTo(map); }
-    map.eachLayer(l => { if(l.redraw) l.redraw(); });
+    if(basemap){ basemap.remove(); basemap.addTo(map); }
   };
   if(window.ResizeObserver){
-    let firstFit = true;
-    new ResizeObserver(() => {
-      map.invalidateSize();
-      if(firstFit){ firstFit = false; settle(); }
-    }).observe(document.getElementById('map'));
+    new ResizeObserver(settle).observe(document.getElementById('map'));
   }
   setTimeout(settle, 400);
   setTimeout(settle, 1200);
-  window.addEventListener('resize', () => map.invalidateSize());
-  window.addEventListener('orientationchange', () => setTimeout(settle, 300));
+  window.addEventListener('orientationchange', () => setTimeout(() => map.invalidateSize(), 300));
   document.addEventListener('fullscreenchange', () => setTimeout(() => map.invalidateSize(), 250));
   marker = L.marker([lat, lon], {icon: L.divIcon({className:'', html:'<div style="width:12px;height:12px;border-radius:50%;background:#F2B705;box-shadow:0 0 10px 3px #F2B705;"></div>'})}).addTo(map);
 }
