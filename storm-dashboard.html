@@ -349,7 +349,9 @@ let map, radarLayer, marker, alertLayerGroup, lightningLayerGroup;
 let spcOutlookLayer, mcdLayer, watchLayer, lsrLayer, stationLayer, modelLayer, modelMarkers;
 
 function initMap(){
-  map = L.map('map', {zoomControl:false, attributionControl:true}).setView([lat, lon], 8);
+  // fadeAnimation:false prevents interrupted tile fade-ins from leaving lighter
+  // half-rendered blocks when the container resizes during startup.
+  map = L.map('map', {zoomControl:false, attributionControl:true, fadeAnimation:false}).setView([lat, lon], 8);
   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
     attribution:'&copy; OpenStreetMap &copy; CARTO',
     maxZoom:12
