@@ -284,7 +284,6 @@
     <div id="spcToggles" style="display:flex;flex-direction:column;gap:6px;">
       <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" data-spc="outlook" checked onchange="toggleSpc(this)"> Convective Outlook</label>
       <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" data-spc="mcd" checked onchange="toggleSpc(this)"> Mesoscale Discussions</label>
-      <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" data-spc="watch" checked onchange="toggleSpc(this)"> Watch Boxes</label>
       <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" data-spc="lsr" checked onchange="toggleSpc(this)"> Storm Reports (24h)</label>
     </div>
     <label style="margin-top:8px;">Model Layers</label>
@@ -351,7 +350,7 @@
 <script>
 let lat = 42.907058, lon = -85.763014;
 let map, basemap, radarLayer, marker, alertLayerGroup, lightningLayerGroup;
-let spcOutlookLayer, mcdLayer, watchLayer, lsrLayer, stationLayer, modelLayer, modelMarkers, planeLayer;
+let spcOutlookLayer, mcdLayer, lsrLayer, stationLayer, modelLayer, modelMarkers, planeLayer;
 
 function initMap(){
   // Bound the map so you can't pan off the tiles into empty space or zoom out
@@ -378,7 +377,6 @@ function initMap(){
   modelMarkers = L.layerGroup().addTo(map);
   spcOutlookLayer = L.layerGroup().addTo(map);
   alertLayerGroup = L.layerGroup().addTo(map);
-  watchLayer = L.layerGroup().addTo(map);
   mcdLayer = L.layerGroup().addTo(map);
   lsrLayer = L.layerGroup().addTo(map);
   stationLayer = L.layerGroup().addTo(map);
@@ -811,11 +809,11 @@ setInterval(() => {
    Convective Outlook (risk shading), Mesoscale Discussions, Watch
    outlines, and Local Storm Reports. Each lives in its own layer
    group toggled from the settings panel.                        */
-const spcVisible = {outlook:true, mcd:true, watch:true, lsr:true};
+const spcVisible = {outlook:true, mcd:true, lsr:true};
 function toggleSpc(cb){
   const key = cb.dataset.spc;
   spcVisible[key] = cb.checked;
-  const grp = {outlook:spcOutlookLayer, mcd:mcdLayer, watch:watchLayer, lsr:lsrLayer}[key];
+  const grp = {outlook:spcOutlookLayer, mcd:mcdLayer, lsr:lsrLayer}[key];
   if(!grp) return;
   if(cb.checked) map.addLayer(grp); else map.removeLayer(grp);
 }
@@ -868,27 +866,6 @@ async function loadMCD(){
       }
     }).addTo(mcdLayer);
   }catch(e){ console.error('mcd error', e); }
-}
-
-// Currently-active SPC watch outlines (tornado = red, severe = gold).
-async function loadWatches(){
-  try{
-    const valid = new Date().toISOString().slice(0, 19) + 'Z';
-    const res = await fetch(`https://mesonet.agron.iastate.edu/api/1/spc_watch_outline.geojson?valid=${valid}`);
-    const data = await res.json();
-    watchLayer.clearLayers();
-    L.geoJSON(data, {
-      style: f => {
-        const tor = (f.properties.type || '').toUpperCase() === 'TOR';
-        return {color: tor ? '#E10600' : '#FFD400', weight:2.5, fillColor: tor ? '#E10600' : '#FFD400', fillOpacity:0.05};
-      },
-      onEachFeature: (f, l) => {
-        const p = f.properties;
-        const tor = (p.type || '').toUpperCase() === 'TOR';
-        l.bindPopup(`<div class="alert-popup"><b>${tor ? 'Tornado' : 'Severe T-storm'} Watch #${p.num}</b>Until ${fmtTime(p.utc_expired)}</div>`);
-      }
-    }).addTo(watchLayer);
-  }catch(e){ console.error('watch error', e); }
 }
 
 function lsrColor(t){
@@ -1546,7 +1523,7 @@ async function boot(){
   // measures it — prevents the half-rendered (stale-tile) map on mobile.
   await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
   initMap();
-  await Promise.all([loadRadar(), loadAlerts(), loadOutlook(), loadMCD(), loadWatches(), loadLSR(), loadNexradSites()]);
+  await Promise.all([loadRadar(), loadAlerts(), loadOutlook(), loadMCD(), loadLSR(), loadNexradSites()]);
   document.getElementById('loading').classList.add('hide');
   populateSiteDropdown();
   loadStations();   // heavy national fetch — fire after the map is visible
@@ -1559,7 +1536,6 @@ async function boot(){
   setInterval(loadAlerts, 2 * 60 * 1000);
   setInterval(loadOutlook, 30 * 60 * 1000);
   setInterval(loadMCD, 5 * 60 * 1000);
-  setInterval(loadWatches, 5 * 60 * 1000);
   setInterval(loadLSR, 5 * 60 * 1000);
   setInterval(updateSingleRadar, 3 * 60 * 1000);
   setInterval(loadStations, 3 * 60 * 1000);
