@@ -345,14 +345,14 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script>
 let lat = 42.907058, lon = -85.763014;
-let map, radarLayer, marker, alertLayerGroup, lightningLayerGroup;
+let map, basemap, radarLayer, marker, alertLayerGroup, lightningLayerGroup;
 let spcOutlookLayer, mcdLayer, watchLayer, lsrLayer, stationLayer, modelLayer, modelMarkers;
 
 function initMap(){
   // fadeAnimation:false prevents interrupted tile fade-ins from leaving lighter
   // half-rendered blocks when the container resizes during startup.
   map = L.map('map', {zoomControl:false, attributionControl:true, fadeAnimation:false}).setView([lat, lon], 8);
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  basemap = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
     attribution:'&copy; OpenStreetMap &copy; CARTO',
     maxZoom:12
   }).addTo(map);
@@ -384,9 +384,13 @@ function initMap(){
   // Re-fit AND force every tile layer to reload — tiles fetched before the
   // container reached full size stay stale (a darker half), so a plain
   // invalidateSize isn't enough; redraw() clears and refetches them.
+  let hardReloaded = false;
   const settle = () => {
     map.invalidateSize();
     map.setView([lat, lon], 8);
+    // Once, fully drop and re-add the basemap so any leftover stale tile block
+    // from the startup zoom is discarded and refetched at the correct zoom.
+    if(!hardReloaded && basemap){ hardReloaded = true; basemap.remove(); basemap.addTo(map); }
     map.eachLayer(l => { if(l.redraw) l.redraw(); });
   };
   if(window.ResizeObserver){
