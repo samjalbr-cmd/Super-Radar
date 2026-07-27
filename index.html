@@ -202,13 +202,13 @@
   .alert-label .al-det{font-weight:700;font-size:10px;color:#fff;opacity:0.92;}
 
   .strike{
-    width:8px;height:8px;border-radius:50%;
+    width:3px;height:3px;border-radius:50%;
     background:#FFFFFF;
-    box-shadow:0 0 8px 3px #FFE96B, 0 0 16px 6px rgba(255,233,107,0.4);
+    box-shadow:0 0 3px 1px #FFE96B, 0 0 6px 1px rgba(255,233,107,0.35);
     animation:strikeFlash 0.5s ease-out;
   }
   @keyframes strikeFlash{
-    0%{transform:scale(3.2);opacity:1;}
+    0%{transform:scale(2.4);opacity:1;}
     100%{transform:scale(1);opacity:1;}
   }
 </style>
@@ -774,7 +774,7 @@ function stepBooms(){
 
 function addStrike(sLat, sLon){
   const m = L.marker([sLat, sLon], {
-    icon: L.divIcon({className:'', html:'<div class="strike"></div>', iconSize:[8,8], iconAnchor:[4,4]}),
+    icon: L.divIcon({className:'', html:'<div class="strike"></div>', iconSize:[3,3], iconAnchor:[1.5,1.5]}),
     interactive: false
   }).addTo(lightningLayerGroup);
   strikes.push({marker: m, time: Date.now()});
