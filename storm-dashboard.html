@@ -61,6 +61,8 @@
     display:block;font-size:30px;font-weight:800;color:var(--amber);
     letter-spacing:0.12em;margin-top:4px;
   }
+  #pairStatus #qrbox{ display:flex;justify-content:center;margin-top:10px; }
+  #pairStatus #qrbox img, #pairStatus #qrbox canvas{ background:#fff;padding:8px;border-radius:8px; }
   #settingsPanel button{
     background:var(--amber);color:#181205;border:none;border-radius:8px;
     padding:9px;font-weight:600;font-size:13px;cursor:pointer;margin-top:4px;
@@ -366,6 +368,7 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
 let lat = 42.907058, lon = -85.763014;
 let map, basemap, radarLayer, marker, alertLayerGroup, lightningLayerGroup;
@@ -1693,7 +1696,12 @@ function startTV(){
   const code = genCode();
   peer = new Peer('superradar-' + code);
   syncRole = 'tv';
-  peer.on('open', () => pairInfo(`On your phone, tap “Control a TV” and enter:<span class="code">${code}</span>`));
+  peer.on('open', () => {
+    const url = `${location.origin}${location.pathname}?join=${code}`;
+    pairInfo(`Scan with your phone (or enter the code):<span class="code">${code}</span><div id="qrbox"></div>`);
+    const box = document.getElementById('qrbox');
+    if(box && typeof QRCode !== 'undefined') new QRCode(box, {text: url, width: 168, height: 168, colorDark: '#000000', colorLight: '#ffffff'});
+  });
   peer.on('connection', c => {
     conn = c;
     c.on('open', () => pairInfo(`📱 Phone connected ✓<br>(code ${code})`));
@@ -1703,9 +1711,9 @@ function startTV(){
   peer.on('error', e => pairInfo('Pair error: ' + e.type + ' — try again'));
 }
 
-function startPhone(){
+function startPhone(codeArg){
   if(typeof Peer === 'undefined'){ pairInfo('Pairing library not loaded — reload.'); return; }
-  const code = (prompt('Enter the code shown on your TV:') || '').trim().toUpperCase();
+  const code = (codeArg || prompt('Enter the code shown on your TV:') || '').trim().toUpperCase();
   if(!code) return;
   if(peer) peer.destroy();
   peer = new Peer();
@@ -1839,6 +1847,9 @@ async function boot(){
   setInterval(computeLightning, 3000);
   loadPlanes();
   setInterval(loadPlanes, 15 * 1000);
+  // Auto-pair as the controller when opened via a scanned QR (?join=CODE).
+  const joinCode = new URLSearchParams(location.search).get('join');
+  if(joinCode){ startPhone(joinCode); document.getElementById('settingsPanel').classList.add('open'); }
 }
 
 boot();
