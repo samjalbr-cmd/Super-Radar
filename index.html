@@ -124,10 +124,15 @@
     cursor:pointer;
   }
 
-  /* Live aircraft icons (rotated to heading). */
+  /* Live aircraft icons (rotated to heading) + tiny route label. */
   .plane-icon{ background:none; border:none; }
-  .plane-icon .plane{ width:15px;height:15px; }
-  .plane-icon svg{ fill:#8FD3FF; filter:drop-shadow(0 0 2px #000); }
+  .plane-wrap{ position:relative; width:15px; height:15px; }
+  .plane-wrap .plane{ width:15px;height:15px; }
+  .plane-lbl{
+    position:absolute; top:15px; left:50%; transform:translateX(-50%);
+    font-family:monospace; font-size:6px; line-height:1; color:#cfe6ff;
+    white-space:nowrap; text-shadow:0 0 2px #000, 0 0 2px #000, 0 0 2px #000;
+  }
 
   /* Mesoscale Discussion labels. */
   .mcd-icon{ background:none; border:none; }
@@ -1483,17 +1488,52 @@ let planeTimer = null;         // moveend debounce
 let planeMoveTimer = null;     // motion loop
 let planesLastTs = 0;
 let planes = {};               // hex -> {marker, lat, lon, track, gs, callsign, baseHTML}
-const routeCache = {};         // callsign -> flightroute | null
-const PLANE_SVG = '<svg viewBox="0 0 24 24" width="15" height="15"><path d="M22 16v-2l-8.5-5V3.5C13.5 2.67 12.83 2 12 2s-1.5.67-1.5 1.5V9L2 14v2l8.5-2.5V19L8 20.5V22l4-1 4 1v-1.5L13.5 19v-5.5L22 16z"/></svg>';
+let lastAircraft = [];         // last raw fetch, re-rendered as routes resolve
+const routeCache = {};         // callsign -> flightroute | null (null = none/pending)
+const PLANE_PATH = 'M22 16v-2l-8.5-5V3.5C13.5 2.67 12.83 2 12 2s-1.5.67-1.5 1.5V9L2 14v2l8.5-2.5V19L8 20.5V22l4-1 4 1v-1.5L13.5 19v-5.5L22 16z';
 
-function planeIcon(track){
-  return L.divIcon({className:'plane-icon', html:`<div class="plane" style="transform:rotate(${track}deg)">${PLANE_SVG}</div>`, iconSize:[15,15], iconAnchor:[7.5,7.5]});
+// Altitude → color: purple (high cruise) down to red (low / departing / arriving).
+function planeColor(alt){
+  if(typeof alt !== 'number') return '#E10600';
+  if(alt >= 38000) return '#B14FFF';
+  if(alt >= 33000) return '#7B68EE';
+  if(alt >= 27000) return '#3AA0FF';
+  if(alt >= 20000) return '#2ECC71';
+  if(alt >= 12000) return '#F2B705';
+  if(alt >= 6000)  return '#FF7A00';
+  return '#E10600';
 }
-function planePopupHTML(a){
+function planeIcon(track, color, label){
+  const svg = `<svg viewBox="0 0 24 24" width="15" height="15" style="fill:${color};filter:drop-shadow(0 0 2px #000)"><path d="${PLANE_PATH}"/></svg>`;
+  const lbl = label ? `<div class="plane-lbl">${label}</div>` : '';
+  return L.divIcon({className:'plane-icon', html:`<div class="plane-wrap"><div class="plane" style="transform:rotate(${track}deg)">${svg}</div>${lbl}</div>`, iconSize:[15,15], iconAnchor:[7.5,7.5]});
+}
+function routeLabel(route){
+  const o = route.origin, d = route.destination;
+  return `${o.municipality || o.iata_code || '?'} - ${d.municipality || d.iata_code || '?'}`;
+}
+function planePopupHTML(a, route){
   const alt = (typeof a.alt_baro === 'number') ? `${a.alt_baro.toLocaleString()} ft` : (a.alt_baro || '—');
   const call = (a.flight || a.r || a.hex || '').trim();
   const gs = (a.gs != null) ? `${Math.round(a.gs)} kt` : '';
-  return `<div class="alert-popup"><b>${call}${a.t ? ' · ' + a.t : ''}</b>${alt}${gs ? ' · ' + gs : ''}${a.ownOp ? '<br>' + a.ownOp : ''}</div>`;
+  let r = '';
+  if(route){
+    const o = route.origin, d = route.destination;
+    const air = route.airline ? route.airline.name + '<br>' : '';
+    r = `<br><span style="color:#8FD3FF">${air}${o.iata_code || o.icao_code} · ${o.municipality || ''} → ${d.iata_code || d.icao_code} · ${d.municipality || ''}</span>`;
+  }
+  return `<div class="alert-popup"><b>${call}${a.t ? ' · ' + a.t : ''}</b>${alt}${gs ? ' · ' + gs : ''}${a.ownOp ? '<br>' + a.ownOp : ''}${r}</div>`;
+}
+
+// Look up a callsign's route once (cached). null = no route / pending.
+function ensureRoute(cs){
+  if(routeCache[cs] !== undefined) return false;
+  routeCache[cs] = null;
+  fetch(`https://api.adsbdb.com/v0/callsign/${encodeURIComponent(cs)}`)
+    .then(r => r.json())
+    .then(d => { routeCache[cs] = (d.response && d.response.flightroute) ? d.response.flightroute : null; })
+    .catch(() => { routeCache[cs] = null; });
+  return true;
 }
 
 async function loadPlanes(){
@@ -1502,33 +1542,47 @@ async function loadPlanes(){
   const c = map.getCenter(), b = map.getBounds();
   const nm = Math.min(250, Math.ceil(haversineKm(c.lat, c.lng, b.getNorth(), b.getEast()) * 0.539957));
   try{
-    const res = await fetch(`https://api.airplanes.live/v2/point/${c.lat.toFixed(3)}/${c.lng.toFixed(3)}/${nm}`);
-    const data = await res.json();
-    const seen = {};
-    for(const a of (data.ac || [])){
-      if(a.lat == null || a.lon == null) continue;
-      const hex = a.hex; if(!hex) continue;
-      seen[hex] = true;
-      const track = (a.track != null) ? a.track : (a.dir || 0);
-      const gs = (typeof a.gs === 'number') ? a.gs : 0;
-      const base = planePopupHTML(a);
-      let p = planes[hex];
-      if(!p){
-        const marker = L.marker([a.lat, a.lon], {icon: planeIcon(track), keyboard:false}).bindPopup(base).addTo(planeLayer);
-        marker.on('popupopen', () => showPlaneRoute(hex));
-        marker.on('popupclose', clearRoute);
-        p = planes[hex] = {marker, lat:a.lat, lon:a.lon, track, gs, callsign:(a.flight||'').trim(), baseHTML:base};
-      }else{
-        p.lat = a.lat; p.lon = a.lon; p.marker.setLatLng([a.lat, a.lon]);
-        if(Math.abs((p.track || 0) - track) > 3) p.marker.setIcon(planeIcon(track));
-        p.track = track; p.gs = gs; p.callsign = (a.flight||'').trim(); p.baseHTML = base;
-        if(!p.marker.isPopupOpen()) p.marker.setPopupContent(base);
-      }
-    }
-    for(const hex in planes){ if(!seen[hex]){ planeLayer.removeLayer(planes[hex].marker); delete planes[hex]; } }
-    planesLastTs = performance.now();
-    if(!planeMoveTimer && Object.keys(planes).length) planeMoveTimer = setInterval(movePlanes, 150);
+    const data = await (await fetch(`https://api.airplanes.live/v2/point/${c.lat.toFixed(3)}/${c.lng.toFixed(3)}/${nm}`)).json();
+    lastAircraft = data.ac || [];
+    renderPlanes(true);
+    setTimeout(() => renderPlanes(false), 2500);   // pick up async route lookups
   }catch(e){ console.error('planes error', e); }
+}
+
+// Only planes with a known route are shown, labeled and altitude-colored.
+function renderPlanes(resetPos){
+  if(!planeLayer || !planesOn || map.getZoom() < 6) return;
+  const seen = {};
+  let newFetches = 0;
+  for(const a of lastAircraft){
+    if(a.lat == null || a.lon == null) continue;
+    const hex = a.hex; if(!hex) continue;
+    const cs = (a.flight || '').trim();
+    if(!cs) continue;
+    if(routeCache[cs] === undefined && newFetches < 25){ if(ensureRoute(cs)) newFetches++; }
+    const route = routeCache[cs];
+    if(!route || !route.origin || !route.destination) continue;   // filter: no route → hide
+    seen[hex] = true;
+    const track = (a.track != null) ? a.track : (a.dir || 0);
+    const gs = (typeof a.gs === 'number') ? a.gs : 0;
+    const icon = planeIcon(track, planeColor(a.alt_baro), routeLabel(route));
+    const base = planePopupHTML(a, route);
+    let p = planes[hex];
+    if(!p){
+      const marker = L.marker([a.lat, a.lon], {icon, keyboard:false}).bindPopup(base).addTo(planeLayer);
+      marker.on('popupopen', () => showPlaneRoute(hex));
+      marker.on('popupclose', clearRoute);
+      p = planes[hex] = {marker, lat:a.lat, lon:a.lon, track, gs, callsign:cs, baseHTML:base};
+    }else{
+      if(resetPos){ p.lat = a.lat; p.lon = a.lon; p.marker.setLatLng([a.lat, a.lon]); }
+      p.marker.setIcon(icon);
+      p.track = track; p.gs = gs; p.callsign = cs; p.baseHTML = base;
+      if(!p.marker.isPopupOpen()) p.marker.setPopupContent(base);
+    }
+  }
+  if(resetPos){ for(const hex in planes){ if(!seen[hex]){ planeLayer.removeLayer(planes[hex].marker); delete planes[hex]; } } }
+  planesLastTs = performance.now();
+  if(!planeMoveTimer && Object.keys(planes).length) planeMoveTimer = setInterval(movePlanes, 150);
 }
 
 // Dead-reckon each plane forward between fetches so they glide smoothly.
@@ -1558,31 +1612,18 @@ function clearPlanes(){
 }
 function clearRoute(){ if(routeLayer) routeLayer.clearLayers(); }
 
-// On tapping a plane, look up its route and draw origin -> destination.
-async function showPlaneRoute(hex){
+// On tapping a plane, draw its origin -> destination line (route already cached).
+function showPlaneRoute(hex){
   const p = planes[hex];
-  if(!p || !p.callsign) return;
-  const cs = p.callsign;
-  let route = routeCache[cs];
-  if(route === undefined){
-    try{
-      const d = await (await fetch(`https://api.adsbdb.com/v0/callsign/${encodeURIComponent(cs)}`)).json();
-      route = routeCache[cs] = (d.response && d.response.flightroute) ? d.response.flightroute : null;
-    }catch(e){ route = routeCache[cs] = null; }
-  }
-  if(!route || !planes[hex] || !planes[hex].marker.isPopupOpen()) return;
+  if(!p) return;
+  const route = routeCache[p.callsign];
+  if(!route || !route.origin || !route.destination) return;
   const o = route.origin, dst = route.destination;
-  const ap = a => `${a.iata_code || a.icao_code}${a.municipality ? ' · ' + a.municipality : ''}`;
-  let extra = route.airline ? route.airline.name : '';
-  if(o && dst){
-    extra += `${extra ? '<br>' : ''}${ap(o)} → ${ap(dst)}`;
-    clearRoute();
-    routeLayer.addLayer(L.polyline([[o.latitude, o.longitude], [dst.latitude, dst.longitude]],
-      {color:'#8FD3FF', weight:1.5, opacity:0.85, dashArray:'6 5'}));
-    routeLayer.addLayer(L.circleMarker([o.latitude, o.longitude], {radius:4, color:'#8FD3FF', weight:2, fillColor:'#0A0E1A', fillOpacity:1}).bindTooltip(o.iata_code || o.icao_code));
-    routeLayer.addLayer(L.circleMarker([dst.latitude, dst.longitude], {radius:4, color:'#FFD400', weight:2, fillColor:'#0A0E1A', fillOpacity:1}).bindTooltip(dst.iata_code || dst.icao_code));
-  }
-  if(extra) p.marker.setPopupContent(p.baseHTML.replace('</div>', `<br><span style="color:#8FD3FF">${extra}</span></div>`));
+  clearRoute();
+  routeLayer.addLayer(L.polyline([[o.latitude, o.longitude], [dst.latitude, dst.longitude]],
+    {color:'#8FD3FF', weight:1.5, opacity:0.85, dashArray:'6 5'}));
+  routeLayer.addLayer(L.circleMarker([o.latitude, o.longitude], {radius:4, color:'#8FD3FF', weight:2, fillColor:'#0A0E1A', fillOpacity:1}).bindTooltip(o.iata_code || o.icao_code));
+  routeLayer.addLayer(L.circleMarker([dst.latitude, dst.longitude], {radius:4, color:'#FFD400', weight:2, fillColor:'#0A0E1A', fillOpacity:1}).bindTooltip(dst.iata_code || dst.icao_code));
 }
 
 function schedulePlanes(){
