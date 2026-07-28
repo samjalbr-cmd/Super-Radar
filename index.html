@@ -866,12 +866,16 @@ function stepBooms(){
 }
 
 function addStrike(sLat, sLon){
+  // The Blitzortung stream is GLOBAL — only render strikes near the current view,
+  // otherwise thousands of markers pile up and can crash the tab.
+  if(!hazardVisible.lightning) return;
+  if(!map.getBounds().pad(0.4).contains([sLat, sLon])) return;
+  if(strikes.length > 1500){ const old = strikes.shift(); lightningLayerGroup.removeLayer(old.marker); }  // hard cap
   const m = L.marker([sLat, sLon], {
     icon: L.divIcon({className:'', html:'<div class="strike"></div>', iconSize:[3,3], iconAnchor:[1.5,1.5]}),
     interactive: false
   }).addTo(lightningLayerGroup);
   strikes.push({marker: m, time: Date.now()});
-  // Speed-of-sound thunder wavefront — in-view strikes only.
   if(map.getBounds().contains([sLat, sLon])) addBoom(sLat, sLon);
 }
 
