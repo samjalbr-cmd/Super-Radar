@@ -163,7 +163,7 @@
     backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
   }
   #feedPanel{
-    position:absolute;top:0;right:0;height:100%;width:320px;max-width:88vw;z-index:650;
+    position:absolute;top:0;right:0;height:100%;width:270px;max-width:82vw;z-index:650;
     transform:translateX(100%);transition:transform 0.3s ease;
     background:var(--panel);border-left:1px solid var(--border);
     backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
@@ -171,17 +171,17 @@
   }
   #feedPanel.open{transform:translateX(0);}
   #feedPanel .feed-head{display:flex;align-items:center;justify-content:space-between;
-    padding:14px 16px;border-bottom:1px solid var(--border);}
-  #feedPanel .feed-title{font-family:sans-serif;font-weight:700;color:#F5F3EC;font-size:15px;}
-  #feedClose{background:none;border:none;color:var(--dim);font-size:18px;cursor:pointer;line-height:1;}
+    padding:11px 13px;border-bottom:1px solid var(--border);}
+  #feedPanel .feed-title{font-family:sans-serif;font-weight:700;color:#F5F3EC;font-size:13px;}
+  #feedClose{background:none;border:none;color:var(--dim);font-size:16px;cursor:pointer;line-height:1;}
   #feedBody{overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding-bottom:16px;}
-  .feed-item{display:flex;gap:10px;padding:9px 14px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,0.05);}
+  .feed-item{display:flex;gap:8px;padding:6px 12px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,0.05);}
   .feed-item:active,.feed-item:hover{background:rgba(255,255,255,0.05);}
-  .feed-item .bar{width:4px;border-radius:2px;flex-shrink:0;}
-  .feed-item .fi-main{font-family:sans-serif;font-size:13px;color:#F5F3EC;}
-  .feed-item .fi-sub{font-family:sans-serif;font-size:11px;color:var(--dim);margin-top:2px;}
-  .feed-item .fi-time{font-family:monospace;font-size:10px;color:var(--dim);margin-top:2px;}
-  .feed-empty{padding:14px 16px;color:var(--dim);font-style:italic;font-size:12px;}
+  .feed-item .bar{width:3px;border-radius:2px;flex-shrink:0;}
+  .feed-item .fi-main{font-family:sans-serif;font-size:11px;color:#F5F3EC;}
+  .feed-item .fi-sub{font-family:sans-serif;font-size:10px;color:var(--dim);margin-top:1px;}
+  .feed-item .fi-time{font-family:monospace;font-size:9px;color:var(--dim);margin-top:1px;}
+  .feed-empty{padding:14px 16px;color:var(--dim);font-style:italic;font-size:11px;}
 
   /* Live aircraft icons (rotated to heading) + tiny route label. */
   .plane-icon{ background:none; border:none; }
@@ -2037,6 +2037,8 @@ function geomCenter(geom){ try{ const b = L.geoJSON(geom).getBounds(); return b.
 
 function renderFeed(){
   if(!feedOpen) return;
+  const fb = document.getElementById('feedBody');
+  const savedScroll = fb ? fb.scrollTop : 0;
   const b = map.getBounds();
   const inView = (lat, lon) => lat != null && lon != null && b.contains([lat, lon]);
   const ev = [];
@@ -2092,7 +2094,8 @@ function renderFeed(){
     html += `<div class="feed-item" onclick="flyTo(${e.lat},${e.lon})"><div class="bar" style="background:${e.color}"></div>` +
             `<div><div class="fi-main">${e.main}</div><div class="fi-sub">${e.sub}</div><div class="fi-time">${agoStr(e.t)}</div></div></div>`;
   }
-  document.getElementById('feedBody').innerHTML = html;
+  fb.innerHTML = html;
+  fb.scrollTop = savedScroll;   // keep the reader's place across refreshes
 }
 
 async function boot(){
@@ -2118,6 +2121,7 @@ async function boot(){
   setInterval(loadStations, 3 * 60 * 1000);
   setInterval(fetchModel, 15 * 60 * 1000);
   setInterval(computeLightning, 3000);
+  setInterval(() => { if(feedOpen) renderFeed(); }, 30000);   // keep "Xm ago" fresh
   loadPlanes();
   setInterval(loadPlanes, 15 * 1000);
   // Auto-pair as the controller when opened via a scanned QR (?join=CODE).
