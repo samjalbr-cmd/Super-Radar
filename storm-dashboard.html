@@ -2029,6 +2029,7 @@ function feedTimeMs(iso){ if(!iso) return 0; const t = new Date(iso).getTime(); 
 function agoStr(ms){
   if(!ms) return '';
   const m = Math.floor((Date.now() - ms) / 60000);
+  if(m < 0) return '';            // future timestamp — don't show a misleading time
   if(m < 1) return 'just now';
   if(m < 60) return m + 'm ago';
   const h = Math.floor(m / 60); return `${h}h ${m % 60}m ago`;
@@ -2053,7 +2054,7 @@ function renderFeed(){
     const c = lb.getCenter();
     if(!inView(c.lat, c.lng)) continue;
     const det = alertDetails(f.properties);
-    ev.push({t: feedTimeMs(f.properties.onset || f.properties.effective || f.properties.sent), color: alertColor(f.properties.event, f._cls),
+    ev.push({t: feedTimeMs(f.properties.sent || f.properties.effective || f.properties.onset), color: alertColor(f.properties.event, f._cls),
       main: f.properties.event, sub: det || (f.properties.areaDesc || '').split(';')[0], lat: c.lat, lon: c.lng});
   }
   // Mesoscale Discussions
@@ -2076,7 +2077,7 @@ function renderFeed(){
     if(!inView(s.lat, s.lon)) continue;
     const kt = recentPeakGustKt(s.p), mph = (kt != null) ? ktToMph(kt) : 0;
     if(mph < 30) continue;
-    ev.push({t: feedTimeMs(s.p.utc_valid), color: windColor(kt), main: `${Math.round(mph)} mph gust`,
+    ev.push({t: feedTimeMs(s.p.utc_max_gust_ts || s.p.utc_valid), color: windColor(kt), main: `${Math.round(mph)} mph gust`,
       sub: s.p.name || s.p.station, lat: s.lat, lon: s.lon});
   }
   // Temperature swings (frontal passages)
