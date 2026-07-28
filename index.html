@@ -1687,10 +1687,12 @@ function routeValid(route, lat, lon, track){
   const xtd = Math.abs(Math.asin(Math.sin(d13) * Math.sin(brg(o.latitude, o.longitude, lat, lon) - brg(o.latitude, o.longitude, d.latitude, d.longitude)))) * R;
   const atd = Math.acos(Math.max(-1, Math.min(1, Math.cos(d13) / Math.cos(xtd / R)))) * R;
   const len = ang(o.latitude, o.longitude, d.latitude, d.longitude) * R;
-  // Also require the plane to be flying roughly toward its destination.
+  // Require the plane to be flying toward its destination AND away from its origin.
   const bDest = (brg(lat, lon, d.latitude, d.longitude) * 180 / Math.PI + 360) % 360;
   let hd = Math.abs((track || 0) - bDest) % 360; if(hd > 180) hd = 360 - hd;
-  return xtd < 160 && atd > -120 && atd < len + 120 && hd < 75;
+  const bOrig = (brg(o.latitude, o.longitude, lat, lon) * 180 / Math.PI + 360) % 360;
+  let ho = Math.abs((track || 0) - bOrig) % 360; if(ho > 180) ho = 360 - ho;
+  return xtd < 120 && atd > -110 && atd < len + 110 && hd < 65 && ho < 90;
 }
 
 // Look up a callsign's route once (cached). null = no route / pending.
