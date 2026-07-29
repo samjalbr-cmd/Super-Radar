@@ -1668,7 +1668,7 @@ let planeMoveTimer = null;     // motion loop
 let planesLastTs = 0;
 let planes = {};               // hex -> {marker, lat, lon, track, gs, callsign, baseHTML}
 let lastAircraft = [];         // last raw fetch, re-rendered as routes resolve
-const routeCache = {};         // callsign -> flightroute | null (null = none/pending)
+const routeCache = {};         // callsign -> {plausible,origin,destination,...} | null
 const PLANE_PATH = 'M22 16v-2l-8.5-5V3.5C13.5 2.67 12.83 2 12 2s-1.5.67-1.5 1.5V9L2 14v2l8.5-2.5V19L8 20.5V22l4-1 4 1v-1.5L13.5 19v-5.5L22 16z';
 
 // Altitude → color: purple (high cruise) down to red (low / departing / arriving).
@@ -1704,54 +1704,50 @@ function planePopupHTML(a, route){
   return `<div class="alert-popup"><b>${call}${a.t ? ' · ' + a.t : ''}</b>${alt}${gs ? ' · ' + gs : ''}${a.ownOp ? '<br>' + a.ownOp : ''}${r}</div>`;
 }
 
-// adsbdb maps callsign->typical route, which is often a stale/wrong city pair
-// (flight numbers get reused). Only trust it if the plane is actually near the
-// origin->destination great-circle line and between its endpoints.
-function routeValid(route, lat, lon, track){
-  const o = route.origin, d = route.destination;
-  if(!o || !d) return false;
-  const R = 3440.065, toRad = x => x * Math.PI / 180;   // R in nm
-  const ang = (la1, lo1, la2, lo2) => {
-    const a = Math.sin(toRad(la2 - la1) / 2) ** 2 + Math.cos(toRad(la1)) * Math.cos(toRad(la2)) * Math.sin(toRad(lo2 - lo1) / 2) ** 2;
-    return 2 * Math.asin(Math.min(1, Math.sqrt(a)));
-  };
-  const brg = (la1, lo1, la2, lo2) => {
-    const y = Math.sin(toRad(lo2 - lo1)) * Math.cos(toRad(la2));
-    const x = Math.cos(toRad(la1)) * Math.sin(toRad(la2)) - Math.sin(toRad(la1)) * Math.cos(toRad(la2)) * Math.cos(toRad(lo2 - lo1));
-    return Math.atan2(y, x);
-  };
-  const d13 = ang(o.latitude, o.longitude, lat, lon);
-  const xtd = Math.abs(Math.asin(Math.sin(d13) * Math.sin(brg(o.latitude, o.longitude, lat, lon) - brg(o.latitude, o.longitude, d.latitude, d.longitude)))) * R;
-  const atd = Math.acos(Math.max(-1, Math.min(1, Math.cos(d13) / Math.cos(xtd / R)))) * R;
-  const len = ang(o.latitude, o.longitude, d.latitude, d.longitude) * R;
-  // Require the plane to be flying toward its destination AND away from its origin.
-  const bDest = (brg(lat, lon, d.latitude, d.longitude) * 180 / Math.PI + 360) % 360;
-  let hd = Math.abs((track || 0) - bDest) % 360; if(hd > 180) hd = 360 - hd;
-  const bOrig = (brg(o.latitude, o.longitude, lat, lon) * 180 / Math.PI + 360) % 360;
-  let ho = Math.abs((track || 0) - bOrig) % 360; if(ho > 180) ho = 360 - ho;
-  return xtd < 120 && atd > -110 && atd < len + 110 && hd < 65 && ho < 90;
+// Routes come from adsb.im's routeset API (same engine as tar1090/adsb.lol):
+// ONE batched POST of all callsigns + live positions, and the server returns a
+// `plausible` flag — it validates the route against the plane's actual position
+// for us, so we don't need our own geometry heuristic and there's no per-plane
+// rate-limiting. https://adsb.im/api/0/routeset
+function airportObj(a){
+  return {latitude: a.lat, longitude: a.lon, iata_code: a.iata, icao_code: a.icao, municipality: a.location};
+}
+function buildRoute(r){
+  const aps = r._airports || [];
+  if(aps.length < 2) return null;
+  let o = aps[0], d = aps[aps.length - 1];
+  if(aps.length >= 3 && o.iata === d.iata) d = aps[1];   // out-and-back rotation → show the turnaround
+  return {plausible: !!r.plausible, origin: airportObj(o), destination: airportObj(d),
+          airline: {name: r.airline_code || ''}, legs: r._airport_codes_iata || ''};
 }
 
-// Look up a callsign's route once (cached). null = no route / pending.
-// adsbdb rate-limits aggressively; on a 429 we back off instead of poisoning
-// the cache with a permanent "no route", so labels reappear once it clears.
-let routeCooldownUntil = 0;
-function ensureRoute(cs){
-  if(routeCache[cs] !== undefined) return false;
-  if(Date.now() < routeCooldownUntil) return false;
-  routeCache[cs] = null;
-  fetch(`https://api.adsbdb.com/v0/callsign/${encodeURIComponent(cs)}`)
-    .then(r => r.json())
-    .then(d => {
-      if(typeof d.response === 'string' && /rate limit/i.test(d.response)){
-        delete routeCache[cs];                       // let it retry later
-        routeCooldownUntil = Date.now() + 5 * 60 * 1000;
-        return;
-      }
-      routeCache[cs] = (d.response && d.response.flightroute) ? d.response.flightroute : null;
-    })
-    .catch(() => { routeCache[cs] = null; });
-  return true;
+// Batch-resolve routes for the current aircraft in a single request, then
+// re-render so labels/colors update. Only uncached callsigns are requested.
+let routeReqInFlight = false;
+async function fetchRoutes(acList){
+  if(routeReqInFlight) return;
+  const want = [], seen = {};
+  for(const a of acList){
+    const cs = (a.flight || '').trim();
+    if(!cs || seen[cs] || routeCache[cs] !== undefined) continue;
+    if(a.lat == null || a.lon == null) continue;
+    seen[cs] = true;
+    want.push({callsign: cs, lat: a.lat, lng: a.lon});
+    if(want.length >= 100) break;
+  }
+  if(!want.length) return;
+  routeReqInFlight = true;
+  try{
+    const res = await fetch('https://adsb.im/api/0/routeset', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({planes: want})
+    });
+    const arr = await res.json();
+    for(const r of (arr || [])){ const cs = (r.callsign || '').trim(); if(cs) routeCache[cs] = buildRoute(r); }
+    for(const w of want){ if(routeCache[w.callsign] === undefined) routeCache[w.callsign] = null; }  // no row → none
+    renderPlanes(false);
+  }catch(e){ console.error('routes error', e); }
+  finally{ routeReqInFlight = false; }
 }
 
 async function loadPlanes(){
@@ -1763,26 +1759,23 @@ async function loadPlanes(){
     const data = await (await fetch(`https://api.airplanes.live/v2/point/${c.lat.toFixed(3)}/${c.lng.toFixed(3)}/${nm}`)).json();
     lastAircraft = data.ac || [];
     renderPlanes(true);
-    setTimeout(() => renderPlanes(false), 2500);   // pick up async route lookups
+    fetchRoutes(lastAircraft);   // batched route lookup → re-renders when resolved
   }catch(e){ console.error('planes error', e); }
 }
 
-// Only planes with a known route are shown, labeled and altitude-colored.
+// Every plane is shown, altitude-colored. The city-pair label appears only when
+// adsb.im flags the route as `plausible` (position-verified); otherwise callsign.
 function renderPlanes(resetPos){
   if(!planeLayer || !planesOn || map.getZoom() < 6) return;
   const seen = {};
-  let newFetches = 0;
   for(const a of lastAircraft){
     if(a.lat == null || a.lon == null) continue;
     const hex = a.hex; if(!hex) continue;
     const cs = (a.flight || '').trim();
     if(!cs) continue;
-    if(routeCache[cs] === undefined && newFetches < 8){ if(ensureRoute(cs)) newFetches++; }
     const track = (a.track != null) ? a.track : (a.dir || 0);
     const route = routeCache[cs];
-    // Show every plane; only trust the city-pair label when the route matches
-    // the plane's actual position + heading, otherwise just show the callsign.
-    const routed = route && route.origin && route.destination && routeValid(route, a.lat, a.lon, track);
+    const routed = route && route.plausible && route.origin && route.destination;
     seen[hex] = true;
     const gs = (typeof a.gs === 'number') ? a.gs : 0;
     const icon = planeIcon(track, planeColor(a.alt_baro), routed ? routeLabel(route) : cs);
@@ -1837,7 +1830,7 @@ function showPlaneRoute(hex){
   const p = planes[hex];
   if(!p) return;
   const route = routeCache[p.callsign];
-  if(!route || !route.origin || !route.destination) return;
+  if(!route || !route.plausible || !route.origin || !route.destination) return;
   const o = route.origin, dst = route.destination;
   clearRoute();
   routeLayer.addLayer(L.polyline([[o.latitude, o.longitude], [dst.latitude, dst.longitude]],
