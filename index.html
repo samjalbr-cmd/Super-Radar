@@ -136,16 +136,16 @@
   /* Station value labels (replace dots): colored number on the map. */
   .stn-icon{ background:none; border:none; }
   /* Full station model: temp UL, dewpoint LL, coded pressure UR, barb center. */
-  .stn-model{ position:relative; width:28px; height:28px; transform:translate(-50%,-50%); }
+  .stn-model{ position:relative; width:46px; height:46px; transform:translate(-50%,-50%); }
   .stn-model svg{ position:absolute; top:0; left:0; }
   .stn-model span{
     position:absolute; font-family:monospace; font-weight:700;
-    font-size:calc(7px * var(--lblscale, 1)); line-height:1; white-space:nowrap;
+    font-size:calc(8px * var(--lblscale, 1)); line-height:1; white-space:nowrap;
     text-shadow:0 0 3px #000, 0 0 2px #000, 0 1px 1px #000;
   }
-  .stn-model .sm-t{ right:18px; top:1px; text-align:right; }        /* temp — upper left */
-  .stn-model .sm-d{ right:18px; bottom:1px; color:#5FD98A; }        /* dewpoint — lower left */
-  .stn-model .sm-p{ left:18px; top:1px; color:#b8c4d4; }            /* pressure — upper right */
+  .stn-model .sm-t{ right:29px; top:5px; text-align:right; }        /* temp — upper left */
+  .stn-model .sm-d{ right:29px; bottom:5px; color:#5FD98A; }        /* dewpoint — lower left */
+  .stn-model .sm-p{ left:29px; top:5px; color:#b8c4d4; }            /* pressure — upper right */
   .stn-label{
     font-family:monospace;font-weight:700;font-size:calc(7px * var(--lblscale, 1));line-height:1;
     text-shadow:0 0 3px #000, 0 0 2px #000, 0 1px 1px #000;
@@ -1132,23 +1132,24 @@ function windColor(kt){
   return '#4A6FA5';
 }
 // Meteorological wind barb SVG (shaft points FROM-direction; half=5, full=10, pennant=50 kt).
+const BARB_PX = 46;   // rendered size of the wind-barb / station-plot SVG
 function windBarb(spd, dir){
-  const cx = 20, cy = 20, top = 4, sw = 1.4;
+  const cx = 20, cy = 20, top = 2, sw = 2.0;
   const col = (spd != null && spd >= 3) ? windColor(spd) : '#7f92a6';
   if(spd == null || spd < 3 || dir == null){
-    return `<svg viewBox="0 0 40 40" width="28" height="28"><circle cx="20" cy="20" r="3" fill="none" stroke="${col}" stroke-width="${sw}"/></svg>`;
+    return `<svg viewBox="0 0 40 40" width="${BARB_PX}" height="${BARB_PX}"><circle cx="20" cy="20" r="3.5" fill="none" stroke="${col}" stroke-width="${sw}"/></svg>`;
   }
   let s = Math.round(spd / 5) * 5;
   const parts = [`<line x1="${cx}" y1="${cy}" x2="${cx}" y2="${top}" stroke="${col}" stroke-width="${sw}"/>`];
   let y = top;
-  const gap = 3.4, len = 9;
+  const gap = 4.6, len = 13;
   const p50 = Math.floor(s / 50); s -= p50 * 50;
   const p10 = Math.floor(s / 10); s -= p10 * 10;
   const p5 = Math.floor(s / 5);
-  for(let i = 0; i < p50; i++){ parts.push(`<polygon points="${cx},${y} ${cx - len},${y + 2} ${cx},${y + gap}" fill="${col}"/>`); y += gap + 1.5; }
-  for(let i = 0; i < p10; i++){ parts.push(`<line x1="${cx}" y1="${y}" x2="${cx - len}" y2="${y + 3}" stroke="${col}" stroke-width="${sw}"/>`); y += gap; }
-  for(let i = 0; i < p5; i++){ const off = (p10 === 0 && p50 === 0) ? gap : 0; parts.push(`<line x1="${cx}" y1="${y + off}" x2="${cx - len / 2}" y2="${y + off + 1.5}" stroke="${col}" stroke-width="${sw}"/>`); y += gap; }
-  return `<svg viewBox="0 0 40 40" width="28" height="28"><g transform="rotate(${dir} ${cx} ${cy})">${parts.join('')}</g></svg>`;
+  for(let i = 0; i < p50; i++){ parts.push(`<polygon points="${cx},${y} ${cx - len},${y + 3} ${cx},${y + gap}" fill="${col}"/>`); y += gap + 2; }
+  for(let i = 0; i < p10; i++){ parts.push(`<line x1="${cx}" y1="${y}" x2="${cx - len}" y2="${y + 4}" stroke="${col}" stroke-width="${sw}"/>`); y += gap; }
+  for(let i = 0; i < p5; i++){ const off = (p10 === 0 && p50 === 0) ? gap : 0; parts.push(`<line x1="${cx}" y1="${y + off}" x2="${cx - len / 2}" y2="${y + off + 2}" stroke="${col}" stroke-width="${sw}"/>`); y += gap; }
+  return `<svg viewBox="0 0 40 40" width="${BARB_PX}" height="${BARB_PX}"><g transform="rotate(${dir} ${cx} ${cy})">${parts.join('')}</g></svg>`;
 }
 // Station-plot pressure code: last 3 digits of MSLP in tenths of mb (1013.2 -> "132").
 function pressCode(mb){
