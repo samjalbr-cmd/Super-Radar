@@ -200,6 +200,7 @@
     font-family:monospace; font-size:calc(7px * var(--lblscale, 1)); line-height:1; color:#cfe6ff;
     white-space:nowrap; text-shadow:0 0 2px #000, 0 0 2px #000, 0 0 2px #000;
   }
+  .plane-type{ color:#9fb2c7; font-size:0.85em; }   /* aircraft type, e.g. A320 */
 
   /* Mesoscale Discussion labels. */
   .mcd-icon{ background:none; border:none; }
@@ -1682,9 +1683,10 @@ function planeColor(alt){
   if(alt >= 6000)  return '#FF7A00';
   return '#E10600';
 }
-function planeIcon(track, color, label){
+function planeIcon(track, color, label, type){
   const svg = `<svg viewBox="0 0 24 24" width="15" height="15" style="fill:${color};filter:drop-shadow(0 0 2px #000)"><path d="${PLANE_PATH}"/></svg>`;
-  const lbl = label ? `<div class="plane-lbl" style="color:${color}">${label}</div>` : '';
+  const typeLine = type ? `<div class="plane-type">${type}</div>` : '';
+  const lbl = (label || type) ? `<div class="plane-lbl" style="color:${color}">${label || ''}${typeLine}</div>` : '';
   return L.divIcon({className:'plane-icon', html:`<div class="plane-wrap"><div class="plane" style="transform:rotate(${track}deg)">${svg}</div>${lbl}</div>`, iconSize:[15,15], iconAnchor:[7.5,7.5]});
 }
 function routeLabel(route){
@@ -1779,7 +1781,7 @@ function renderPlanes(resetPos){
     if(!routed) continue;   // only show planes with a position-verified route
     seen[hex] = true;
     const gs = (typeof a.gs === 'number') ? a.gs : 0;
-    const icon = planeIcon(track, planeColor(a.alt_baro), routed ? routeLabel(route) : cs);
+    const icon = planeIcon(track, planeColor(a.alt_baro), routed ? routeLabel(route) : cs, a.t);
     const base = planePopupHTML(a, routed ? route : null);
     let p = planes[hex];
     if(!p){
