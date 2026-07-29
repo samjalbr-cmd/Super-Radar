@@ -1690,18 +1690,9 @@ function planeColor(alt){
   if(alt >= 6000)  return '#FF7A00';
   return '#E10600';
 }
-// Outside-air temp (°F) at a plane. Uses broadcast OAT if present, else the
-// ISA standard-atmosphere temperature for the aircraft's altitude.
-function planeTempF(a){
-  if(typeof a.oat === 'number') return Math.round(a.oat * 9 / 5 + 32);
-  const h = a.alt_baro;
-  if(typeof h !== 'number') return null;
-  const c = (h <= 36089) ? 15 - 0.0019812 * h : -56.5;   // ISA lapse then tropopause
-  return Math.round(c * 9 / 5 + 32);
-}
-function planeIcon(track, color, label, type, tempF){
+function planeIcon(track, color, label, type, temps){
   const svg = `<svg viewBox="0 0 24 24" width="15" height="15" style="fill:${color};filter:drop-shadow(0 0 2px #000)"><path d="${PLANE_PATH}"/></svg>`;
-  const meta = [type, tempF != null ? tempF + '°' : ''].filter(Boolean).join(' · ');
+  const meta = [type, temps].filter(Boolean).join(' · ');
   const metaLine = meta ? `<div class="plane-type">${meta}</div>` : '';
   const lbl = (label || meta) ? `<div class="plane-lbl" style="color:${color}">${label || ''}${metaLine}</div>` : '';
   return L.divIcon({className:'plane-icon', html:`<div class="plane-wrap"><div class="plane" style="transform:rotate(${track}deg)">${svg}</div>${lbl}</div>`, iconSize:[15,15], iconAnchor:[7.5,7.5]});
@@ -1787,6 +1778,7 @@ async function loadPlanes(){
 function renderPlanes(resetPos){
   if(!planeLayer || !planesOn || map.getZoom() < 6) return;
   const seen = {};
+  const needWx = {};   // airport coords whose current temp we still need
   for(const a of lastAircraft){
     if(a.lat == null || a.lon == null) continue;
     const hex = a.hex; if(!hex) continue;
@@ -1798,7 +1790,12 @@ function renderPlanes(resetPos){
     if(!routed) continue;   // only show planes with a position-verified route
     seen[hex] = true;
     const gs = (typeof a.gs === 'number') ? a.gs : 0;
-    const icon = planeIcon(track, planeColor(a.alt_baro), routed ? routeLabel(route) : cs, a.t, planeTempF(a));
+    // Departure–arrival temps ("73-45") from cached airport weather; queue misses.
+    const wo = airportWx[wxKey(route.origin)], wd = airportWx[wxKey(route.destination)];
+    if(wo === undefined) needWx[wxKey(route.origin)] = route.origin;
+    if(wd === undefined) needWx[wxKey(route.destination)] = route.destination;
+    const temps = (wo && wd) ? `${Math.round(wo.temp)}-${Math.round(wd.temp)}` : '';
+    const icon = planeIcon(track, planeColor(a.alt_baro), routeLabel(route), a.t, temps);
     const base = planePopupHTML(a, routed ? route : null);
     let p = planes[hex];
     if(!p){
@@ -1816,6 +1813,9 @@ function renderPlanes(resetPos){
   if(resetPos){ for(const hex in planes){ if(!seen[hex]){ planeLayer.removeLayer(planes[hex].marker); delete planes[hex]; } } }
   planesLastTs = performance.now();
   if(!planeMoveTimer && Object.keys(planes).length) planeMoveTimer = setInterval(movePlanes, 150);
+  // Fetch any missing airport temps, then re-render to fill in the dep–arr labels.
+  const miss = Object.values(needWx);
+  if(miss.length) loadAirportWx(miss).then(() => renderPlanes(false));
 }
 
 // Dead-reckon each plane forward between fetches so they glide smoothly.
