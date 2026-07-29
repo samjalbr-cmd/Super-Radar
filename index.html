@@ -197,10 +197,17 @@
   .plane-wrap .plane{ width:15px;height:15px; }
   .plane-lbl{
     position:absolute; top:15px; left:50%; transform:translateX(-50%);
-    font-family:monospace; font-size:calc(7px * var(--lblscale, 1)); line-height:1; color:#cfe6ff;
-    white-space:nowrap; text-shadow:0 0 2px #000, 0 0 2px #000, 0 0 2px #000;
+    font-family:monospace; font-size:calc(11px * var(--lblscale, 1)); line-height:1.1; color:#cfe6ff;
+    font-weight:700; white-space:nowrap; text-shadow:0 0 3px #000, 0 0 2px #000, 0 1px 1px #000;
   }
-  .plane-type{ color:#9fb2c7; font-size:0.85em; }   /* aircraft type, e.g. A320 */
+  .plane-type{ color:#9fb2c7; font-size:0.82em; font-weight:400; }   /* aircraft type, e.g. A320 */
+  /* Departure/arrival airport weather chips on a drawn route. */
+  .airport-wx.leaflet-tooltip{
+    background:rgba(10,14,26,.9); border:1px solid rgba(255,255,255,.25); color:#eaf2ff;
+    font-family:monospace; font-weight:700; font-size:calc(10px * var(--lblscale, 1));
+    padding:1px 5px; border-radius:4px; box-shadow:0 0 6px #000; white-space:nowrap;
+  }
+  .airport-wx.leaflet-tooltip:before{ display:none; }   /* no pointer arrow */
 
   /* Mesoscale Discussion labels. */
   .mcd-icon{ background:none; border:none; }
@@ -1828,7 +1835,50 @@ function clearPlanes(){
 }
 function clearRoute(){ if(routeLayer) routeLayer.clearLayers(); }
 
-// On tapping a plane, draw its origin -> destination line (route already cached).
+// WMO weather-code -> compact emoji for airport weather chips.
+function wmoEmoji(c){
+  if(c == null) return '';
+  if(c === 0) return '☀';
+  if(c <= 2) return '🌤';
+  if(c === 3) return '☁';
+  if(c <= 48) return '🌫';
+  if(c <= 57) return '🌦';
+  if(c <= 67) return '🌧';
+  if(c <= 77) return '❄';
+  if(c <= 82) return '🌧';
+  if(c <= 86) return '🌨';
+  return '⛈';
+}
+const airportWx = {};   // "lat,lon" -> {temp, code} (current conditions)
+function wxKey(a){ return a.latitude.toFixed(2) + ',' + a.longitude.toFixed(2); }
+function airportWxLabel(a){
+  const code = a.iata_code || a.icao_code || '?';
+  const w = airportWx[wxKey(a)];
+  return w ? `${code} ${Math.round(w.temp)}° ${wmoEmoji(w.code)}` : code;
+}
+// One Open-Meteo call for the (uncached) airports; global + CORS-open.
+async function loadAirportWx(pts){
+  const need = pts.filter(a => airportWx[wxKey(a)] === undefined);
+  if(!need.length) return;
+  need.forEach(a => airportWx[wxKey(a)] = null);   // mark pending
+  try{
+    const lats = need.map(a => a.latitude.toFixed(4)).join(',');
+    const lons = need.map(a => a.longitude.toFixed(4)).join(',');
+    const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lons}&current=temperature_2m,weather_code&temperature_unit=fahrenheit`);
+    const d = await r.json();
+    const arr = Array.isArray(d) ? d : [d];
+    need.forEach((a, i) => {
+      const c = arr[i] && arr[i].current;
+      airportWx[wxKey(a)] = c ? {temp: c.temperature_2m, code: c.weather_code} : null;
+    });
+  }catch(e){ need.forEach(a => delete airportWx[wxKey(a)]); }
+}
+function airportMarker(a, color){
+  return L.circleMarker([a.latitude, a.longitude], {radius:4, color, weight:2, fillColor:'#0A0E1A', fillOpacity:1})
+    .bindTooltip(airportWxLabel(a), {permanent:true, direction:'top', offset:[0,-5], className:'airport-wx'});
+}
+// On tapping a plane, draw its origin -> destination line with current weather
+// chips (temp + condition) at both airports.
 function showPlaneRoute(hex){
   const p = planes[hex];
   if(!p) return;
@@ -1838,8 +1888,12 @@ function showPlaneRoute(hex){
   clearRoute();
   routeLayer.addLayer(L.polyline([[o.latitude, o.longitude], [dst.latitude, dst.longitude]],
     {color:'#8FD3FF', weight:1.5, opacity:0.85, dashArray:'6 5'}));
-  routeLayer.addLayer(L.circleMarker([o.latitude, o.longitude], {radius:4, color:'#8FD3FF', weight:2, fillColor:'#0A0E1A', fillOpacity:1}).bindTooltip(o.iata_code || o.icao_code));
-  routeLayer.addLayer(L.circleMarker([dst.latitude, dst.longitude], {radius:4, color:'#FFD400', weight:2, fillColor:'#0A0E1A', fillOpacity:1}).bindTooltip(dst.iata_code || dst.icao_code));
+  const mO = airportMarker(o, '#8FD3FF'), mD = airportMarker(dst, '#FFD400');
+  routeLayer.addLayer(mO); routeLayer.addLayer(mD);
+  loadAirportWx([o, dst]).then(() => {
+    if(routeLayer.hasLayer(mO)) mO.setTooltipContent(airportWxLabel(o));
+    if(routeLayer.hasLayer(mD)) mD.setTooltipContent(airportWxLabel(dst));
+  });
 }
 
 function schedulePlanes(){
