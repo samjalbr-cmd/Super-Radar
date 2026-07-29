@@ -1255,14 +1255,37 @@ function stationPopup(s){
   return `<div class="alert-popup"><b>${p.name || p.station} (${p.station})</b>Wind: ${wind}${gust}${maxg}<br>Temp: ${temp}${feel}<br>Vis: ${vis}<br><span style="color:#8A93A6;font-size:11px;">${fmtTime(p.utc_valid)}</span></div>`;
 }
 
+// Big hubs to keep first when decluttering zoomed-out views (FAA 3-letter ids).
+const MAJOR_HUBS = new Set(('ATL DFW DEN ORD LAX JFK LAS MCO MIA CLT SEA PHX EWR SFO ' +
+  'IAH BOS FLL MSP LGA DTW PHL SLC DCA SAN BWI TPA AUS IAD BNA MDW HNL DAL OAK SJC SMF ' +
+  'SNA PDX STL RDU HOU MCI SAT MSY SDF CLE CMH IND MKE PIT CVG JAX ABQ OMA OKC TUS ELP ' +
+  'ANC BUF ROC ORF RIC BDL PVD ALB SYR GEG BOI RNO TUL ICT DSM GRR MEM BHM LIT JAN CAE ' +
+  'GSP CHS SAV MOB PNS TLH GNV CID FAR FSD RAP BIL GTF MSO PIH TWF LAN FWA SBN GRB MSN ' +
+  'CRW LEX EVV DAY TOL AKR ERI HAR ABE PWM BGR MHT BTV').split(/\s+/));
+function stationScore(p){
+  return (MAJOR_HUBS.has(p.station) ? 100 : 0) + (p.mslp != null ? 2 : 0) + (p.tmpf != null ? 1 : 0);
+}
+
 function renderStations(){
   if(!stationLayer) return;
   stationLayer.clearLayers();
   if(!stationsOn || map.getZoom() < 6) return;
   const b = map.getBounds();
   const metric = METRICS[stationMetric] || METRICS.temp;
-  for(const s of stationData){
-    if(!b.contains([s.lat, s.lon])) continue;
+
+  // Declutter: keep the highest-priority station per pixel cell so zoomed-out
+  // views show the major hubs, not an unreadable pile of overlapping labels.
+  const cell = windBarbsOn ? 60 : 40;
+  const claimed = new Set();
+  const visible = stationData
+    .filter(s => b.contains([s.lat, s.lon]))
+    .sort((a, z) => stationScore(z.p) - stationScore(a.p));
+
+  for(const s of visible){
+    const pt = map.latLngToLayerPoint([s.lat, s.lon]);
+    const key = Math.round(pt.x / cell) + ':' + Math.round(pt.y / cell);
+    if(claimed.has(key)) continue;
+    claimed.add(key);
     const v = metric.val(s.p);
     let text, color;
     if(v == null){ text = '·'; color = '#5a6577'; }
