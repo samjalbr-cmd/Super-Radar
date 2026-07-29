@@ -1776,6 +1776,7 @@ function renderPlanes(resetPos){
     const track = (a.track != null) ? a.track : (a.dir || 0);
     const route = routeCache[cs];
     const routed = route && route.plausible && route.origin && route.destination;
+    if(!routed) continue;   // only show planes with a position-verified route
     seen[hex] = true;
     const gs = (typeof a.gs === 'number') ? a.gs : 0;
     const icon = planeIcon(track, planeColor(a.alt_baro), routed ? routeLabel(route) : cs);
