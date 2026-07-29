@@ -135,6 +135,14 @@
 
   /* Station value labels (replace dots): colored number on the map. */
   .stn-icon{ background:none; border:none; }
+  /* Location pin for an item listed in the open Events feed. */
+  .feed-pin{
+    width:14px; height:14px; border-radius:50%;
+    border:2px solid #fff; box-sizing:border-box;
+    box-shadow:0 0 0 1px rgba(0,0,0,.6), 0 0 8px currentColor;
+    animation:feedPinPulse 1.8s ease-in-out infinite;
+  }
+  @keyframes feedPinPulse{ 0%,100%{ transform:scale(1); opacity:1; } 50%{ transform:scale(1.35); opacity:.75; } }
   /* Full station model: temp UL, dewpoint LL, coded pressure UR, barb center. */
   .stn-model{ position:relative; width:46px; height:46px; transform:translate(-50%,-50%); }
   .stn-model svg{ position:absolute; top:0; left:0; }
@@ -431,7 +439,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
 let lat = 42.907058, lon = -85.763014;
-let map, basemap, radarLayer, marker, alertLayerGroup, lightningLayerGroup;
+let map, basemap, radarLayer, marker, alertLayerGroup, lightningLayerGroup, feedLayerGroup;
 let spcOutlookLayer, mcdLayer, lsrLayer, stationLayer, modelLayer, modelMarkers, planeLayer, routeLayer;
 
 function initMap(){
@@ -465,6 +473,7 @@ function initMap(){
   routeLayer = L.layerGroup().addTo(map);
   planeLayer = L.layerGroup().addTo(map);
   lightningLayerGroup = L.layerGroup().addTo(map);
+  feedLayerGroup = L.layerGroup().addTo(map);   // location pins for listed events
   // Re-filter station markers to the viewport when the map moves (no refetch).
   map.on('moveend', renderStations);
   map.on('moveend', scheduleModelRefresh);
@@ -2028,6 +2037,7 @@ function toggleFeed(){
   feedOpen = !feedOpen;
   document.getElementById('feedPanel').classList.toggle('open', feedOpen);
   if(feedOpen) renderFeed();
+  else if(feedLayerGroup) feedLayerGroup.clearLayers();   // hide pins when tab closes
 }
 function flyTo(lat, lon){ if(lat != null && lon != null) map.setView([lat, lon], Math.max(map.getZoom(), 9)); }
 function feedTimeMs(iso){ if(!iso) return 0; const t = new Date(iso).getTime(); return isNaN(t) ? 0 : t; }
@@ -2096,9 +2106,18 @@ function renderFeed(){
   ev.sort((a, b) => b.t - a.t);
   const top = ev.slice(0, 80);
   let html = top.length ? '' : '<div class="feed-empty">No recent events in this view. Pan to an active area or zoom out.</div>';
-  for(const e of top){
+  feedLayerGroup.clearLayers();
+  for(let i = 0; i < top.length; i++){
+    const e = top[i];
     html += `<div class="feed-item" onclick="flyTo(${e.lat},${e.lon})"><div class="bar" style="background:${e.color}"></div>` +
             `<div><div class="fi-main">${e.main}</div><div class="fi-sub">${e.sub}</div><div class="fi-time">${agoStr(e.t)}</div></div></div>`;
+    // Drop a matching location pin on the map for each listed event.
+    if(e.lat != null && e.lon != null){
+      L.marker([e.lat, e.lon], {
+        icon: L.divIcon({className: '', html: `<div class="feed-pin" style="background:${e.color}"></div>`, iconSize: [14, 14], iconAnchor: [7, 7]}),
+        interactive: true, zIndexOffset: 800
+      }).bindPopup(`<b>${e.main}</b><br>${e.sub}<br><span style="opacity:.6">${agoStr(e.t)}</span>`).addTo(feedLayerGroup);
+    }
   }
   fb.innerHTML = html;
   fb.scrollTop = savedScroll;   // keep the reader's place across refreshes
