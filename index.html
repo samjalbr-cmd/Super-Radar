@@ -1733,12 +1733,23 @@ function routeValid(route, lat, lon, track){
 }
 
 // Look up a callsign's route once (cached). null = no route / pending.
+// adsbdb rate-limits aggressively; on a 429 we back off instead of poisoning
+// the cache with a permanent "no route", so labels reappear once it clears.
+let routeCooldownUntil = 0;
 function ensureRoute(cs){
   if(routeCache[cs] !== undefined) return false;
+  if(Date.now() < routeCooldownUntil) return false;
   routeCache[cs] = null;
   fetch(`https://api.adsbdb.com/v0/callsign/${encodeURIComponent(cs)}`)
     .then(r => r.json())
-    .then(d => { routeCache[cs] = (d.response && d.response.flightroute) ? d.response.flightroute : null; })
+    .then(d => {
+      if(typeof d.response === 'string' && /rate limit/i.test(d.response)){
+        delete routeCache[cs];                       // let it retry later
+        routeCooldownUntil = Date.now() + 5 * 60 * 1000;
+        return;
+      }
+      routeCache[cs] = (d.response && d.response.flightroute) ? d.response.flightroute : null;
+    })
     .catch(() => { routeCache[cs] = null; });
   return true;
 }
@@ -1766,15 +1777,16 @@ function renderPlanes(resetPos){
     const hex = a.hex; if(!hex) continue;
     const cs = (a.flight || '').trim();
     if(!cs) continue;
-    if(routeCache[cs] === undefined && newFetches < 25){ if(ensureRoute(cs)) newFetches++; }
-    const route = routeCache[cs];
-    if(!route || !route.origin || !route.destination) continue;   // no route → hide
+    if(routeCache[cs] === undefined && newFetches < 8){ if(ensureRoute(cs)) newFetches++; }
     const track = (a.track != null) ? a.track : (a.dir || 0);
-    if(!routeValid(route, a.lat, a.lon, track)) continue;         // route doesn't match position/heading → hide
+    const route = routeCache[cs];
+    // Show every plane; only trust the city-pair label when the route matches
+    // the plane's actual position + heading, otherwise just show the callsign.
+    const routed = route && route.origin && route.destination && routeValid(route, a.lat, a.lon, track);
     seen[hex] = true;
     const gs = (typeof a.gs === 'number') ? a.gs : 0;
-    const icon = planeIcon(track, planeColor(a.alt_baro), routeLabel(route));
-    const base = planePopupHTML(a, route);
+    const icon = planeIcon(track, planeColor(a.alt_baro), routed ? routeLabel(route) : cs);
+    const base = planePopupHTML(a, routed ? route : null);
     let p = planes[hex];
     if(!p){
       const marker = L.marker([a.lat, a.lon], {icon, keyboard:false}).bindPopup(base).addTo(planeLayer);
