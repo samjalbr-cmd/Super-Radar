@@ -288,6 +288,18 @@
     color:#FFE96B;cursor:pointer;border-radius:3px;padding:0 2px;}
   .afd-hit.on{background:rgba(242,183,5,0.34);color:#FFF3C4;border-bottom-style:solid;}
 
+  /* Decoded values printed on the grid. Lit = that criterion is met in the cell. */
+  .afd-icon{ background:none; border:none; }
+  .afd-val{
+    transform:translate(-50%,-50%);display:inline-block;text-align:center;
+    font-family:monospace;font-size:calc(9px * var(--lblscale, 1));line-height:1.15;
+    text-shadow:0 0 3px #000, 0 0 2px #000, 0 1px 1px #000;
+    white-space:nowrap;pointer-events:none;font-weight:700;
+  }
+  .afd-val .r{color:#7C8AA0;}
+  .afd-val .r.met{color:#FFE96B;}
+  .afd-val .r b{font-weight:400;opacity:0.7;font-size:0.85em;margin-right:2px;}
+
   /* Hour scrubber + coverage timeline, shown only while something is plotted. */
   #afdScrub{
     position:absolute;bottom:58px;left:50%;transform:translateX(-50%);z-index:560;
@@ -586,7 +598,7 @@
 <script>
 let lat = 42.907058, lon = -85.763014;
 let map, basemap, basemapLabels, radarLayer, marker, alertLayerGroup, lightningLayerGroup, feedLayerGroup;
-let spcOutlookLayer, mcdLayer, lsrLayer, stationLayer, modelLayer, modelMarkers, afdLayer, afdAreaLayer;
+let spcOutlookLayer, mcdLayer, lsrLayer, stationLayer, modelLayer, modelMarkers, afdLayer, afdMarkers, afdAreaLayer;
 let precipGroup, precipMarkers;
 const ESRI_CANVAS = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/';
 
@@ -632,6 +644,7 @@ function initMap(){
   precipMarkers = L.layerGroup().addTo(map);
   modelLayer = L.layerGroup().addTo(map);
   afdLayer = L.layerGroup().addTo(map);
+  afdMarkers = L.layerGroup().addTo(map);
   modelMarkers = L.layerGroup().addTo(map);
   spcOutlookLayer = L.layerGroup().addTo(map);
   alertLayerGroup = L.layerGroup().addTo(map);
@@ -1888,33 +1901,33 @@ let afdError = '';
 // can decode and explain the number but have no gridded field for it — those
 // chips are shown greyed rather than faked.
 const AFD_PARAMS = {
-  cape:   {model: 'cape', ok: [100, 9000],   unit: 'J/kg', name: 'CAPE',
+  cape:   {model: 'cape', abbr: 'CAPE', ok: [100, 9000],   unit: 'J/kg', name: 'CAPE',
            gloss: 'how much fuel the atmosphere has for updrafts — higher means stronger storms'},
-  cin:    {model: 'cin', ok: [5, 600],    unit: 'J/kg', name: 'CIN (cap)',
+  cin:    {model: 'cin', abbr: 'CIN', ok: [5, 600],    unit: 'J/kg', name: 'CIN (cap)',
            gloss: 'a warm lid holding storms down; it has to erode before anything can get going'},
-  shear6: {model: 'shear', ok: [5, 110],  unit: 'kt',   name: 'Deep-layer shear',
+  shear6: {model: 'shear', abbr: 'SHR', ok: [5, 110],  unit: 'kt',   name: 'Deep-layer shear',
            gloss: 'winds change enough with height to organize storms into rotating, long-lived cells'},
-  shear1: {model: 'shear1', ok: [5, 90], unit: 'kt',   name: '0–1 km shear',
+  shear1: {model: 'shear1', abbr: 'SHR1', ok: [5, 90], unit: 'kt',   name: '0–1 km shear',
            gloss: 'low-level turning that supports rotation right at the ground — the tornado ingredient'},
-  dewp:   {model: 'dewp', ok: [-20, 90],   unit: '°F',   name: 'Dewpoint',
+  dewp:   {model: 'dewp', abbr: 'DWP', ok: [-20, 90],   unit: '°F',   name: 'Dewpoint',
            gloss: 'how much moisture is at the surface — the raw material for storms and humidity'},
-  lapse:  {model: 'lapse', ok: [3, 11],  unit: '°C/km',name: 'Mid-level lapse rate',
+  lapse:  {model: 'lapse', abbr: 'LR', ok: [3, 11],  unit: '°C/km',name: 'Mid-level lapse rate',
            gloss: 'how fast it cools with height; steeper means air rises faster and hail grows bigger'},
-  li:     {model: 'li', ok: [-16, 12],     unit: '',     name: 'Lifted index',
+  li:     {model: 'li', abbr: 'LI', ok: [-16, 12],     unit: '',     name: 'Lifted index',
            gloss: 'a quick instability score — the more negative, the more explosive the air mass'},
-  pwat:   {model: 'pwat', ok: [0.2, 3.5],   unit: 'in',   name: 'Precipitable water',
+  pwat:   {model: 'pwat', abbr: 'PW', ok: [0.2, 3.5],   unit: 'in',   name: 'Precipitable water',
            gloss: 'total water in the column — how much there is to wring out as heavy rain'},
-  heat:   {model: 'heat', ok: [80, 140],   unit: '°F',   name: 'Heat index',
+  heat:   {model: 'heat', abbr: 'HTX', ok: [80, 140],   unit: '°F',   name: 'Heat index',
            gloss: 'what the heat actually feels like once humidity is counted'},
-  gust:   {model: 'gust', ok: [10, 140],   unit: 'kt',   name: 'Wind gusts',
+  gust:   {model: 'gust', abbr: 'GST', ok: [10, 140],   unit: 'kt',   name: 'Wind gusts',
            gloss: 'the strongest short bursts of wind expected'},
-  srh:    {model: null, ok: [20, 900],     unit: 'm²/s²',name: 'Storm-relative helicity',
+  srh:    {model: null, abbr: 'SRH', ok: [20, 900],     unit: 'm²/s²',name: 'Storm-relative helicity',
            gloss: 'how much spin a storm can tilt upright into a rotating updraft'},
-  dcape:  {model: null, ok: [100, 2000],     unit: 'J/kg', name: 'DCAPE',
+  dcape:  {model: null, abbr: 'DCAPE', ok: [100, 2000],     unit: 'J/kg', name: 'DCAPE',
            gloss: 'energy available to drive downdrafts — the damaging-wind ingredient'},
-  stp:    {model: null, ok: [0.2, 12],     unit: '',     name: 'Significant tornado parameter',
+  stp:    {model: null, abbr: 'STP', ok: [0.2, 12],     unit: '',     name: 'Significant tornado parameter',
            gloss: 'a composite index combining instability, shear and low cloud bases'},
-  lcl:    {model: null, ok: [100, 3500],     unit: 'm',    name: 'LCL height',
+  lcl:    {model: null, abbr: 'LCL', ok: [100, 3500],     unit: 'm',    name: 'LCL height',
            gloss: 'how high cloud bases are; lower bases favour tornadoes'},
 };
 
@@ -2288,7 +2301,7 @@ function renderAfdOverlay(){
   if(!afdLayer) return;
   afdLayer.clearLayers();
   const active = afdActiveCriteria().filter(c => c.plottable);
-  if(!active.length || !afdGrid) return;
+  if(!active.length || !afdGrid){ if(afdMarkers) afdMarkers.clearLayers(); return; }
   const {cols, rows, rects} = afdGrid;
   const hour = Math.min(afdHour, afdGrid.times.length - 1);
 
@@ -2311,8 +2324,49 @@ function renderAfdOverlay(){
   }
 }
 
+// Print the decoded metrics onto the grid, one line per active criterion, each
+// lit only where it meets its own threshold. With two criteria ANDed you can see
+// cell by cell which ingredient is the one holding the region back.
+let afdValuesOn = true;
+function renderAfdValues(){
+  if(!afdMarkers) return;
+  afdMarkers.clearLayers();
+  const active = afdActiveCriteria().filter(c => c.plottable && afdGrid && afdGrid.vals[c.param]);
+  if(!afdValuesOn || !active.length) return;
+  const {cols, rows, rects} = afdGrid;
+  const hour = Math.min(afdHour, afdGrid.times.length - 1);
+  for(let r = 0; r < rows; r++){
+    for(let c = 0; c < cols; c++){
+      if((r + c) % 2) continue;                       // checkerboard so they stay readable
+      const i = r * cols + c;
+      let rowsHtml = '', any = false;
+      for(const crit of active){
+        const v = afdGrid.vals[crit.param][hour][i];
+        if(v == null) continue;
+        any = true;
+        const met = afdMeets(crit, v) ? ' met' : '';
+        rowsHtml += `<div class="r${met}"><b>${AFD_PARAMS[crit.param].abbr}</b>${afdFmt(crit.param, v)}</div>`;
+      }
+      if(!any) continue;
+      const rect = rects[i];
+      L.marker([(rect[0][0] + rect[1][0]) / 2, (rect[0][1] + rect[1][1]) / 2], {
+        icon: L.divIcon({className: 'afd-icon', html: `<span class="afd-val">${rowsHtml}</span>`,
+                         iconSize: [0, 0], iconAnchor: [0, 0]}),
+        interactive: false, keyboard: false
+      }).addTo(afdMarkers);
+    }
+  }
+}
+
+function toggleAfdValues(cb){
+  afdValuesOn = cb.checked;
+  renderAfdValues();
+  if(syncRole === 'phone') broadcastState();
+}
+
 function renderAfd(){
   renderAfdOverlay();
+  renderAfdValues();
   renderAfdScrubber();
   renderAfdPanel();
   renderAfdArea();
@@ -2341,6 +2395,7 @@ function clearAfdCriteria(){
 function setAfdHour(h){
   afdHour = Math.max(0, Math.min(+h, afdGrid ? afdGrid.times.length - 1 : 0));
   renderAfdOverlay();
+  renderAfdValues();
   renderAfdScrubber();
   if(syncRole === 'phone') broadcastState();
 }
@@ -2617,7 +2672,9 @@ function renderAfdPanel(){
              `issued ${afdEsc(when)} · office <select id="afdOffice" onchange="loadAfd(this.value)">${opts}</select>` +
              `${afdOffices.length > 1 ? ' · your view crosses ' + afdOffices.length + ' offices' : ''}` +
              `<label style="display:flex;align-items:center;gap:6px;margin-top:6px;cursor:pointer;">` +
-             `<input type="checkbox" id="afdAreaChk"${afdAreaOn ? ' checked' : ''} onchange="toggleAfdArea(this)"> outline this office's area on the map</label></div>`;
+             `<input type="checkbox" id="afdAreaChk"${afdAreaOn ? ' checked' : ''} onchange="toggleAfdArea(this)"> outline this office's area on the map</label>` +
+             `<label style="display:flex;align-items:center;gap:6px;margin-top:3px;cursor:pointer;">` +
+             `<input type="checkbox" id="afdValChk"${afdValuesOn ? ' checked' : ''} onchange="toggleAfdValues(this)"> print the values on the grid</label></div>`;
   if(!afdCriteria.length){
     html += '<div class="feed-empty">This discussion doesn’t put numbers on anything — the forecaster described the setup in words only. The text is below.</div>';
   }
@@ -3299,7 +3356,7 @@ function getSyncState(){
     stationsOn, stationMetric, windBarbsOn,
     radarMode, singleSite, singleProduct, modelField, brightnessIdx,
     precipMode, precipWindow, feedOpen, kiosk: kioskOn,
-    afdOpen, afdHour, afdWFO, afdAreaOn, afdPlaying: !!afdPlayTimer,
+    afdOpen, afdHour, afdWFO, afdAreaOn, afdValuesOn, afdPlaying: !!afdPlayTimer,
     afdCrit: afdActiveCriteria().map(c => ({param: c.param, op: c.op, value: c.value,
              value2: c.value2, unit: c.unit, section: c.section, phrase: c.phrase, plottable: c.plottable})),
     lblScale: document.documentElement.style.getPropertyValue('--lblscale') || '1',
@@ -3360,6 +3417,11 @@ function applyState(s){
     afdAreaOn = s.afdAreaOn;
     const cb = document.getElementById('afdAreaChk'); if(cb) cb.checked = afdAreaOn;
     renderAfdArea();
+  }
+  if('afdValuesOn' in s && s.afdValuesOn !== afdValuesOn){
+    afdValuesOn = s.afdValuesOn;
+    const cb = document.getElementById('afdValChk'); if(cb) cb.checked = afdValuesOn;
+    renderAfdValues();
   }
   if('afdHour' in s && s.afdHour !== afdHour && afdGrid) setAfdHour(s.afdHour);
   if('afdPlaying' in s && !!s.afdPlaying !== !!afdPlayTimer) toggleAfdPlay();
