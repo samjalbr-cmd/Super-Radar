@@ -1889,7 +1889,6 @@ let afdOpen = false;
 let afdHour = 0;            // index into afdGrid.times
 let afdGrid = null;         // {cols, rows, rects, times, vals:{param:[hour][cell]}}
 let afdSeq = 0;             // staleness guard for grid fetches (mirrors precipSeq)
-let afdGridTimer = null;
 let afdPlayTimer = null;
 let afdLoading = false;
 let afdManual = false;      // true once the office is picked by hand
@@ -2209,7 +2208,6 @@ function afdActiveCriteria(){
 async function fetchAfdGrid(){
   const active = afdActiveCriteria().filter(c => c.plottable);
   if(!active.length){ afdGrid = null; renderAfd(); return; }
-  if(map.getZoom() < 5){ afdGrid = null; afdError = ''; renderAfd(); return; }
   const seq = ++afdSeq;
   const params = [];
   for(const c of active) if(!params.includes(c.param)) params.push(c.param);
@@ -2218,8 +2216,16 @@ async function fetchAfdGrid(){
     for(const v of MODELS[AFD_PARAMS[pm].model].vars.split(','))
       if(!vars.includes(v)) vars.push(v);
 
-  const b = map.getBounds();
+  // The discussion is about one office's area, so sample that area rather than
+  // whatever happens to be on screen. The grid then doesn't move when you pan,
+  // and its resolution over the region is the same at every zoom.
+  const feat = await cwaGeometry(afdWFO);
+  if(seq !== afdSeq) return;
+  const b = feat ? cwaBounds(feat) : map.getBounds();
   const {lats, lons, rects} = buildGrid(b, AFD_COLS, AFD_ROWS);
+  const inArea = rects.map(r => !feat ||
+    cwaContains(feat, (r[0][0] + r[1][0]) / 2, (r[0][1] + r[1][1]) / 2));
+  const areaCells = inArea.filter(Boolean).length;
   const qs = `latitude=${lats.join(',')}&longitude=${lons.join(',')}&hourly=${vars.join(',')}` +
              `&timezone=GMT&forecast_hours=${AFD_HOURS}`;
   const base = 'https://api.open-meteo.com/v1/forecast?' + qs;
@@ -2241,13 +2247,14 @@ async function fetchAfdGrid(){
           const hh = arr[i].hourly;
           let v = null;
           if(hh) try{ v = m.val(hh, h); }catch(e){ v = null; }
-          row[i] = (v == null || !isFinite(v)) ? null : v;
+          row[i] = (!inArea[i] || v == null || !isFinite(v)) ? null : v;
         }
         byHour.push(row);
       }
       vals[pm] = byHour;
     }
-    afdGrid = {cols: AFD_COLS, rows: AFD_ROWS, rects, times, vals, source};
+    afdGrid = {cols: AFD_COLS, rows: AFD_ROWS, rects, times, vals, source,
+               bounds: b, inArea, areaCells: areaCells || (AFD_COLS * AFD_ROWS)};
     if(afdHour >= times.length) afdHour = 0;
     renderAfd();
   }catch(e){
@@ -2282,12 +2289,13 @@ function afdMask(hour){
 function afdCoverage(){
   if(!afdGrid) return [];
   const n = afdGrid.cols * afdGrid.rows;
+  const denom = afdGrid.areaCells || n;
   const out = [];
   for(let h = 0; h < afdGrid.times.length; h++){
     const m = afdMask(h);
     let hit = 0;
     if(m) for(let i = 0; i < n; i++) if(m[i] === 1) hit++;
-    out.push(hit / n);
+    out.push(hit / denom);
   }
   return out;
 }
@@ -2442,11 +2450,9 @@ function toggleAfdPlay(){
 
 // Refetch the grid when the view moves (the grid is viewport-shaped).
 function scheduleAfdRefresh(){
-  if(afdActive.length){
-    clearTimeout(afdGridTimer);
-    afdGridTimer = setTimeout(fetchAfdGrid, 600);
-  }
-  if(!afdOpen || afdManual) return;
+  // The grid is tied to the office area, not the viewport, so panning and
+  // zooming need no refetch at all — only moving into another office's area.
+  if(afdManual) return;
   clearTimeout(afdOfficeTimer);
   afdOfficeTimer = setTimeout(async () => {
     const c = map.getCenter();
@@ -2562,6 +2568,44 @@ async function renderAfdArea(){
     L.marker(at, {icon: L.divIcon({className: 'mcd-icon', html, iconSize: [0, 0], iconAnchor: [0, 0]}),
                   interactive: false, keyboard: false}).addTo(afdAreaLayer);
   }catch(e){}
+}
+
+// Ray casting over one ring, in [lon, lat] order as GeoJSON stores it.
+function ringHas(ring, lon, lat){
+  let inside = false;
+  for(let i = 0, j = ring.length - 1; i < ring.length; j = i++){
+    const xi = ring[i][0], yi = ring[i][1], xj = ring[j][0], yj = ring[j][1];
+    if((yi > lat) !== (yj > lat) && lon < (xj - xi) * (lat - yi) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+// A Polygon's first ring is the outline, the rest are holes; MultiPolygon is a
+// list of those. A point counts only if it's in an outline and in no hole.
+function cwaContains(feat, lat, lon){
+  if(!feat || !feat.geometry) return true;          // no polygon -> don't clip
+  const g = feat.geometry;
+  const polys = g.type === 'MultiPolygon' ? g.coordinates
+              : g.type === 'Polygon' ? [g.coordinates] : null;
+  if(!polys) return true;
+  for(const poly of polys){
+    if(!poly.length || !ringHas(poly[0], lon, lat)) continue;
+    let hole = false;
+    for(let i = 1; i < poly.length; i++) if(ringHas(poly[i], lon, lat)){ hole = true; break; }
+    if(!hole) return true;
+  }
+  return false;
+}
+// Bounds of the office area, padded slightly so the outline isn't flush.
+function cwaBounds(feat){
+  let mnx = 180, mxx = -180, mny = 90, mxy = -90;
+  (function walk(c){
+    if(!c || !c.length) return;
+    if(typeof c[0][0] === 'number'){
+      for(const [x, y] of c){ if(x < mnx) mnx = x; if(x > mxx) mxx = x; if(y < mny) mny = y; if(y > mxy) mxy = y; }
+    }else c.forEach(walk);
+  })(feat.geometry.coordinates);
+  const px = (mxx - mnx) * 0.02, py = (mxy - mny) * 0.02;
+  return L.latLngBounds([mny - py, mnx - px], [mxy + py, mxx + px]);
 }
 
 function toggleAfdArea(cb){
@@ -2720,7 +2764,7 @@ function renderAfdScrubber(){
   const cov = afdCoverage();
   const pct = Math.round((cov[afdHour] || 0) * 100);
   const clk = document.getElementById('afdClock');
-  if(clk) clk.textContent = `${afdHourLabel(afdHour)} · ${pct}% of view`;
+  if(clk) clk.textContent = `${afdHourLabel(afdHour)} · ${pct}% of ${afdWFO || 'area'}`;
   drawAfdSpark(cov);
 }
 
