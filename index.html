@@ -288,6 +288,17 @@
     color:#FFE96B;cursor:pointer;border-radius:3px;padding:0 2px;}
   .afd-hit.on{background:rgba(242,183,5,0.34);color:#FFF3C4;border-bottom-style:solid;}
 
+  /* Impact-box caption — same read as a warning polygon: what, then when. */
+  .afd-box-icon{ background:none; border:none; }
+  .afd-box-lbl{
+    transform:translate(-50%,-50%);text-align:center;font-family:sans-serif;
+    color:#F2B705;text-shadow:0 0 3px #000, 0 0 2px #000, 0 1px 1px #000;
+    white-space:nowrap;pointer-events:none;
+  }
+  .afd-box-lbl.live{ color:#FF7AF5; }
+  .afd-box-lbl .t{ font-weight:800;font-size:calc(11px * var(--lblscale, 1));letter-spacing:0.03em; }
+  .afd-box-lbl .s{ font-weight:700;font-size:calc(9px * var(--lblscale, 1));color:#fff;opacity:0.92; }
+
   /* Decoded values printed on the grid. Lit = that criterion is met in the cell. */
   .afd-icon{ background:none; border:none; }
   .afd-val{
@@ -598,7 +609,7 @@
 <script>
 let lat = 42.907058, lon = -85.763014;
 let map, basemap, basemapLabels, radarLayer, marker, alertLayerGroup, lightningLayerGroup, feedLayerGroup;
-let spcOutlookLayer, mcdLayer, lsrLayer, stationLayer, modelLayer, modelMarkers, afdLayer, afdMarkers, afdAreaLayer;
+let spcOutlookLayer, mcdLayer, lsrLayer, stationLayer, modelLayer, modelMarkers, afdLayer, afdMarkers, afdAreaLayer, afdBoxLayer;
 let precipGroup, precipMarkers;
 const ESRI_CANVAS = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/';
 
@@ -649,6 +660,7 @@ function initMap(){
   spcOutlookLayer = L.layerGroup().addTo(map);
   alertLayerGroup = L.layerGroup().addTo(map);
   afdAreaLayer = L.layerGroup().addTo(map);
+  afdBoxLayer = L.layerGroup().addTo(map);
   mcdLayer = L.layerGroup().addTo(map);
   lsrLayer = L.layerGroup().addTo(map);
   stationLayer = L.layerGroup().addTo(map);
@@ -2312,6 +2324,7 @@ function renderAfdOverlay(){
   afdLayer.clearLayers();
   const active = afdActiveCriteria().filter(c => c.plottable);
   if(!active.length || !afdGrid){ if(afdMarkers) afdMarkers.clearLayers(); return; }
+  if(!afdFieldOn) return;                    // boxes only unless the field is asked for
   const {cols, rows, rects} = afdGrid;
   const hour = Math.min(afdHour, afdGrid.times.length - 1);
 
@@ -2337,7 +2350,7 @@ function renderAfdOverlay(){
 // Print the decoded metrics onto the grid, one line per active criterion, each
 // lit only where it meets its own threshold. With two criteria ANDed you can see
 // cell by cell which ingredient is the one holding the region back.
-let afdValuesOn = true;
+let afdValuesOn = false;
 function renderAfdValues(){
   if(!afdMarkers) return;
   afdMarkers.clearLayers();
@@ -2368,6 +2381,12 @@ function renderAfdValues(){
   }
 }
 
+function toggleAfdField(cb){
+  afdFieldOn = cb.checked;
+  renderAfdOverlay();
+  if(syncRole === 'phone') broadcastState();
+}
+
 function toggleAfdValues(cb){
   afdValuesOn = cb.checked;
   renderAfdValues();
@@ -2377,6 +2396,7 @@ function toggleAfdValues(cb){
 function renderAfd(){
   renderAfdOverlay();
   renderAfdValues();
+  renderAfdBoxes();
   renderAfdScrubber();
   renderAfdPanel();
   renderAfdArea();
@@ -2428,6 +2448,7 @@ function setAfdHour(h){
   afdHour = Math.max(0, Math.min(+h, afdGrid ? afdGrid.times.length - 1 : 0));
   renderAfdOverlay();
   renderAfdValues();
+  renderAfdBoxes();
   renderAfdScrubber();
   if(syncRole === 'phone') broadcastState();
 }
@@ -2493,6 +2514,7 @@ const CWA_URL = 'https://mapservices.weather.noaa.gov/static/rest/services/' +
                 'nws_reference_maps/nws_reference_map/FeatureServer/1/query';
 const cwaCache = {};        // wfo -> GeoJSON feature | null
 let afdAreaOn = true;
+let afdFieldOn = false;     // the smooth shaded field behind the boxes
 
 function cwaQuery(wfo, offset){
   return `${CWA_URL}?where=cwa%3D%27${encodeURIComponent(wfo)}%27` +
@@ -2612,6 +2634,101 @@ function toggleAfdArea(cb){
   afdAreaOn = cb.checked;
   renderAfdArea();
   if(syncRole === 'phone') broadcastState();
+}
+
+/* ---- impact boxes ----
+   The grid is the evidence; these are the answer. Group the hours when every
+   active criterion is met into episodes, box the area each one covers, and put
+   a short label on it — the same read as a warning polygon: what, and when. */
+
+const AFD_MAX_BOXES = 3;
+
+// Consecutive hours meeting the criteria, tolerating a single-hour dropout so a
+// noisy model doesn't split one overnight event into five slivers.
+function afdEpisodes(){
+  if(!afdGrid) return [];
+  const cov = afdCoverage();
+  const eps = [];
+  let cur = null, gap = 0;
+  for(let h = 0; h < cov.length; h++){
+    if(cov[h] > 0){
+      if(!cur) cur = {h0: h, h1: h, peak: 0, peakHour: h};
+      cur.h1 = h; gap = 0;
+      if(cov[h] > cur.peak){ cur.peak = cov[h]; cur.peakHour = h; }
+    }else if(cur && ++gap > 1){ eps.push(cur); cur = null; gap = 0; }
+  }
+  if(cur) eps.push(cur);
+  // Keep the few that actually matter, then put them back in time order.
+  return eps.sort((a, b) => b.peak - a.peak).slice(0, AFD_MAX_BOXES)
+            .sort((a, b) => a.h0 - b.h0);
+}
+
+// Extent of every cell that qualifies at any point during the episode.
+function afdEpisodeBounds(ep){
+  const {cols, rows, rects} = afdGrid;
+  let s = 90, n = -90, w = 180, e = -180, any = false;
+  for(let h = ep.h0; h <= ep.h1; h++){
+    const m = afdMask(h);
+    if(!m) continue;
+    for(let i = 0; i < m.length; i++){
+      if(m[i] !== 1) continue;
+      any = true;
+      const r = rects[i];
+      if(r[0][0] < s) s = r[0][0];
+      if(r[1][0] > n) n = r[1][0];
+      if(r[0][1] < w) w = r[0][1];
+      if(r[1][1] > e) e = r[1][1];
+    }
+  }
+  return any ? [[s, w], [n, e]] : null;
+}
+
+function afdClock(i){
+  if(!afdGrid || !afdGrid.times[i]) return '';
+  return new Date(afdGrid.times[i] + 'Z')
+    .toLocaleString([], {hour: 'numeric'}).replace(/\s/g, '').toUpperCase();
+}
+function afdDayTag(i){
+  if(!afdGrid || !afdGrid.times[i]) return '';
+  const d = new Date(afdGrid.times[i] + 'Z'), now = new Date();
+  return d.toDateString() === now.toDateString() ? '' :
+    d.toLocaleString([], {weekday: 'short'}).toUpperCase() + ' ';
+}
+// "CAPE 3000+ · SHR 40+" — the thresholds themselves, short enough to sit on a box.
+function afdBoxTitle(){
+  return afdActiveCriteria().filter(c => c.plottable).map(c => {
+    const p = AFD_PARAMS[c.param];
+    const v = afdThreshold(c);
+    return `${p.abbr} ${v}${c.op === 'lt' ? '-' : '+'}`;
+  }).join(' · ');
+}
+
+// One rectangle per episode, labelled like a warning: what, then when. The
+// episode covering the hour you're looking at is drawn solid; later ones are
+// dashed and dimmer, so "now" and "next" are distinguishable at a glance.
+function renderAfdBoxes(){
+  if(!afdBoxLayer) return;
+  afdBoxLayer.clearLayers();
+  if(!afdGrid || !afdActiveCriteria().filter(c => c.plottable).length) return;
+  const title = afdBoxTitle();
+  for(const ep of afdEpisodes()){
+    const b = afdEpisodeBounds(ep);
+    if(!b) continue;
+    const live = afdHour >= ep.h0 && afdHour <= ep.h1;
+    const color = live ? '#FF3AF5' : '#F2B705';
+    L.rectangle(b, {color, weight: live ? 2.5 : 1.8, fillColor: color,
+                    fillOpacity: live ? 0.10 : 0.05,
+                    dashArray: live ? null : '6 4', interactive: false}).addTo(afdBoxLayer);
+    const span = ep.h0 === ep.h1 ? afdDayTag(ep.h0) + afdClock(ep.h0)
+               : `${afdDayTag(ep.h0)}${afdClock(ep.h0)}–${afdDayTag(ep.h1)}${afdClock(ep.h1)}`;
+    const html = `<div class="afd-box-lbl${live ? ' live' : ''}">` +
+                 `<div class="t">${afdEsc(title)}</div>` +
+                 `<div class="s">${afdEsc(span)}${live ? ' · NOW' : ''}</div></div>`;
+    // Sit the label just inside the top edge, like a warning polygon's caption.
+    const at = [b[1][0] - (b[1][0] - b[0][0]) * 0.13, (b[0][1] + b[1][1]) / 2];
+    L.marker(at, {icon: L.divIcon({className: 'afd-box-icon', html, iconSize: [0, 0], iconAnchor: [0, 0]}),
+                  interactive: false, keyboard: false}).addTo(afdBoxLayer);
+  }
 }
 
 /* ---- panel + scrubber UI ---- */
@@ -2742,7 +2859,9 @@ function renderAfdPanel(){
              `<label style="display:flex;align-items:center;gap:6px;margin-top:6px;cursor:pointer;">` +
              `<input type="checkbox" id="afdAreaChk"${afdAreaOn ? ' checked' : ''} onchange="toggleAfdArea(this)"> outline this office's area on the map</label>` +
              `<label style="display:flex;align-items:center;gap:6px;margin-top:3px;cursor:pointer;">` +
-             `<input type="checkbox" id="afdValChk"${afdValuesOn ? ' checked' : ''} onchange="toggleAfdValues(this)"> print the values on the grid</label></div>`;
+             `<input type="checkbox" id="afdValChk"${afdValuesOn ? ' checked' : ''} onchange="toggleAfdValues(this)"> print the values on the grid</label>` +
+             `<label style="display:flex;align-items:center;gap:6px;margin-top:3px;cursor:pointer;">` +
+             `<input type="checkbox" id="afdFieldChk"${afdFieldOn ? ' checked' : ''} onchange="toggleAfdField(this)"> shade the whole field behind them</label></div>`;
   if(!afdCriteria.length){
     html += '<div class="feed-empty">This discussion doesn’t put numbers on anything — the forecaster described the setup in words only. The text is below.</div>';
   }
@@ -3424,7 +3543,7 @@ function getSyncState(){
     stationsOn, stationMetric, windBarbsOn,
     radarMode, singleSite, singleProduct, modelField, brightnessIdx,
     precipMode, precipWindow, feedOpen, kiosk: kioskOn,
-    afdOpen, afdHour, afdWFO, afdAreaOn, afdValuesOn, afdPlaying: !!afdPlayTimer,
+    afdOpen, afdHour, afdWFO, afdAreaOn, afdValuesOn, afdFieldOn, afdPlaying: !!afdPlayTimer,
     afdCrit: afdActiveCriteria().map(c => ({param: c.param, op: c.op, value: c.value,
              value2: c.value2, unit: c.unit, section: c.section, phrase: c.phrase, plottable: c.plottable})),
     lblScale: document.documentElement.style.getPropertyValue('--lblscale') || '1',
@@ -3490,6 +3609,11 @@ function applyState(s){
     afdValuesOn = s.afdValuesOn;
     const cb = document.getElementById('afdValChk'); if(cb) cb.checked = afdValuesOn;
     renderAfdValues();
+  }
+  if('afdFieldOn' in s && s.afdFieldOn !== afdFieldOn){
+    afdFieldOn = s.afdFieldOn;
+    const cb = document.getElementById('afdFieldChk'); if(cb) cb.checked = afdFieldOn;
+    renderAfdOverlay();
   }
   if('afdHour' in s && s.afdHour !== afdHour && afdGrid) setAfdHour(s.afdHour);
   if('afdPlaying' in s && !!s.afdPlaying !== !!afdPlayTimer) toggleAfdPlay();
