@@ -2641,6 +2641,7 @@ function toggleAfdArea(cb){
    active criterion is met into episodes, box the area each one covers, and put
    a short label on it — the same read as a warning polygon: what, and when. */
 
+const AFD_BUFFER = 1;         // cells of margin drawn around the qualifying area
 const AFD_MAX_EPISODES = 3;
 const AFD_MAX_BOXES = 4;      // across all episodes, so the map stays readable
 
@@ -2674,6 +2675,34 @@ function afdEpisodeCells(ep){
     for(let i = 0; i < n; i++) if(m[i] === 1) hit[i] = true;
   }
   return hit;
+}
+
+// Grow the qualifying area outward by a ring of cells. Two reasons: the grid
+// samples every ~20 km, so the true edge is uncertain by at least half a cell
+// and a hairline outline overstates how sharply the setup stops; and severe
+// polygons are drawn with margin for the same reason. The buffer stops at the
+// office boundary — the discussion has nothing to say about the next CWA over.
+function afdDilate(hit, passes){
+  const {cols, rows} = afdGrid;
+  let cur = hit;
+  for(let n = 0; n < passes; n++){
+    const next = cur.slice();
+    for(let i = 0; i < cur.length; i++){
+      if(!cur[i]) continue;
+      const r = Math.floor(i / cols), c = i % cols;
+      for(let dr = -1; dr <= 1; dr++){
+        for(let dc = -1; dc <= 1; dc++){
+          const nr = r + dr, nc = c + dc;
+          if(nr < 0 || nc < 0 || nr >= rows || nc >= cols) continue;
+          const j = nr * cols + nc;
+          if(afdGrid.inArea && !afdGrid.inArea[j]) continue;
+          next[j] = true;
+        }
+      }
+    }
+    cur = next;
+  }
+  return cur;
 }
 
 // Split those cells into spatially connected groups, so two separate threat
@@ -2815,12 +2844,19 @@ function renderAfdBoxes(){
   // that is all there is, still show the best one rather than nothing.
   let boxes = [];
   for(const ep of afdEpisodes()){
-    for(const cells of afdClusters(afdEpisodeCells(ep))) boxes.push({ep, cells});
+    // Drop lone cells as model speckle first, then buffer what survives and
+    // re-cluster, so neighbouring lobes merge into one readable area.
+    const raw = afdEpisodeCells(ep);
+    const groups = afdClusters(raw).filter(g => g.length > 1);
+    const keep = groups.length ? groups : afdClusters(raw).slice(0, 1);
+    if(!keep.length) continue;
+    const seed = new Array(raw.length).fill(false);
+    for(const g of keep) for(const i of g) seed[i] = true;
+    for(const cells of afdClusters(afdDilate(seed, AFD_BUFFER))) boxes.push({ep, cells});
   }
   if(!boxes.length) return;
   boxes.sort((a, b) => b.cells.length - a.cells.length);
-  const solid = boxes.filter(x => x.cells.length > 1);
-  boxes = (solid.length ? solid : boxes.slice(0, 1)).slice(0, AFD_MAX_BOXES);
+  boxes = boxes.slice(0, AFD_MAX_BOXES);
   boxes.sort((a, b) => a.ep.h0 - b.ep.h0 || b.cells.length - a.cells.length);
   // One caption per episode, on its largest lobe. Repeating the same "7PM-3AM"
   // over three neighbouring boxes just adds clutter; the outlines already say
