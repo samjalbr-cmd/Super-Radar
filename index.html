@@ -1893,6 +1893,7 @@ let afdGridTimer = null;
 let afdPlayTimer = null;
 let afdLoading = false;
 let afdManual = false;      // true once the office is picked by hand
+let afdUserPicked = false;  // true once criteria are chosen by hand
 let afdOfficeTimer = null;
 let afdError = '';
 
@@ -2181,6 +2182,7 @@ async function loadAfd(wfo){
     afdCriteria = parseAfd(afdSections);
     // Drop any active criteria that no longer exist in the new text.
     afdActive = afdActive.filter(id => afdCriteria.some(c => c.id === id));
+    afdAutoPlot();
   }catch(e){
     console.error('afd error', e);
     afdError = 'Could not load the discussion for ' + (afdWFO || '?') + '.';
@@ -2372,10 +2374,31 @@ function renderAfd(){
   renderAfdArea();
 }
 
+// Which criteria to light up on their own. Convective ingredients first, since
+// that is what a radar dashboard is for, and an explicit threshold ("> 40 kt")
+// beats a soft one ("around 40") when both exist for the same parameter.
+const AFD_AUTO_RANK = ['cape', 'shear6', 'shear1', 'lapse', 'pwat', 'cin', 'heat', 'gust', 'dewp', 'li'];
+function afdAutoPlot(){
+  if(afdUserPicked || afdActive.length) return;
+  const rank = p => { const i = AFD_AUTO_RANK.indexOf(p); return i < 0 ? 99 : i; };
+  const hard = c => (c.op === 'gt' || c.op === 'lt') ? 0 : 1;
+  const cand = afdCriteria.filter(c => c.plottable).sort((a, b) =>
+    (rank(a.param) - rank(b.param)) || (hard(a) - hard(b)));
+  const seen = {}, picked = [];
+  for(const c of cand){
+    if(seen[c.param]) continue;                 // one criterion per parameter
+    seen[c.param] = true;
+    picked.push(c.id);
+    if(picked.length === 2) break;              // two is the useful compound case
+  }
+  afdActive = picked;
+}
+
 // Toggle one criterion on/off the map.
 function toggleAfdCriterion(id){
   const c = afdCriteria.find(x => x.id === id);
   if(!c || !c.plottable) return;
+  afdUserPicked = true;
   const i = afdActive.indexOf(id);
   if(i >= 0) afdActive.splice(i, 1);
   else afdActive.push(id);
@@ -2385,6 +2408,7 @@ function toggleAfdCriterion(id){
 }
 
 function clearAfdCriteria(){
+  afdUserPicked = true;
   afdActive = [];
   afdGrid = null;
   afdStopPlay();
