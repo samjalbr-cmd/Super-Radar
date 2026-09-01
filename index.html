@@ -586,7 +586,7 @@
 <script>
 let lat = 42.907058, lon = -85.763014;
 let map, basemap, basemapLabels, radarLayer, marker, alertLayerGroup, lightningLayerGroup, feedLayerGroup;
-let spcOutlookLayer, mcdLayer, lsrLayer, stationLayer, modelLayer, modelMarkers, afdLayer;
+let spcOutlookLayer, mcdLayer, lsrLayer, stationLayer, modelLayer, modelMarkers, afdLayer, afdAreaLayer;
 let precipGroup, precipMarkers;
 const ESRI_CANVAS = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/';
 
@@ -635,6 +635,7 @@ function initMap(){
   modelMarkers = L.layerGroup().addTo(map);
   spcOutlookLayer = L.layerGroup().addTo(map);
   alertLayerGroup = L.layerGroup().addTo(map);
+  afdAreaLayer = L.layerGroup().addTo(map);
   mcdLayer = L.layerGroup().addTo(map);
   lsrLayer = L.layerGroup().addTo(map);
   stationLayer = L.layerGroup().addTo(map);
@@ -2143,8 +2144,14 @@ async function loadAfd(wfo){
   afdLoading = true; afdError = '';
   renderAfdPanel();
   try{
-    const offices = await afdViewportOffices();
-    if(offices.length){ afdOffices = offices; afdWFOAuto = offices[0]; }
+    if(afdOpen){
+      const offices = await afdViewportOffices();
+      if(offices.length){ afdOffices = offices; afdWFOAuto = offices[0]; }
+    }else{
+      const c = map.getCenter();
+      const only = await afdOfficeAt(c.lat, c.lng);
+      if(only){ afdWFOAuto = only; if(!afdOffices.includes(only)) afdOffices = [only].concat(afdOffices); }
+    }
     if(wfo) afdManual = true;
     const target = wfo || (afdManual ? afdWFO : afdWFOAuto) || afdWFO;
     if(!target){ afdError = 'No NWS office covers this view.'; afdLoading = false; renderAfdPanel(); return; }
@@ -2168,6 +2175,7 @@ async function loadAfd(wfo){
   }
   afdLoading = false;
   renderAfdPanel();
+  renderAfdArea();
   if(afdActive.length) fetchAfdGrid();
 }
 
@@ -2307,6 +2315,7 @@ function renderAfd(){
   renderAfdOverlay();
   renderAfdScrubber();
   renderAfdPanel();
+  renderAfdArea();
 }
 
 // Toggle one criterion on/off the map.
@@ -2388,6 +2397,98 @@ function afdRealityCheck(c){
   }
   if(best == null) return null;
   return {best, everMet, metHours, source: afdGrid.source};
+}
+
+/* ---- the discussion's area, drawn like a mesoscale discussion ---- */
+
+// NWS County Warning Area polygons, generalized server-side to ~36 vertices
+// (under 1 KB) — enough for a clean outline without shipping the full 100 KB
+// boundary. CORS-open, same host as the QPE service.
+const CWA_URL = 'https://mapservices.weather.noaa.gov/static/rest/services/' +
+                'nws_reference_maps/nws_reference_map/FeatureServer/1/query';
+const cwaCache = {};        // wfo -> GeoJSON feature | null
+let afdAreaOn = true;
+
+function cwaQuery(wfo, offset){
+  return `${CWA_URL}?where=cwa%3D%27${encodeURIComponent(wfo)}%27` +
+         `&outFields=cwa,citystate&returnGeometry=true&outSR=4326` +
+         `&maxAllowableOffset=${offset}&f=geojson`;
+}
+function cwaVertexCount(feat){
+  let n = 0;
+  (function walk(c){
+    if(!c || !c.length) return;
+    if(typeof c[0][0] === 'number') n += c.length; else c.forEach(walk);
+  })(feat.geometry.coordinates);
+  return n;
+}
+async function cwaGeometry(wfo){
+  if(cwaCache[wfo] !== undefined) return cwaCache[wfo];
+  try{
+    let d = await (await fetch(cwaQuery(wfo, 0.005))).json();
+    let f = (d.features && d.features[0]) || null;
+    // Island-heavy coastlines (Anchorage is 12k vertices at this tolerance) come
+    // back far too detailed for an outline — coarsen once rather than ship 226 KB.
+    if(f && cwaVertexCount(f) > 2500){
+      const d2 = await (await fetch(cwaQuery(wfo, 0.15))).json();
+      f = (d2.features && d2.features[0]) || f;
+    }
+    cwaCache[wfo] = f;
+  }catch(e){ cwaCache[wfo] = null; }
+  return cwaCache[wfo];
+}
+
+// The headline the office led with — the first KEY MESSAGES bullet.
+function afdHeadline(){
+  const k = afdSections.find(s => /KEY MESSAGES/i.test(s.name));
+  if(k){
+    const b = k.body.split(/\n\s*-\s+/).slice(1).map(x => x.replace(/\s+/g, ' ').trim()).filter(Boolean);
+    if(b.length) return b[0];
+  }
+  const d = afdSections.find(s => /DISCUSSION|SHORT TERM|NEAR TERM/i.test(s.name));
+  return d ? d.body.replace(/\s+/g, ' ').trim().slice(0, 70) : '';
+}
+
+// Outline the office's area with the discussion's own headline on it, in the
+// same visual language as an SPC mesoscale discussion. Tapping it opens the
+// decoder for that office.
+async function renderAfdArea(){
+  if(!afdAreaLayer) return;
+  afdAreaLayer.clearLayers();
+  if(!afdAreaOn || !afdWFO || !afdText) return;
+  const wfo = afdWFO;
+  const feat = await cwaGeometry(wfo);
+  if(!feat || wfo !== afdWFO || !afdAreaOn) return;
+  const hot = afdActive.length > 0;
+  const layer = L.geoJSON(feat, {
+    style: {color: '#F2B705', weight: hot ? 2.5 : 2, fillColor: '#F2B705',
+            fillOpacity: hot ? 0.05 : 0.03, dashArray: '7 5'}
+  });
+  const where = (feat.properties && feat.properties.citystate) || wfo;
+  const n = afdCriteria.length;
+  layer.bindPopup(`<div class="alert-popup"><b>Forecast Discussion · ${afdEsc(where)}</b>` +
+    `${afdEsc(afdHeadline())}<br><span style="color:#8FD3FF">` +
+    `${n ? n + ' threshold' + (n === 1 ? '' : 's') + ' decoded — tap DECODER to plot them' : 'no numeric thresholds in this issuance'}` +
+    `</span></div>`);
+  layer.on('click', () => { if(!afdOpen) toggleAfd(); });
+  layer.addTo(afdAreaLayer);
+  try{
+    const b = layer.getBounds();
+    // Sit the label along the top edge so it doesn't fight the radar in the middle.
+    const at = [b.getNorth() - (b.getNorth() - b.getSouth()) * 0.11, b.getCenter().lng];
+    let sub = afdHeadline().replace(/\.$/, '');
+    if(sub.length > 52) sub = sub.slice(0, 52) + '…';
+    const html = `<div class="mcd-label"><div class="mcd-title">${afdEsc(wfo)} FORECAST DISCUSSION</div>` +
+                 `<div class="mcd-sub">${afdEsc(sub)}</div></div>`;
+    L.marker(at, {icon: L.divIcon({className: 'mcd-icon', html, iconSize: [0, 0], iconAnchor: [0, 0]}),
+                  interactive: false, keyboard: false}).addTo(afdAreaLayer);
+  }catch(e){}
+}
+
+function toggleAfdArea(cb){
+  afdAreaOn = cb.checked;
+  renderAfdArea();
+  if(syncRole === 'phone') broadcastState();
 }
 
 /* ---- panel + scrubber UI ---- */
@@ -2514,7 +2615,9 @@ function renderAfdPanel(){
   const when = afdIssued ? afdIssued.toLocaleString([], {weekday: 'short', hour: 'numeric', minute: '2-digit'}) : '';
   let html = `<div class="feed-note"><b>K${afdWFO} · ${afdCriteria.length} threshold${afdCriteria.length === 1 ? '' : 's'} decoded</b>` +
              `issued ${afdEsc(when)} · office <select id="afdOffice" onchange="loadAfd(this.value)">${opts}</select>` +
-             `${afdOffices.length > 1 ? ' · your view crosses ' + afdOffices.length + ' offices' : ''}</div>`;
+             `${afdOffices.length > 1 ? ' · your view crosses ' + afdOffices.length + ' offices' : ''}` +
+             `<label style="display:flex;align-items:center;gap:6px;margin-top:6px;cursor:pointer;">` +
+             `<input type="checkbox" id="afdAreaChk"${afdAreaOn ? ' checked' : ''} onchange="toggleAfdArea(this)"> outline this office's area on the map</label></div>`;
   if(!afdCriteria.length){
     html += '<div class="feed-empty">This discussion doesn’t put numbers on anything — the forecaster described the setup in words only. The text is below.</div>';
   }
@@ -3196,7 +3299,7 @@ function getSyncState(){
     stationsOn, stationMetric, windBarbsOn,
     radarMode, singleSite, singleProduct, modelField, brightnessIdx,
     precipMode, precipWindow, feedOpen, kiosk: kioskOn,
-    afdOpen, afdHour, afdWFO, afdPlaying: !!afdPlayTimer,
+    afdOpen, afdHour, afdWFO, afdAreaOn, afdPlaying: !!afdPlayTimer,
     afdCrit: afdActiveCriteria().map(c => ({param: c.param, op: c.op, value: c.value,
              value2: c.value2, unit: c.unit, section: c.section, phrase: c.phrase, plottable: c.plottable})),
     lblScale: document.documentElement.style.getPropertyValue('--lblscale') || '1',
@@ -3251,6 +3354,12 @@ function applyState(s){
       afdActive = afdCriteria.filter(c => String(c.id).startsWith('sync')).map(c => c.id);
       if(afdActive.length) fetchAfdGrid(); else { afdGrid = null; renderAfd(); }
     }
+  }
+  if('afdWFO' in s && s.afdWFO && s.afdWFO !== afdWFO && !afdManual) loadAfd(s.afdWFO);
+  if('afdAreaOn' in s && s.afdAreaOn !== afdAreaOn){
+    afdAreaOn = s.afdAreaOn;
+    const cb = document.getElementById('afdAreaChk'); if(cb) cb.checked = afdAreaOn;
+    renderAfdArea();
   }
   if('afdHour' in s && s.afdHour !== afdHour && afdGrid) setAfdHour(s.afdHour);
   if('afdPlaying' in s && !!s.afdPlaying !== !!afdPlayTimer) toggleAfdPlay();
@@ -3459,6 +3568,7 @@ async function boot(){
   setInterval(loadPrecip, 5 * 60 * 1000);   // MRMS QPE refreshes hourly; snow grid drifts slower
   setInterval(computeLightning, 3000);
   setInterval(() => { if(feedOpen) renderFeed(); }, 30000);   // keep "Xm ago" fresh
+  loadAfd();
   setInterval(() => { if(afdOpen || afdActive.length) loadAfd(); }, 15 * 60 * 1000);
   setInterval(() => { if(afdActive.length) fetchAfdGrid(); }, 20 * 60 * 1000);
   // Auto-pair as the controller when opened via a scanned QR (?join=CODE);
