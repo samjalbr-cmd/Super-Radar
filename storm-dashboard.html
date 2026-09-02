@@ -326,6 +326,8 @@
     font-family:monospace;font-size:11px;padding:2px 8px;cursor:pointer;line-height:1.4;}
   #afdHourRange{flex:1;accent-color:var(--amber);}
   #afdClock{color:var(--dim);white-space:nowrap;font-size:10px;}
+  #afdMsg{color:var(--dim);font-size:11px;text-align:center;padding:1px 2px;}
+  #afdMsg.err{color:#FFB4B4;}
 
   /* Mesoscale Discussion labels. */
   .mcd-icon{ background:none; border:none; }
@@ -1906,6 +1908,9 @@ let afdLoading = false;
 let afdManual = false;      // true once the office is picked by hand
 let afdUserPicked = false;  // true once criteria are chosen by hand
 let afdOfficeTimer = null;
+let afdGridError = '';      // why the model grid isn't showing
+let afdGridLoading = false;
+let afdRetryTimer = null;
 let afdError = '';
 
 // Canonical parameter -> the MODELS key that supplies its grid, the unit AFDs
@@ -2221,6 +2226,9 @@ async function fetchAfdGrid(){
   const active = afdActiveCriteria().filter(c => c.plottable);
   if(!active.length){ afdGrid = null; renderAfd(); return; }
   const seq = ++afdSeq;
+  clearTimeout(afdRetryTimer);
+  afdGridError = ''; afdGridLoading = true;
+  renderAfdScrubber();
   const params = [];
   for(const c of active) if(!params.includes(c.param)) params.push(c.param);
   const vars = [];
@@ -2244,7 +2252,15 @@ async function fetchAfdGrid(){
   try{
     let data = await (await fetch(base + '&models=ncep_hrrr_conus')).json();
     let source = 'HRRR';
-    if(data && data.error){ data = await (await fetch(base)).json(); source = 'best model'; }
+    if(data && data.error){
+      const why = String(data.reason || '');
+      // A quota refusal is not a domain problem, and retrying without the model
+      // would only spend another request to be told the same thing.
+      if(/limit|quota|minutely|hourly|daily/i.test(why)) throw new Error('RATE:' + why);
+      data = await (await fetch(base)).json();
+      source = 'best model';
+      if(data && data.error) throw new Error(String(data.reason || 'no data'));
+    }
     if(seq !== afdSeq) return;                       // view or selection moved on
     const arr = Array.isArray(data) ? data : [data];
     if(!arr.length || !arr[0].hourly) throw new Error('no hourly data');
@@ -2269,10 +2285,20 @@ async function fetchAfdGrid(){
                bounds: b, inArea, areaCells: areaCells || (AFD_COLS * AFD_ROWS)};
     if(afdHour >= times.length) afdHour = 0;
     renderAfd();
+    afdGridLoading = false;
   }catch(e){
     if(seq !== afdSeq) return;
     console.error('afd grid error', e);
     afdGrid = null;
+    afdGridLoading = false;
+    // Never fail silently: an empty map with no explanation reads as a bug.
+    const msg = String((e && e.message) || e);
+    if(msg.indexOf('RATE:') === 0){
+      afdGridError = 'Model service is rate-limited — retrying in a minute.';
+      afdRetryTimer = setTimeout(fetchAfdGrid, 75000);
+    }else{
+      afdGridError = 'Could not load model data for these criteria.';
+    }
     renderAfd();
   }
 }
@@ -3024,6 +3050,7 @@ function renderAfdPanel(){
   if(!afdCriteria.length){
     html += '<div class="feed-empty">This discussion doesn’t put numbers on anything — the forecaster described the setup in words only. The text is below.</div>';
   }
+  if(afdGridError) html += `<div class="feed-note" style="color:#FFB4B4">${afdEsc(afdGridError)}</div>`;
   html += afdChipsHTML();
   html += afdBodyHTML();
   el.innerHTML = html;
@@ -3035,7 +3062,24 @@ function renderAfdScrubber(){
   const bar = document.getElementById('afdScrub');
   if(!bar) return;
   const live = !!(afdGrid && afdActive.length);
-  bar.classList.toggle('show', live);
+  const note = !live && afdActive.length && (afdGridLoading || afdGridError);
+  bar.classList.toggle('show', live || !!note);
+  const rowEl = bar.querySelector('.afd-srow'), sparkEl = document.getElementById('afdSpark');
+  let msgEl = document.getElementById('afdMsg');
+  if(!msgEl){
+    msgEl = document.createElement('div');
+    msgEl.id = 'afdMsg';
+    bar.appendChild(msgEl);
+  }
+  if(rowEl) rowEl.style.display = live ? '' : 'none';
+  if(sparkEl) sparkEl.style.display = live ? '' : 'none';
+  msgEl.style.display = note ? '' : 'none';
+  if(note){
+    msgEl.textContent = afdGridLoading
+      ? `Reading ${afdGrid ? '' : 'HRRR '}model data for ${afdWFO || 'this area'}…`
+      : afdGridError;
+    msgEl.className = afdGridError ? 'err' : '';
+  }
   if(!live){ afdStopPlay(); return; }
   const rng = document.getElementById('afdHourRange');
   if(rng){ rng.max = afdGrid.times.length - 1; rng.value = afdHour; }
