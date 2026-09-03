@@ -1,0 +1,65 @@
+name: Forecast discussion areas
+
+# Reads each office's Area Forecast Discussion, has Claude draw the areas it
+# describes, and commits the result for the map to load as a static file.
+#
+# This runs here rather than in the browser because the site is served from
+# GitHub Pages with no backend — an API key in client-side code would be handed
+# to every visitor. The key stays in Actions secrets and only the output ships.
+#
+# Cost: roughly $0.03 per office whose discussion has changed since the last
+# run. Offices are listed in data/offices.json; an office whose latest product
+# id we already hold is skipped without calling the model, so the real spend
+# tracks how often forecasters reissue (about 4x a day) rather than the cron.
+
+on:
+  schedule:
+    - cron: '20 */3 * * *'      # every 3 hours; most runs skip most offices
+  workflow_dispatch:
+    inputs:
+      only:
+        description: 'Comma-separated offices to force (ignores the unchanged check), e.g. GRR,DTX'
+        required: false
+      dry_run:
+        description: 'Build the prompts and stop, without calling the model'
+        type: boolean
+        default: false
+
+concurrency:
+  group: afd-areas
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - run: npm install --no-save @anthropic-ai/sdk
+
+      - name: Read the discussions
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          node scripts/afd-areas.mjs \
+            ${{ inputs.dry_run && '--dry-run' || '' }} \
+            ${{ inputs.only && format('--only={0}', inputs.only) || '' }}
+
+      - name: Commit if anything changed
+        run: |
+          if git diff --quiet -- data/afd-areas.json; then
+            echo "no change"
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/afd-areas.json
+          git commit -m "Update forecast discussion areas"
+          git push

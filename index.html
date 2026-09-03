@@ -96,7 +96,7 @@
   /* Presentation mode: the phone hides the TV's on-screen controls so the map
      fills the display. Real fullscreen needs a gesture on the TV itself, so this
      is what actually responds to the remote; the status pills stay readable. */
-  body.kiosk #topControls, body.kiosk #gear, body.kiosk #pairDot, body.kiosk #feedTab, body.kiosk #afdTab{
+  body.kiosk #topControls, body.kiosk #gear, body.kiosk #pairDot, body.kiosk #feedTab{
     display:none !important;
   }
   #kioskHint{
@@ -233,101 +233,15 @@
     font-family:monospace;font-size:10px;color:var(--dim);line-height:1.45;}
   .feed-note b{display:block;font-size:11px;color:#F5F3EC;}
 
-  /* ---- Forecast Discussion decoder: side panel, chips, hour scrubber ---- */
-  #afdTab{
-    position:absolute;top:50%;right:0;transform:translateY(calc(-50% - 104px));z-index:600;
-    writing-mode:vertical-rl;cursor:pointer;
-    background:var(--panel);border:1px solid var(--border);border-right:none;
-    border-radius:10px 0 0 10px;padding:14px 7px;
-    color:var(--dim);font-family:monospace;font-size:11px;letter-spacing:0.15em;
-    backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
-  }
-  #afdTab.live{color:var(--amber);border-color:var(--amber);}
-  #afdPanel{
-    position:absolute;top:0;right:0;height:100%;width:335px;max-width:90vw;z-index:655;
-    transform:translateX(100%);transition:transform 0.3s ease;
-    background:var(--panel);border-left:1px solid var(--border);
-    backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
-    display:flex;flex-direction:column;
-  }
-  #afdPanel.open{transform:translateX(0);}
-  #afdPanel .feed-head{display:flex;align-items:center;justify-content:space-between;
-    padding:11px 13px;border-bottom:1px solid var(--border);}
-  #afdPanel .feed-title{font-family:sans-serif;font-weight:700;color:#F5F3EC;font-size:13px;}
-  #afdClose{background:none;border:none;color:var(--dim);font-size:16px;cursor:pointer;line-height:1;}
-  #afdBody{overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding-bottom:20px;}
-  #afdOffice{background:#0d1420;color:#F5F3EC;border:1px solid var(--border);border-radius:6px;
-    font-family:monospace;font-size:10px;padding:2px 4px;}
-
-  /* One decoded threshold. Amber = plotted on the map. */
-  .afd-chip{display:inline-flex;align-items:baseline;gap:5px;margin:3px 2px;padding:5px 9px;
-    background:#0d1420;border:1px solid var(--border);border-radius:999px;
-    font-family:monospace;font-size:10.5px;color:#F5F3EC;cursor:pointer;white-space:nowrap;}
-  .afd-chip.on{border-color:var(--amber);color:var(--amber);box-shadow:0 0 0 1px rgba(242,183,5,0.28);}
-  .afd-chip.nogrid{opacity:0.5;border-style:dashed;cursor:default;}
-  .afd-chip .n{opacity:0.55;font-size:9px;}
-  .afd-and{font-family:monospace;font-size:9px;color:var(--dim);letter-spacing:0.12em;padding:0 1px;}
-  .afd-chips{padding:8px 10px 10px;border-bottom:1px solid var(--border);}
-  .afd-acts{display:flex;gap:10px;padding:0 12px 9px;font-family:monospace;font-size:10px;color:var(--dim);}
-  .afd-acts span{cursor:pointer;text-decoration:underline dotted;}
-  .afd-gloss{font-family:sans-serif;font-size:10.5px;color:var(--dim);line-height:1.45;
-    border-left:2px solid var(--border);padding:2px 0 2px 8px;margin:6px 2px 2px;}
-  .afd-check{font-family:monospace;font-size:10px;color:var(--dim);padding:1px 0 0 10px;line-height:1.5;}
-  .afd-check b{color:#F5F3EC;font-weight:700;}
-  .afd-v-yes{color:#2ECC71;} .afd-v-loc{color:#F2B705;} .afd-v-no{color:#8A93A6;}
-
-  /* The discussion itself, section by section, with matched phrases marked. */
-  .afd-sec{border-bottom:1px solid rgba(255,255,255,0.05);}
-  .afd-sec-h{padding:8px 12px;font-family:monospace;font-size:10px;color:var(--dim);
-    text-transform:uppercase;letter-spacing:0.07em;cursor:pointer;display:flex;gap:6px;align-items:baseline;}
-  .afd-sec-h .n{margin-left:auto;color:var(--amber);}
-  .afd-sec-b{display:none;padding:0 12px 10px;font-family:sans-serif;font-size:11.5px;
-    line-height:1.55;color:#F5F3EC;white-space:pre-wrap;}
-  .afd-sec.open .afd-sec-b{display:block;}
-  .afd-hit{background:rgba(242,183,5,0.16);border-bottom:1px dashed var(--amber);
-    color:#FFE96B;cursor:pointer;border-radius:3px;padding:0 2px;}
-  .afd-hit.on{background:rgba(242,183,5,0.34);color:#FFF3C4;border-bottom-style:solid;}
-
-  /* Impact-box caption — same read as a warning polygon: what, then when. */
-  .afd-box-icon{ background:none; border:none; }
-  .afd-box-lbl{
+  /* Caption on a discussion area or the office outline. */
+  .afd-area-icon{ background:none; border:none; }
+  .afd-area-lbl{
     transform:translate(-50%,-50%);text-align:center;font-family:sans-serif;
-    color:#F2B705;text-shadow:0 0 3px #000, 0 0 2px #000, 0 1px 1px #000;
+    text-shadow:0 0 3px #000, 0 0 2px #000, 0 1px 1px #000;
     white-space:nowrap;pointer-events:none;
   }
-  .afd-box-lbl.live{ color:#FF7AF5; }
-  .afd-box-lbl .t{ font-weight:800;font-size:calc(11px * var(--lblscale, 1));letter-spacing:0.03em; }
-  .afd-box-lbl .s{ font-weight:700;font-size:calc(9px * var(--lblscale, 1));color:#fff;opacity:0.92; }
-
-  /* Decoded values printed on the grid. Lit = that criterion is met in the cell. */
-  .afd-icon{ background:none; border:none; }
-  .afd-val{
-    transform:translate(-50%,-50%);display:inline-block;text-align:center;
-    font-family:monospace;font-size:calc(9px * var(--lblscale, 1));line-height:1.15;
-    text-shadow:0 0 3px #000, 0 0 2px #000, 0 1px 1px #000;
-    white-space:nowrap;pointer-events:none;font-weight:700;
-  }
-  .afd-val .r{color:#7C8AA0;}
-  .afd-val .r.met{color:#FFE96B;}
-  .afd-val .r b{font-weight:400;opacity:0.7;font-size:0.85em;margin-right:2px;}
-
-  /* Hour scrubber + coverage timeline, shown only while something is plotted. */
-  #afdScrub{
-    position:absolute;bottom:58px;left:50%;transform:translateX(-50%);z-index:560;
-    width:min(600px, calc(100vw - 40px));display:none;flex-direction:column;gap:5px;
-    padding:8px 12px 9px;background:var(--panel);border:1px solid var(--border);border-radius:12px;
-    backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
-    font-family:monospace;font-size:11px;color:#F5F3EC;
-  }
-  #afdScrub.show{display:flex;}
-  #afdSpark{width:100%;height:34px;display:block;cursor:pointer;}
-  .afd-srow{display:flex;align-items:center;gap:9px;}
-  .afd-srow button{background:#0d1420;color:#F5F3EC;border:1px solid var(--border);border-radius:6px;
-    font-family:monospace;font-size:11px;padding:2px 8px;cursor:pointer;line-height:1.4;}
-  #afdHourRange{flex:1;accent-color:var(--amber);}
-  #afdClock{color:var(--dim);white-space:nowrap;font-size:10px;}
-  #afdMsg{color:var(--dim);font-size:11px;text-align:center;padding:1px 2px;}
-  #afdMsg.err{color:#FFB4B4;}
+  .afd-area-lbl .t{ font-weight:800;font-size:calc(11px * var(--lblscale, 1));letter-spacing:0.03em; }
+  .afd-area-lbl .s{ font-weight:700;font-size:calc(9px * var(--lblscale, 1));color:#fff;opacity:0.92; }
 
   /* Mesoscale Discussion labels. */
   .mcd-icon{ background:none; border:none; }
@@ -439,21 +353,6 @@
   <div class="feed-head"><span class="feed-title">Recent Events · in view</span><button id="feedClose" onclick="toggleFeed()">✕</button></div>
   <div id="feedBody"></div>
 </div>
-<div id="afdTab" onclick="toggleAfd()">DECODER</div>
-<div id="afdPanel">
-  <div class="feed-head"><span class="feed-title">Forecast Discussion</span><button id="afdClose" onclick="toggleAfd()">✕</button></div>
-  <div id="afdBody"></div>
-</div>
-<div id="afdScrub">
-  <canvas id="afdSpark" height="34"></canvas>
-  <div class="afd-srow">
-    <button onclick="setAfdHour(afdHour - 1)">◀</button>
-    <button id="afdPlay" onclick="toggleAfdPlay()">▶</button>
-    <button onclick="setAfdHour(afdHour + 1)">▶</button>
-    <input id="afdHourRange" type="range" min="0" max="35" step="1" value="0" oninput="setAfdHour(+this.value)">
-    <span id="afdClock"></span>
-  </div>
-</div>
 <div id="kioskHint">presentation mode · press Esc on this screen to show the controls</div>
 <div id="toasts"></div>
 <div id="lightningBadge"></div>
@@ -525,6 +424,9 @@
       <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" data-spc="mcd" checked onchange="toggleSpc(this)"> Mesoscale Discussions</label>
       <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" data-spc="lsr" checked onchange="toggleSpc(this)"> Storm Reports (24h)</label>
     </div>
+    <label style="margin-top:8px;">Forecast Discussion</label>
+    <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" id="afdAreasChk" checked onchange="toggleAfdAreas(this)"> Hazard areas from the discussion</label>
+    <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" id="afdOutlineChk" checked onchange="toggleAfdOutline(this)"> Outline the issuing office</label>
     <label style="margin-top:8px;">Model Layers</label>
     <select id="modelField" onchange="setModelField(this.value)">
       <option value="off">Off</option>
@@ -611,7 +513,7 @@
 <script>
 let lat = 42.907058, lon = -85.763014;
 let map, basemap, basemapLabels, radarLayer, marker, alertLayerGroup, lightningLayerGroup, feedLayerGroup;
-let spcOutlookLayer, mcdLayer, lsrLayer, stationLayer, modelLayer, modelMarkers, afdLayer, afdMarkers, afdAreaLayer, afdBoxLayer;
+let spcOutlookLayer, mcdLayer, lsrLayer, stationLayer, modelLayer, modelMarkers, afdAreaLayer, afdHazardLayer;
 let precipGroup, precipMarkers;
 const ESRI_CANVAS = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/';
 
@@ -642,11 +544,6 @@ function initMap(){
   map.createPane('modelPane');
   map.getPane('modelPane').style.zIndex = 240;
   map.getPane('modelPane').style.pointerEvents = 'none';
-  // Forecast-discussion criteria sit above the model field: the shaded parameter
-  // and, on top of it, the region meeting the forecaster's stated threshold.
-  map.createPane('afdPane');
-  map.getPane('afdPane').style.zIndex = 245;
-  map.getPane('afdPane').style.pointerEvents = 'none';
   // Precip accumulation sits directly on the radar tiles — under the model
   // fields so both can be read together when they're on at the same time.
   map.createPane('precipPane');
@@ -656,13 +553,11 @@ function initMap(){
   precipGroup = L.layerGroup().addTo(map);
   precipMarkers = L.layerGroup().addTo(map);
   modelLayer = L.layerGroup().addTo(map);
-  afdLayer = L.layerGroup().addTo(map);
-  afdMarkers = L.layerGroup().addTo(map);
   modelMarkers = L.layerGroup().addTo(map);
   spcOutlookLayer = L.layerGroup().addTo(map);
   alertLayerGroup = L.layerGroup().addTo(map);
   afdAreaLayer = L.layerGroup().addTo(map);
-  afdBoxLayer = L.layerGroup().addTo(map);
+  afdHazardLayer = L.layerGroup().addTo(map);
   mcdLayer = L.layerGroup().addTo(map);
   lsrLayer = L.layerGroup().addTo(map);
   stationLayer = L.layerGroup().addTo(map);
@@ -692,13 +587,6 @@ function initMap(){
   };
   if(window.ResizeObserver){
     new ResizeObserver(settle).observe(document.getElementById('map'));
-  }
-  const spark = document.getElementById('afdSpark');
-  if(spark){
-    let dragging = false;
-    spark.addEventListener('pointerdown', e => { dragging = true; afdSparkSeek(e); });
-    spark.addEventListener('pointermove', e => { if(dragging) afdSparkSeek(e); });
-    window.addEventListener('pointerup', () => { dragging = false; });
   }
   setTimeout(settle, 400);
   setTimeout(settle, 1200);
@@ -1877,685 +1765,125 @@ function scheduleModelRefresh(){
   modelFetchTimer = setTimeout(fetchModel, 600);   // debounce panning
 }
 
-/* ---------------- Forecast Discussion decoder (NWS AFD) ----------------
-   NWS Area Forecast Discussions explain the reasoning behind a forecast, but in
-   dense shorthand: "effective shear greater than 40 knots and MUCAPE in excess
-   of 3000 J/kg". Every one of those is a checkable, time-varying condition.
+/* ---------------- Forecast discussion areas ----------------
+   A GitHub Action reads each office's Area Forecast Discussion, has Claude draw
+   the areas it describes, and commits data/afd-areas.json. This just loads that
+   file and puts the shapes on the map.
 
-   We fetch the AFD for the office covering the map center, parse each quantified
-   statement into a criterion, and plot it: the parameter field in its normal
-   ramp with the forecaster's own threshold outlined on top. Several criteria can
-   be combined (AND) so a sentence like the one above becomes a single region —
-   the actual area where both hold — with an hour slider to watch it open/close.
+   The work happens there rather than here because the site is static: an API
+   key in this file would be handed to every visitor. See
+   .github/workflows/afd-areas.yml. */
 
-   Grid data is HRRR via Open-Meteo (the same CAM the discussions cite), falling
-   back to Open-Meteo's best_match outside the HRRR domain. */
-
-let afdWFO = null;          // 3-letter office id the current text belongs to
-let afdWFOAuto = null;      // office derived from map center (before any override)
-let afdText = '';
-let afdIssued = null;       // Date
-let afdSections = [];       // [{name, body}]
-let afdCriteria = [];       // parsed criteria (see parseAfd)
-let afdActive = [];         // criterion ids currently plotted
-let afdOffices = [];        // offices covering the viewport, for the override picker
-let afdOpen = false;
-let afdHour = 0;            // index into afdGrid.times
-let afdGrid = null;         // {cols, rows, rects, times, vals:{param:[hour][cell]}}
-let afdSeq = 0;             // staleness guard for grid fetches (mirrors precipSeq)
-let afdPlayTimer = null;
-let afdLoading = false;
-let afdManual = false;      // true once the office is picked by hand
-let afdUserPicked = false;  // true once criteria are chosen by hand
+const AFD_DATA_URL = 'data/afd-areas.json';
+let afdAreas = null;          // {generated, offices:{WFO:{headline, issued, areas[]}}}
+let afdWFO = null;            // office under the map center, for the outline
 let afdOfficeTimer = null;
-let afdGridTimer = null;
-let afdGridError = '';      // why the model grid isn't showing
-let afdGridLoading = false;
-let afdRetryTimer = null;
-let afdError = '';
+let afdAreasOn = true;
+let afdOutlineOn = true;
 
-// Canonical parameter -> the MODELS key that supplies its grid, the unit AFDs
-// quote it in, a display name, and a plain-English gloss. `model: null` means we
-// can decode and explain the number but have no gridded field for it — those
-// chips are shown greyed rather than faked.
-const AFD_PARAMS = {
-  cape:   {model: 'cape', abbr: 'CAPE', ok: [100, 9000],   unit: 'J/kg', name: 'CAPE',
-           gloss: 'how much fuel the atmosphere has for updrafts — higher means stronger storms'},
-  cin:    {model: 'cin', abbr: 'CIN', ok: [5, 600],    unit: 'J/kg', name: 'CIN (cap)',
-           gloss: 'a warm lid holding storms down; it has to erode before anything can get going'},
-  shear6: {model: 'shear', abbr: 'SHR', ok: [5, 110],  unit: 'kt',   name: 'Deep-layer shear',
-           gloss: 'winds change enough with height to organize storms into rotating, long-lived cells'},
-  shear1: {model: 'shear1', abbr: 'SHR1', ok: [5, 90], unit: 'kt',   name: '0–1 km shear',
-           gloss: 'low-level turning that supports rotation right at the ground — the tornado ingredient'},
-  dewp:   {model: 'dewp', abbr: 'DWP', ok: [-20, 90],   unit: '°F',   name: 'Dewpoint',
-           gloss: 'how much moisture is at the surface — the raw material for storms and humidity'},
-  lapse:  {model: 'lapse', abbr: 'LR', ok: [3, 11],  unit: '°C/km',name: 'Mid-level lapse rate',
-           gloss: 'how fast it cools with height; steeper means air rises faster and hail grows bigger'},
-  li:     {model: 'li', abbr: 'LI', ok: [-16, 12],     unit: '',     name: 'Lifted index',
-           gloss: 'a quick instability score — the more negative, the more explosive the air mass'},
-  pwat:   {model: 'pwat', abbr: 'PW', ok: [0.2, 3.5],   unit: 'in',   name: 'Precipitable water',
-           gloss: 'total water in the column — how much there is to wring out as heavy rain'},
-  heat:   {model: 'heat', abbr: 'HTX', ok: [80, 140],   unit: '°F',   name: 'Heat index',
-           gloss: 'what the heat actually feels like once humidity is counted'},
-  gust:   {model: 'gust', abbr: 'GST', ok: [10, 140],   unit: 'kt',   name: 'Wind gusts',
-           gloss: 'the strongest short bursts of wind expected'},
-  srh:    {model: null, abbr: 'SRH', ok: [20, 900],     unit: 'm²/s²',name: 'Storm-relative helicity',
-           gloss: 'how much spin a storm can tilt upright into a rotating updraft'},
-  dcape:  {model: null, abbr: 'DCAPE', ok: [100, 2000],     unit: 'J/kg', name: 'DCAPE',
-           gloss: 'energy available to drive downdrafts — the damaging-wind ingredient'},
-  stp:    {model: null, abbr: 'STP', ok: [0.2, 12],     unit: '',     name: 'Significant tornado parameter',
-           gloss: 'a composite index combining instability, shear and low cloud bases'},
-  lcl:    {model: null, abbr: 'LCL', ok: [100, 3500],     unit: 'm',    name: 'LCL height',
-           gloss: 'how high cloud bases are; lower bases favour tornadoes'},
+// Colour by what the hazard is, matching the alert palette so a discussion area
+// and a warning for the same thing read the same way.
+const AFD_HAZARD = {
+  'tornado':        {color: '#E10600', rank: 6},
+  'damaging wind':  {color: '#FF7A00', rank: 5},
+  'hail':           {color: '#3AA0FF', rank: 5},
+  'severe storms':  {color: '#F2B705', rank: 4},
+  'flash flooding': {color: '#2ECC71', rank: 4},
+  'heavy snow':     {color: '#CFE8FF', rank: 3},
+  'ice':            {color: '#B14FFF', rank: 3},
+  'extreme cold':   {color: '#8FD3FF', rank: 2},
+  'heat':           {color: '#FF3AF5', rank: 2},
+  'high wind':      {color: '#FF7A00', rank: 2},
+  'dense fog':      {color: '#8A93A6', rank: 1},
+  'fire weather':   {color: '#FF7A00', rank: 2},
+  'marine':         {color: '#4A6FA5', rank: 1},
+  'other':          {color: '#8A93A6', rank: 1},
 };
+const afdHazard = h => AFD_HAZARD[h] || AFD_HAZARD.other;
 
-// Aliases are tried MOST SPECIFIC FIRST and matched spans are consumed, so
-// "0-1 KM bulk shear" resolves to shear1 and never also to the generic
-// "bulk shear" -> shear6 alias.
-const AFD_ALIASES = [
-  ['shear1', /\b0\s*[-–]\s*1\s*km\s*(?:bulk\s+)?shear\b|\blow[- ]level shear\b/gi],
-  ['shear6', /\b(?:effective|deep[- ]layer|0\s*[-–]\s*6\s*km)\s*(?:bulk\s+)?shear\b|\bbulk shear\b|\beffective bulk shear\b/gi],
-  ['dcape',  /\bDCAPE\b/gi],
-  ['cape',   /\b(?:MU|ML|SB)?CAPE\b/gi],
-  ['srh',    /\bSRH\b|\bstorm[- ]relative helicity\b|\bhelicity\b/gi],
-  ['stp',    /\bSTP\b|\bsignificant tornado parameter\b/gi],
-  ['lcl',    /\bLCL(?:\s+heights?)?\b/gi],
-  ['pwat',   /\bPWATs?\b|\bprecipitable water\b/gi],
-  ['heat',   /\bheat ind(?:ex|ices)\b/gi],
-  ['lapse',  /\b(?:mid[- ]level\s+)?lapse rates?\b/gi],
-  ['cin',    /\bCINH?\b|\bconvective inhibition\b/gi],
-  ['li',     /\blifted ind(?:ex|ices)\b/gi],
-  ['dewp',   /\bdew\s?points?\b/gi],
-  ['gust',   /\bwind gusts?\b/gi],
-];
-
-const AFD_GT = '(?:greater than|more than|in excess of|exceeding|excess of|above|over|upwards of|at or above|aoa|at least)';
-const AFD_LT = '(?:less than|below|under|no more than)';
-const AFD_AP = '(?:around|near|about|approximately|~|up to|as high as|reaching|of|to)';
-const AFD_N  = '(\\d{1,5}(?:\\.\\d+)?)';
-const AFD_RG = '(\\d{1,5}(?:\\.\\d+)?)\\s*(?:-|–|to|and)\\s*(\\d{1,5}(?:\\.\\d+)?)';
-const AFD_UN = '(?:J\\/kg|kts?|knots?|deg(?:rees)?\\s*F|degrees|F|"|inches|in|C\\/km|m2\\/s2)';
-
-// Split the raw product into its ".SECTION..." blocks (separated by "&&").
-function afdSplitSections(text){
-  const out = [];
-  const lines = text.split(/\r?\n/);
-  let cur = null;
-  for(const ln of lines){
-    // Offices qualify the section name in two styles that both have to survive:
-    // ".AVIATION /18Z TAFS THROUGH 18Z WEDNESDAY/..." and
-    // ".DISCUSSION (This evening through Tuesday)...".
-    const m = ln.match(/^\.([A-Z][A-Z0-9 /&'.\-]{1,70}?)\s*(?:\([^)]*\))?\s*\.\.\.\s*(.*)$/);
-    if(m){
-      if(cur) out.push(cur);
-      cur = {name: m[1].replace(/\s*\/.*$/, '').trim(), body: m[2] ? m[2] + '\n' : ''};
-      continue;
-    }
-    if(ln.trim() === '&&' || ln.trim() === '$$'){
-      if(cur){ out.push(cur); cur = null; }
-      continue;
-    }
-    if(cur) cur.body += ln + '\n';
-  }
-  if(cur) out.push(cur);
-  return out.filter(s => s.body.trim());
-}
-
-// Pull the issuance timestamp out of the product header, e.g.
-// "238 PM EDT Tue Sep 1 2026". Falls back to the API's issuanceTime.
-function afdParseIssued(text, fallbackIso){
-  const m = text.match(/^\s*(\d{3,4})\s+(AM|PM)\s+([A-Z]{3,4})\s+\w{3}\s+(\w{3})\s+(\d{1,2})\s+(\d{4})/m);
-  if(fallbackIso){ const d = new Date(fallbackIso); if(!isNaN(d)) return d; }
-  return m ? new Date() : null;
-}
-
-// Sections that are never scanned for criteria. AVIATION is the biggest source of
-// plausible-looking noise (TAF ceilings, crosswind "gusts to 15kt"); the rest are
-// records, point forecasts and boilerplate.
-const AFD_NOSCAN = /WATCHES\/WARNINGS|PRELIMINARY POINT|SPOTTER|AVIATION|CLIMATE|EQUIPMENT|TEMPERATURE/i;
-
-// Sections whose lead time is beyond what the hourly model grid covers. Their
-// criteria still decode and explain, they just can't be plotted.
-function afdSectionPlottable(name){
-  return !/LONG TERM|EXTENDED|CLIMATE|PRELIMINARY|WATCHES\/WARNINGS/i.test(name);
-}
-
-/* Turn AFD prose into criteria. For each parameter alias we look FORWARD for a
-   comparator + number ("effective shear greater than 40 knots"), and failing
-   that BACKWARD for a leading number ("40+ kts of effective shear"). Anchoring
-   on the parameter name first is what keeps dates, "12Z", "I-94" and zone
-   numbers out of the results. */
-function parseAfd(sections){
-  const out = [];
-  let id = 0;
-  for(const sec of sections){
-    if(AFD_NOSCAN.test(sec.name)) continue;
-    const flat = sec.body.replace(/\s+/g, ' ');
-    const consumed = new Array(flat.length).fill(false);
-    for(const [param, alias] of AFD_ALIASES){
-      alias.lastIndex = 0;
-      let m;
-      while((m = alias.exec(flat)) !== null){
-        const s = m.index, e = s + m[0].length;
-        let overlap = false;
-        for(let i = s; i < e; i++) if(consumed[i]){ overlap = true; break; }
-        if(overlap) continue;
-        const hit = afdReadQuantity(flat, s, e, param);
-        for(let i = s; i < e; i++) consumed[i] = true;
-        if(!hit) continue;
-        const meta = AFD_PARAMS[param];
-        out.push({
-          id: 'c' + (id++), param, op: hit.op, value: hit.value, value2: hit.value2,
-          unit: meta.unit, section: sec.name,
-          raw: flat.slice(Math.max(0, s - 60), Math.min(flat.length, e + 70)).trim(),
-          phrase: flat.slice(Math.min(s, hit.start), Math.max(e, hit.end)).trim(),
-          plottable: !!meta.model && afdSectionPlottable(sec.name),
-        });
-      }
-    }
-  }
-  return afdDedupe(out);
-}
-
-// Numbers that look like measurements but aren't. Checked against the text right
-// around the matched quantity, so "12Z", "I-94", "60 percent" and "Sep 1" never
-// become criteria even if they sit next to a parameter name.
-function afdIsNoise(flat, start, end, value, param){
-  const tail = flat.slice(end, end + 12);
-  if(/^\s*(?:Z\b|UTC|[AP]M\b|[ECMP][SD]T\b)/i.test(tail)) return true;   // clock time
-  if(/^\s*(?:%|percent\b)/i.test(tail)) return true;                     // probability
-  if(/^(?:st|nd|rd|th)\b/i.test(tail)) return true;                       // ordinal date
-  const head = flat.slice(Math.max(0, start - 14), start);
-  if(/\b(?:I|US|HWY|SR|RT|RTE|MD|CR)[-\s]$/i.test(head)) return true;     // highway shield
-  if(/\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+$/i.test(head)) return true;
-  if(/(?:#|MCD |WW |day\s*)$/i.test(head)) return true;                   // product / day id
-  const ok = AFD_PARAMS[param] && AFD_PARAMS[param].ok;
-  if(ok && (value < ok[0] || value > ok[1])) return true;                 // implausible magnitude
-  return false;
-}
-
-// Read the number attached to a parameter mention. Returns null when the
-// parameter is discussed only qualitatively ("decent MUCAPE").
-function afdReadQuantity(flat, s, e, param){
-  const after = flat.slice(e, e + 95);
-  const tries = [
-    [new RegExp('^\\W*(?:values?\\s+)?(?:' + AFD_GT + ')\\s+' + AFD_RG, 'i'), 'gt'],
-    [new RegExp('^\\W*(?:values?\\s+)?(?:' + AFD_GT + ')\\s+' + AFD_N,  'i'), 'gt'],
-    [new RegExp('^\\W*(?:values?\\s+)?(?:' + AFD_LT + ')\\s+' + AFD_N,  'i'), 'lt'],
-    [new RegExp('^\\W*(?:values?\\s+)?(?:' + AFD_AP + ')\\s+' + AFD_RG, 'i'), 'range'],
-    [new RegExp('^\\W*(?:values?\\s+)?(?:' + AFD_AP + ')\\s+' + AFD_N,  'i'), 'approx'],
-    [new RegExp('^\\W*\\(\\s*(?:' + AFD_AP + ')\\s+' + AFD_N,           'i'), 'approx'],
-  ];
-  for(const [re, op] of tries){
-    const mm = after.match(re);
-    if(!mm) continue;
-    const a = parseFloat(mm[1]), b = mm[2] != null ? parseFloat(mm[2]) : null;
-    const numAt = e + mm[0].indexOf(mm[1]);
-    if(afdIsNoise(flat, numAt, numAt + mm[1].length, a, param)) continue;
-    return {op: op === 'range' ? 'range' : op, value: a, value2: b, start: s, end: e + mm[0].length};
-  }
-  // "40+ kts of effective shear" / "105+ heat index values"
-  const before = flat.slice(Math.max(0, s - 70), s);
-  const bm = before.match(new RegExp(AFD_N + '(\\+?)\\s*(?:' + AFD_UN + ')?\\s*(?:of\\s+)?$', 'i'));
-  if(bm){
-    const v = parseFloat(bm[1]);
-    const numAt = Math.max(0, s - 70) + bm.index;
-    if(afdIsNoise(flat, numAt, numAt + bm[1].length, v, param)) return null;
-    return {op: bm[2] === '+' ? 'gt' : 'approx', value: v, value2: null,
-            start: s - (before.length - bm.index), end: e};
-  }
-  return null;
-}
-
-// Collapse repeats of the same param/op/value so one sentence restated in two
-// sections doesn't produce two identical chips.
-function afdDedupe(list){
-  const seen = {}, out = [];
-  for(const c of list){
-    const k = [c.param, c.op, c.value, c.value2].join('|');
-    if(seen[k]) continue;
-    seen[k] = true;
-    out.push(c);
-  }
-  return out;
-}
-
-// Does a value satisfy this criterion? "approx"/"range" are treated as
-// "at or above the number the forecaster named" — that is what a reader means
-// by "MUCAPE around 3000" when asking where the air is that good. For CIN and
-// lifted index, lower is more significant, so the sense flips.
-function afdInverted(param){ return param === 'li'; }
-function afdMeets(c, v){
-  if(v == null || !isFinite(v)) return false;
-  const lo = (c.op === 'range') ? Math.min(c.value, c.value2) : c.value;
-  if(c.op === 'lt') return afdInverted(c.param) ? v > lo : v < lo;
-  return afdInverted(c.param) ? v <= lo : v >= lo;
-}
-function afdThreshold(c){
-  return (c.op === 'range') ? Math.min(c.value, c.value2) : c.value;
-}
-function afdOpSymbol(c){
-  if(c.op === 'gt') return '>';
-  if(c.op === 'lt') return '<';
-  if(c.op === 'range') return '';
-  return '~';
-}
-function afdLabel(c){
-  const p = AFD_PARAMS[c.param];
-  const val = (c.op === 'range') ? `${c.value}–${c.value2}` : String(c.value);
-  const sym = afdOpSymbol(c);
-  return `${p.name} ${sym ? sym + ' ' : ''}${val}${p.unit ? ' ' + p.unit : ''}`;
-}
-
-/* ---- fetching ---- */
-
-// Which office covers a point. Returns null off-domain (ocean, outside the US).
-async function afdOfficeAt(lat, lon){
+async function loadAfdAreas(){
   try{
-    const r = await fetch(`https://api.weather.gov/points/${lat.toFixed(4)},${lon.toFixed(4)}`);
-    if(!r.ok) return null;
-    const d = await r.json();
-    return (d.properties && d.properties.cwa) || null;
-  }catch(e){ return null; }
+    const r = await fetch(AFD_DATA_URL + '?t=' + Math.floor(Date.now() / 6e5));
+    afdAreas = await r.json();
+  }catch(e){ console.error('afd areas', e); afdAreas = null; }
+  renderAfdAreas();
 }
 
-// The offices actually covering the current view: center plus four corners.
-// Cheap (5 requests) and it doubles as the override picker's option list.
-async function afdViewportOffices(){
-  const b = map.getBounds(), c = map.getCenter();
-  const pts = [[c.lat, c.lng], [b.getNorth(), b.getWest()], [b.getNorth(), b.getEast()],
-               [b.getSouth(), b.getWest()], [b.getSouth(), b.getEast()]];
-  const ids = await Promise.all(pts.map(p => afdOfficeAt(p[0], p[1])));
-  const out = [];
-  for(const id of ids) if(id && !out.includes(id)) out.push(id);
-  return out;   // out[0], when present, is the office under the map center
+// An area is "live" when now falls inside its window; upcoming ones are drawn
+// dashed and dimmer so the two read differently at a glance.
+function afdWindowState(a){
+  const now = Date.now(), t0 = Date.parse(a.start), t1 = Date.parse(a.end);
+  if(!(t0 && t1)) return null;
+  if(now > t1) return null;                       // finished — don't draw it
+  return now >= t0 ? 'live' : 'ahead';
+}
+function afdWhen(a, state){
+  const t0 = new Date(a.start), t1 = new Date(a.end);
+  const hh = d => d.toLocaleString([], {hour: 'numeric'}).replace(/\s/g, '').toUpperCase();
+  const day = d => d.toDateString() === new Date().toDateString() ? ''
+                 : d.toLocaleString([], {weekday: 'short'}).toUpperCase() + ' ';
+  return state === 'live' ? `NOW – ${day(t1)}${hh(t1)}` : `${day(t0)}${hh(t0)} – ${day(t1)}${hh(t1)}`;
 }
 
-async function loadAfd(wfo){
-  afdLoading = true; afdError = '';
-  renderAfdPanel();
-  try{
-    if(afdOpen){
-      const offices = await afdViewportOffices();
-      if(offices.length){ afdOffices = offices; afdWFOAuto = offices[0]; }
-    }else{
-      const c = map.getCenter();
-      const only = await afdOfficeAt(c.lat, c.lng);
-      if(only){ afdWFOAuto = only; if(!afdOffices.includes(only)) afdOffices = [only].concat(afdOffices); }
-    }
-    if(wfo) afdManual = true;
-    const target = wfo || (afdManual ? afdWFO : afdWFOAuto) || afdWFO;
-    if(!target){ afdError = 'No NWS office covers this view.'; afdLoading = false; renderAfdPanel(); return; }
-    if(!afdOffices.includes(target)) afdOffices = [target].concat(afdOffices);
-    afdWFO = target;
-
-    const list = await (await fetch(`https://api.weather.gov/products/types/AFD/locations/${target}`)).json();
-    const g = list['@graph'] || [];
-    if(!g.length) throw new Error('no AFD products for ' + target);
-    const prod = await (await fetch(`https://api.weather.gov/products/${g[0].id}`)).json();
-    afdText = prod.productText || '';
-    afdIssued = afdParseIssued(afdText, prod.issuanceTime || g[0].issuanceTime);
-    afdSections = afdSplitSections(afdText);
-    afdCriteria = parseAfd(afdSections);
-    // Drop any active criteria that no longer exist in the new text.
-    afdActive = afdActive.filter(id => afdCriteria.some(c => c.id === id));
-    afdAutoPlot();
-  }catch(e){
-    console.error('afd error', e);
-    afdError = 'Could not load the discussion for ' + (afdWFO || '?') + '.';
-    afdText = ''; afdSections = []; afdCriteria = [];
-  }
-  afdLoading = false;
-  renderAfdPanel();
-  renderAfdArea();
-  if(afdActive.length) fetchAfdGrid();
-}
-
-/* ---- gridded data + map rendering ---- */
-
-const AFD_HOURS = 36;          // HRRR runs 48 h; 36 keeps the payload ~270 KB
-const AFD_COLS = 16, AFD_ROWS = 12;   // 192 points — finer, since the domain is regional now
-
-function afdActiveCriteria(){
-  return afdActive.map(id => afdCriteria.find(c => c.id === id)).filter(Boolean);
-}
-
-// Fetch every variable the active criteria need, once, over the viewport grid.
-// HRRR first (the CAM the discussions themselves cite); Open-Meteo's best_match
-// takes over where HRRR has no domain.
-async function fetchAfdGrid(){
-  const active = afdActiveCriteria().filter(c => c.plottable);
-  if(!active.length){ afdGrid = null; renderAfd(); return; }
-  const seq = ++afdSeq;
-  clearTimeout(afdRetryTimer);
-  afdGridError = ''; afdGridLoading = true;
-  renderAfdScrubber();
-  const params = [];
-  for(const c of active) if(!params.includes(c.param)) params.push(c.param);
-  const vars = [];
-  for(const pm of params)
-    for(const v of MODELS[AFD_PARAMS[pm].model].vars.split(','))
-      if(!vars.includes(v)) vars.push(v);
-
-  // The thresholds come from one office, but the environment they describe
-  // doesn't stop at its border. Sample the whole view so the shapes show how far
-  // the setup actually reaches — the office outline stays on the map to say
-  // where the words came from.
-  const b = map.getBounds().pad(0.05);
-  const {lats, lons, rects} = buildGrid(b, AFD_COLS, AFD_ROWS);
-  const inArea = null;                       // no clipping: the region is the domain
-  const qs = `latitude=${lats.join(',')}&longitude=${lons.join(',')}&hourly=${vars.join(',')}` +
-             `&timezone=GMT&forecast_hours=${AFD_HOURS}`;
-  const base = 'https://api.open-meteo.com/v1/forecast?' + qs;
-  try{
-    let data = await (await fetch(base + '&models=ncep_hrrr_conus')).json();
-    let source = 'HRRR';
-    if(data && data.error){
-      const why = String(data.reason || '');
-      // A quota refusal is not a domain problem, and retrying without the model
-      // would only spend another request to be told the same thing.
-      if(/limit|quota|minutely|hourly|daily/i.test(why)) throw new Error('RATE:' + why);
-      data = await (await fetch(base)).json();
-      source = 'best model';
-      if(data && data.error) throw new Error(String(data.reason || 'no data'));
-    }
-    if(seq !== afdSeq) return;                       // view or selection moved on
-    const arr = Array.isArray(data) ? data : [data];
-    if(!arr.length || !arr[0].hourly) throw new Error('no hourly data');
-    const times = arr[0].hourly.time;
-    const vals = {};
-    for(const pm of params){
-      const m = MODELS[AFD_PARAMS[pm].model];
-      const byHour = [];
-      for(let h = 0; h < times.length; h++){
-        const row = new Array(arr.length);
-        for(let i = 0; i < arr.length; i++){
-          const hh = arr[i].hourly;
-          let v = null;
-          if(hh) try{ v = m.val(hh, h); }catch(e){ v = null; }
-          row[i] = (v == null || !isFinite(v)) ? null : v;
-        }
-        byHour.push(row);
-      }
-      vals[pm] = byHour;
-    }
-    // Cells the model actually covers — the honest denominator for "% of view",
-    // so ocean and out-of-domain gaps don't quietly deflate the number.
-    const lead = params[0];
-    let dataCells = 0;
-    for(let i = 0; i < rects.length; i++)
-      for(let h = 0; h < times.length; h++)
-        if(vals[lead][h][i] != null){ dataCells++; break; }
-    afdGrid = {cols: AFD_COLS, rows: AFD_ROWS, rects, times, vals, source,
-               bounds: b, inArea, areaCells: dataCells || (AFD_COLS * AFD_ROWS)};
-    if(afdHour >= times.length) afdHour = 0;
-    renderAfd();
-    afdGridLoading = false;
-  }catch(e){
-    if(seq !== afdSeq) return;
-    console.error('afd grid error', e);
-    afdGrid = null;
-    afdGridLoading = false;
-    // Never fail silently: an empty map with no explanation reads as a bug.
-    const msg = String((e && e.message) || e);
-    if(msg.indexOf('RATE:') === 0){
-      afdGridError = 'Model service is rate-limited — retrying in a minute.';
-      afdRetryTimer = setTimeout(fetchAfdGrid, 75000);
-    }else{
-      afdGridError = 'Could not load model data for these criteria.';
-    }
-    renderAfd();
-  }
-}
-
-// 1 where every active criterion holds in that cell at `hour`, else null so the
-// overlay leaves it transparent. Compound AND is just this intersection.
-function afdMask(hour){
-  if(!afdGrid) return null;
-  const active = afdActiveCriteria().filter(c => c.plottable && afdGrid.vals[c.param]);
-  if(!active.length) return null;
-  const n = afdGrid.cols * afdGrid.rows;
-  const out = new Array(n).fill(1);
-  for(let i = 0; i < n; i++){
-    for(const c of active){
-      const series = afdGrid.vals[c.param][hour];
-      if(!series){ out[i] = null; break; }
-      if(series[i] == null){ out[i] = null; break; }     // no data — stay transparent
-      if(!afdMeets(c, series[i])){ out[i] = 0; break; }  // data, just doesn't qualify
+function renderAfdAreas(){
+  if(!afdHazardLayer) return;
+  afdHazardLayer.clearLayers();
+  if(!afdAreasOn || !afdAreas || !afdAreas.offices) return;
+  const view = map.getBounds();
+  const drawn = [];
+  for(const wfo in afdAreas.offices){
+    for(const a of (afdAreas.offices[wfo].areas || [])){
+      const state = afdWindowState(a);
+      if(!state || !a.polygon || a.polygon.length < 3) continue;
+      const poly = L.polygon(a.polygon, {interactive: true});
+      if(!view.intersects(poly.getBounds())){ poly.remove(); continue; }
+      drawn.push({wfo, a, state, poly});
     }
   }
-  return out;
-}
-
-// Fraction of grid cells satisfying ALL active criteria, per hour — the
-// coverage timeline that turns "overnight" into a visible window.
-function afdCoverage(){
-  if(!afdGrid) return [];
-  const n = afdGrid.cols * afdGrid.rows;
-  const denom = afdGrid.areaCells || n;
-  const out = [];
-  for(let h = 0; h < afdGrid.times.length; h++){
-    const m = afdMask(h);
-    let hit = 0;
-    if(m) for(let i = 0; i < n; i++) if(m[i] === 1) hit++;
-    out.push(hit / denom);
-  }
-  return out;
-}
-
-function afdClearMap(){
-  if(afdLayer) afdLayer.clearLayers();
-}
-
-// Two passes over the shared fieldOverlay renderer: the parameter field in its
-// normal ramp, then the meets-threshold mask on top, then a bold outline traced
-// around the mask so the forecaster's own threshold is unmistakable.
-function renderAfdOverlay(){
-  if(!afdLayer) return;
-  afdLayer.clearLayers();
-  const active = afdActiveCriteria().filter(c => c.plottable);
-  if(!active.length || !afdGrid){ if(afdMarkers) afdMarkers.clearLayers(); return; }
-  if(!afdFieldOn) return;                    // boxes only unless the field is asked for
-  const {cols, rows, rects} = afdGrid;
-  const hour = Math.min(afdHour, afdGrid.times.length - 1);
-
-  // Field pass — the first active criterion is the one shaded underneath.
-  const lead = active[0];
-  const series = afdGrid.vals[lead.param] && afdGrid.vals[lead.param][hour];
-  if(series){
-    fieldOverlay(AFD_PARAMS[lead.param].model, series, cols, rows, rects,
-      {pane: 'afdPane', alpha: 80}).addTo(afdLayer);
-  }
-  // Highlight pass — where every active criterion is met at this hour.
-  const mask = afdMask(hour);
-  if(mask){
-    fieldOverlay('afdmask', mask, cols, rows, rects,
-      {colorFn: v => (v != null && v >= 0.5 ? '#FFFFFF' : null), pane: 'afdPane', alpha: 60}).addTo(afdLayer);
-    const zeroed = mask.map(v => (v == null ? 0 : v));
-    for(const seg of contourSegments(zeroed, rects, cols, rows, 0.5)){
-      L.polyline(seg, {color: '#F2B705', weight: 2.5, opacity: 0.95, interactive: false}).addTo(afdLayer);
-    }
+  // Most serious on top, and live before upcoming.
+  drawn.sort((x, y) => (x.state === 'live' ? 1 : 0) - (y.state === 'live' ? 1 : 0)
+                    || afdHazard(x.a.hazard).rank - afdHazard(y.a.hazard).rank);
+  for(const {wfo, a, state, poly} of drawn){
+    const c = afdHazard(a.hazard).color;
+    const live = state === 'live';
+    poly.setStyle({color: c, weight: live ? 2.5 : 1.8, fillColor: c,
+                   fillOpacity: live ? 0.12 : 0.06, dashArray: live ? null : '7 5'});
+    const off = afdAreas.offices[wfo];
+    poly.bindPopup(`<div class="alert-popup"><b>${afdEsc(a.label)}</b>` +
+      `<span style="color:${c}">${afdEsc(a.hazard)}</span> · ${afdEsc(afdWhen(a, state))}` +
+      ` · ${afdEsc(a.confidence)} confidence<br><br>` +
+      `<i>“${afdEsc(a.quote)}”</i><br>` +
+      `<span style="color:#8A93A6">${wfo} discussion, ${afdEsc(afdIssuedText(off))}</span></div>`);
+    poly.addTo(afdHazardLayer);
+    try{
+      const b = poly.getBounds();
+      const at = [b.getNorth() - (b.getNorth() - b.getSouth()) * 0.12, b.getCenter().lng];
+      const html = `<div class="afd-area-lbl" style="color:${c}">` +
+        `<div class="t">${afdEsc(a.label.toUpperCase())}</div>` +
+        `<div class="s">${afdEsc(afdWhen(a, state))}</div></div>`;
+      L.marker(at, {icon: L.divIcon({className: 'afd-area-icon', html, iconSize: [0, 0], iconAnchor: [0, 0]}),
+                    interactive: false, keyboard: false}).addTo(afdHazardLayer);
+    }catch(e){}
   }
 }
 
-// Print the decoded metrics onto the grid, one line per active criterion, each
-// lit only where it meets its own threshold. With two criteria ANDed you can see
-// cell by cell which ingredient is the one holding the region back.
-let afdValuesOn = false;
-function renderAfdValues(){
-  if(!afdMarkers) return;
-  afdMarkers.clearLayers();
-  const active = afdActiveCriteria().filter(c => c.plottable && afdGrid && afdGrid.vals[c.param]);
-  if(!afdValuesOn || !active.length) return;
-  const {cols, rows, rects} = afdGrid;
-  const hour = Math.min(afdHour, afdGrid.times.length - 1);
-  for(let r = 0; r < rows; r++){
-    for(let c = 0; c < cols; c++){
-      if((r + c) % 2) continue;                       // checkerboard so they stay readable
-      const i = r * cols + c;
-      let rowsHtml = '', any = false;
-      for(const crit of active){
-        const v = afdGrid.vals[crit.param][hour][i];
-        if(v == null) continue;
-        any = true;
-        const met = afdMeets(crit, v) ? ' met' : '';
-        rowsHtml += `<div class="r${met}"><b>${AFD_PARAMS[crit.param].abbr}</b>${afdFmt(crit.param, v)}</div>`;
-      }
-      if(!any) continue;
-      const rect = rects[i];
-      L.marker([(rect[0][0] + rect[1][0]) / 2, (rect[0][1] + rect[1][1]) / 2], {
-        icon: L.divIcon({className: 'afd-icon', html: `<span class="afd-val">${rowsHtml}</span>`,
-                         iconSize: [0, 0], iconAnchor: [0, 0]}),
-        interactive: false, keyboard: false
-      }).addTo(afdMarkers);
-    }
-  }
+function afdIssuedText(off){
+  if(!off || !off.issued) return '';
+  const d = new Date(off.issued);
+  return isNaN(d) ? '' : d.toLocaleString([], {weekday: 'short', hour: 'numeric', minute: '2-digit'});
+}
+function afdEsc(t){
+  return String(t == null ? '' : t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-function toggleAfdField(cb){
-  afdFieldOn = cb.checked;
-  renderAfdOverlay();
-  if(syncRole === 'phone') broadcastState();
-}
+/* ---- the issuing office's outline, drawn like a mesoscale discussion ---- */
 
-function toggleAfdValues(cb){
-  afdValuesOn = cb.checked;
-  renderAfdValues();
-  if(syncRole === 'phone') broadcastState();
-}
-
-function renderAfd(){
-  renderAfdOverlay();
-  renderAfdValues();
-  renderAfdBoxes();
-  renderAfdScrubber();
-  renderAfdPanel();
-  renderAfdArea();
-}
-
-// Which criteria to light up on their own. Convective ingredients first, since
-// that is what a radar dashboard is for, and an explicit threshold ("> 40 kt")
-// beats a soft one ("around 40") when both exist for the same parameter.
-const AFD_AUTO_RANK = ['cape', 'shear6', 'shear1', 'lapse', 'pwat', 'cin', 'heat', 'gust', 'dewp', 'li'];
-function afdAutoPlot(){
-  if(afdUserPicked || afdActive.length) return;
-  const rank = p => { const i = AFD_AUTO_RANK.indexOf(p); return i < 0 ? 99 : i; };
-  const hard = c => (c.op === 'gt' || c.op === 'lt') ? 0 : 1;
-  const cand = afdCriteria.filter(c => c.plottable).sort((a, b) =>
-    (rank(a.param) - rank(b.param)) || (hard(a) - hard(b)));
-  const seen = {}, picked = [];
-  for(const c of cand){
-    if(seen[c.param]) continue;                 // one criterion per parameter
-    seen[c.param] = true;
-    picked.push(c.id);
-    if(picked.length === 2) break;              // two is the useful compound case
-  }
-  afdActive = picked;
-}
-
-// Toggle one criterion on/off the map.
-function toggleAfdCriterion(id){
-  const c = afdCriteria.find(x => x.id === id);
-  if(!c || !c.plottable) return;
-  afdUserPicked = true;
-  const i = afdActive.indexOf(id);
-  if(i >= 0) afdActive.splice(i, 1);
-  else afdActive.push(id);
-  if(afdActive.length) fetchAfdGrid();
-  else { afdGrid = null; afdStopPlay(); renderAfd(); }
-  if(syncRole === 'phone') broadcastState();
-}
-
-function clearAfdCriteria(){
-  afdUserPicked = true;
-  afdActive = [];
-  afdGrid = null;
-  afdStopPlay();
-  renderAfd();
-  if(syncRole === 'phone') broadcastState();
-}
-
-function setAfdHour(h){
-  afdHour = Math.max(0, Math.min(+h, afdGrid ? afdGrid.times.length - 1 : 0));
-  renderAfdOverlay();
-  renderAfdValues();
-  renderAfdBoxes();
-  renderAfdScrubber();
-  if(syncRole === 'phone') broadcastState();
-}
-
-function afdStopPlay(){
-  if(afdPlayTimer){ clearInterval(afdPlayTimer); afdPlayTimer = null; }
-  const b = document.getElementById('afdPlay');
-  if(b) b.textContent = '▶';
-}
-function toggleAfdPlay(){
-  if(afdPlayTimer){ afdStopPlay(); return; }
-  if(!afdGrid) return;
-  afdPlayTimer = setInterval(() => {
-    if(!afdGrid){ afdStopPlay(); return; }
-    setAfdHour((afdHour + 1) % afdGrid.times.length);
-  }, 500);
-  const b = document.getElementById('afdPlay');
-  if(b) b.textContent = '❚❚';
-}
-
-// Refetch the grid when the view moves (the grid is viewport-shaped).
-function scheduleAfdRefresh(){
-  // The grid spans the view, so panning and zooming re-sample it. Debounced
-  // generously: each fetch is ~190 points and the model service meters by cost.
-  if(afdActive.length){
-    clearTimeout(afdGridTimer);
-    afdGridTimer = setTimeout(fetchAfdGrid, 900);
-  }
-  if(afdManual) return;
-  clearTimeout(afdOfficeTimer);
-  afdOfficeTimer = setTimeout(async () => {
-    const c = map.getCenter();
-    const now = await afdOfficeAt(c.lat, c.lng);
-    if(now && now !== afdWFO) loadAfd();     // panned into another office's area
-  }, 1500);
-}
-
-/* ---- the "does the data actually back this up?" line ---- */
-
-// Peak (or, for inverted params, minimum) value across the visible grid over the
-// whole window, plus whether the criterion is ever satisfied.
-function afdRealityCheck(c){
-  if(!afdGrid || !afdGrid.vals[c.param]) return null;
-  const inv = afdInverted(c.param);
-  let best = null, everMet = false, metHours = 0;
-  for(let h = 0; h < afdGrid.times.length; h++){
-    const row = afdGrid.vals[c.param][h];
-    if(!row) continue;
-    let hourMet = false;
-    for(const v of row){
-      if(v == null) continue;
-      if(best == null || (inv ? v < best : v > best)) best = v;
-      if(afdMeets(c, v)) hourMet = true;
-    }
-    if(hourMet){ everMet = true; metHours++; }
-  }
-  if(best == null) return null;
-  return {best, everMet, metHours, source: afdGrid.source};
-}
-
-/* ---- the discussion's area, drawn like a mesoscale discussion ---- */
-
-// NWS County Warning Area polygons, generalized server-side to ~36 vertices
-// (under 1 KB) — enough for a clean outline without shipping the full 100 KB
-// boundary. CORS-open, same host as the QPE service.
+// NWS County Warning Area polygons, generalized server-side to well under a
+// kilobyte. CORS-open, same host as the QPE service.
 const CWA_URL = 'https://mapservices.weather.noaa.gov/static/rest/services/' +
                 'nws_reference_maps/nws_reference_map/FeatureServer/1/query';
-const cwaCache = {};        // wfo -> GeoJSON feature | null
-let afdAreaOn = true;
-let afdFieldOn = false;     // the smooth shaded field behind the boxes
+const cwaCache = {};
 
-function cwaQuery(wfo, offset){
-  return `${CWA_URL}?where=cwa%3D%27${encodeURIComponent(wfo)}%27` +
-         `&outFields=cwa,citystate&returnGeometry=true&outSR=4326` +
-         `&maxAllowableOffset=${offset}&f=geojson`;
-}
 function cwaVertexCount(feat){
   let n = 0;
   (function walk(c){
@@ -2566,13 +1894,16 @@ function cwaVertexCount(feat){
 }
 async function cwaGeometry(wfo){
   if(cwaCache[wfo] !== undefined) return cwaCache[wfo];
+  const q = off => `${CWA_URL}?where=cwa%3D%27${encodeURIComponent(wfo)}%27` +
+                   `&outFields=cwa,citystate&returnGeometry=true&outSR=4326` +
+                   `&maxAllowableOffset=${off}&f=geojson`;
   try{
-    let d = await (await fetch(cwaQuery(wfo, 0.005))).json();
+    let d = await (await fetch(q(0.005))).json();
     let f = (d.features && d.features[0]) || null;
     // Island-heavy coastlines (Anchorage is 12k vertices at this tolerance) come
     // back far too detailed for an outline — coarsen once rather than ship 226 KB.
     if(f && cwaVertexCount(f) > 2500){
-      const d2 = await (await fetch(cwaQuery(wfo, 0.15))).json();
+      const d2 = await (await fetch(q(0.15))).json();
       f = (d2.features && d2.features[0]) || f;
     }
     cwaCache[wfo] = f;
@@ -2580,535 +1911,70 @@ async function cwaGeometry(wfo){
   return cwaCache[wfo];
 }
 
-// The headline the office led with — the first KEY MESSAGES bullet.
-function afdHeadline(){
-  const k = afdSections.find(s => /KEY MESSAGES/i.test(s.name));
-  if(k){
-    const b = k.body.split(/\n\s*-\s+/).slice(1).map(x => x.replace(/\s+/g, ' ').trim()).filter(Boolean);
-    if(b.length) return b[0];
-  }
-  const d = afdSections.find(s => /DISCUSSION|SHORT TERM|NEAR TERM/i.test(s.name));
-  return d ? d.body.replace(/\s+/g, ' ').trim().slice(0, 70) : '';
+async function afdOfficeAt(lat, lon){
+  try{
+    const r = await fetch(`https://api.weather.gov/points/${lat.toFixed(4)},${lon.toFixed(4)}`);
+    if(!r.ok) return null;
+    const d = await r.json();
+    return (d.properties && d.properties.cwa) || null;
+  }catch(e){ return null; }
 }
 
-// Outline the office's area with the discussion's own headline on it, in the
-// same visual language as an SPC mesoscale discussion. Tapping it opens the
-// decoder for that office.
-async function renderAfdArea(){
+async function renderAfdOutline(){
   if(!afdAreaLayer) return;
   afdAreaLayer.clearLayers();
-  if(!afdAreaOn || !afdWFO || !afdText) return;
+  if(!afdOutlineOn || !afdWFO) return;
   const wfo = afdWFO;
   const feat = await cwaGeometry(wfo);
-  if(!feat || wfo !== afdWFO || !afdAreaOn) return;
-  const hot = afdActive.length > 0;
+  if(!feat || wfo !== afdWFO || !afdOutlineOn) return;
   const layer = L.geoJSON(feat, {
-    style: {color: '#F2B705', weight: hot ? 2.5 : 2, fillColor: '#F2B705',
-            fillOpacity: hot ? 0.05 : 0.03, dashArray: '7 5'}
+    style: {color: '#F2B705', weight: 1.6, fillColor: '#F2B705',
+            fillOpacity: 0.02, dashArray: '7 5'}
   });
+  const off = (afdAreas && afdAreas.offices && afdAreas.offices[wfo]) || null;
   const where = (feat.properties && feat.properties.citystate) || wfo;
-  const n = afdCriteria.length;
+  const n = off ? (off.areas || []).length : 0;
   layer.bindPopup(`<div class="alert-popup"><b>Forecast Discussion · ${afdEsc(where)}</b>` +
-    `${afdEsc(afdHeadline())}<br><span style="color:#8FD3FF">` +
-    `${n ? n + ' threshold' + (n === 1 ? '' : 's') + ' decoded — tap DECODER to plot them' : 'no numeric thresholds in this issuance'}` +
-    `</span></div>`);
-  layer.on('click', () => { if(!afdOpen) toggleAfd(); });
+    `${afdEsc(off ? off.headline : 'Not read yet for this office.')}<br>` +
+    `<span style="color:#8FD3FF">${off ? (n ? n + ' area' + (n === 1 ? '' : 's') + ' drawn · ' + afdIssuedText(off)
+                                            : 'no hazard areas in this issuance')
+                                     : ''}</span></div>`);
   layer.addTo(afdAreaLayer);
-  try{
-    const b = layer.getBounds();
-    // Sit the label along the top edge so it doesn't fight the radar in the middle.
-    const at = [b.getNorth() - (b.getNorth() - b.getSouth()) * 0.11, b.getCenter().lng];
-    let sub = afdHeadline().replace(/\.$/, '');
-    if(sub.length > 52) sub = sub.slice(0, 52) + '…';
-    const html = `<div class="mcd-label"><div class="mcd-title">${afdEsc(wfo)} FORECAST DISCUSSION</div>` +
-                 `<div class="mcd-sub">${afdEsc(sub)}</div></div>`;
-    L.marker(at, {icon: L.divIcon({className: 'mcd-icon', html, iconSize: [0, 0], iconAnchor: [0, 0]}),
-                  interactive: false, keyboard: false}).addTo(afdAreaLayer);
-  }catch(e){}
+  if(off && off.headline){
+    try{
+      const b = layer.getBounds();
+      const at = [b.getNorth() - (b.getNorth() - b.getSouth()) * 0.07, b.getCenter().lng];
+      let sub = off.headline;
+      if(sub.length > 56) sub = sub.slice(0, 56) + '…';
+      const html = `<div class="afd-area-lbl" style="color:#F2B705">` +
+                   `<div class="t">${afdEsc(wfo)} FORECAST DISCUSSION</div>` +
+                   `<div class="s">${afdEsc(sub)}</div></div>`;
+      L.marker(at, {icon: L.divIcon({className: 'afd-area-icon', html, iconSize: [0, 0], iconAnchor: [0, 0]}),
+                    interactive: false, keyboard: false}).addTo(afdAreaLayer);
+    }catch(e){}
+  }
 }
 
-function toggleAfdArea(cb){
-  afdAreaOn = cb.checked;
-  renderAfdArea();
+// Follow the map: the outline tracks whichever office you are looking at.
+function scheduleAfdRefresh(){
+  renderAfdAreas();                       // viewport filter only — no refetch
+  clearTimeout(afdOfficeTimer);
+  afdOfficeTimer = setTimeout(async () => {
+    const c = map.getCenter();
+    const now = await afdOfficeAt(c.lat, c.lng);
+    if(now && now !== afdWFO){ afdWFO = now; renderAfdOutline(); }
+  }, 1200);
+}
+
+function toggleAfdAreas(cb){
+  afdAreasOn = cb.checked;
+  renderAfdAreas();
   if(syncRole === 'phone') broadcastState();
 }
-
-/* ---- impact boxes ----
-   The grid is the evidence; these are the answer. Group the hours when every
-   active criterion is met into episodes, box the area each one covers, and put
-   a short label on it — the same read as a warning polygon: what, and when. */
-
-const AFD_BUFFER = 0;         // cells of margin drawn around the qualifying area
-const AFD_MAX_EPISODES = 3;
-const AFD_MAX_BOXES = 6;      // across all episodes, so the map stays readable
-
-// Consecutive hours meeting the criteria, tolerating a single-hour dropout so a
-// noisy model doesn't split one overnight event into five slivers.
-function afdEpisodes(){
-  if(!afdGrid) return [];
-  const cov = afdCoverage();
-  const eps = [];
-  let cur = null, gap = 0;
-  for(let h = 0; h < cov.length; h++){
-    if(cov[h] > 0){
-      if(!cur) cur = {h0: h, h1: h, peak: 0, peakHour: h};
-      cur.h1 = h; gap = 0;
-      if(cov[h] > cur.peak){ cur.peak = cov[h]; cur.peakHour = h; }
-    }else if(cur && ++gap > 1){ eps.push(cur); cur = null; gap = 0; }
-  }
-  if(cur) eps.push(cur);
-  // Keep the few that actually matter, then put them back in time order.
-  return eps.sort((a, b) => b.peak - a.peak).slice(0, AFD_MAX_EPISODES)
-            .sort((a, b) => a.h0 - b.h0);
-}
-
-// Every cell that qualifies at any point during the episode.
-function afdEpisodeCells(ep){
-  const n = afdGrid.cols * afdGrid.rows;
-  const hit = new Array(n).fill(false);
-  for(let h = ep.h0; h <= ep.h1; h++){
-    const m = afdMask(h);
-    if(!m) continue;
-    for(let i = 0; i < n; i++) if(m[i] === 1) hit[i] = true;
-  }
-  return hit;
-}
-
-// Grow the qualifying area outward by a ring of cells. Two reasons: the grid
-// samples every ~20 km, so the true edge is uncertain by at least half a cell
-// and a hairline outline overstates how sharply the setup stops; and severe
-// polygons are drawn with margin for the same reason. The buffer stops at the
-// office boundary — the discussion has nothing to say about the next CWA over.
-function afdDilate(hit, passes){
-  const {cols, rows} = afdGrid;
-  let cur = hit;
-  for(let n = 0; n < passes; n++){
-    const next = cur.slice();
-    for(let i = 0; i < cur.length; i++){
-      if(!cur[i]) continue;
-      const r = Math.floor(i / cols), c = i % cols;
-      for(let dr = -1; dr <= 1; dr++){
-        for(let dc = -1; dc <= 1; dc++){
-          const nr = r + dr, nc = c + dc;
-          if(nr < 0 || nc < 0 || nr >= rows || nc >= cols) continue;
-          const j = nr * cols + nc;
-          if(afdGrid.inArea && !afdGrid.inArea[j]) continue;
-          next[j] = true;
-        }
-      }
-    }
-    cur = next;
-  }
-  return cur;
-}
-
-// Split those cells into spatially connected groups, so two separate threat
-// areas get two boxes instead of one that swallows the gap between them.
-// Eight-way connectivity: on a grid this coarse a diagonal touch is one area.
-function afdClusters(hit){
-  const {cols, rows} = afdGrid;
-  const seen = new Array(hit.length).fill(false);
-  const out = [];
-  for(let start = 0; start < hit.length; start++){
-    if(!hit[start] || seen[start]) continue;
-    const stack = [start], cells = [];
-    seen[start] = true;
-    while(stack.length){
-      const i = stack.pop();
-      cells.push(i);
-      const r = Math.floor(i / cols), c = i % cols;
-      for(let dr = -1; dr <= 1; dr++){
-        for(let dc = -1; dc <= 1; dc++){
-          if(!dr && !dc) continue;
-          const nr = r + dr, nc = c + dc;
-          if(nr < 0 || nc < 0 || nr >= rows || nc >= cols) continue;
-          const j = nr * cols + nc;
-          if(hit[j] && !seen[j]){ seen[j] = true; stack.push(j); }
-        }
-      }
-    }
-    out.push(cells);
-  }
-  return out;
-}
-
-// Mean of a cluster's cell centers — where its caption sits.
-function afdCellsCenter(cells){
-  const {rects} = afdGrid;
-  let la = 0, lo = 0;
-  for(const i of cells){
-    const r = rects[i];
-    la += (r[0][0] + r[1][0]) / 2;
-    lo += (r[0][1] + r[1][1]) / 2;
-  }
-  return [la / cells.length, lo / cells.length];
-}
-
-// Join marching-squares segments end to end into closed rings, so the outline
-// can be drawn as a polygon rather than a scatter of disconnected sticks.
-function afdStitchRings(segs){
-  const K = p => p[0].toFixed(5) + ',' + p[1].toFixed(5);
-  const byPt = new Map();
-  segs.forEach((s, i) => {
-    for(const p of s){
-      const k = K(p);
-      if(!byPt.has(k)) byPt.set(k, []);
-      byPt.get(k).push(i);
-    }
-  });
-  const used = new Array(segs.length).fill(false);
-  const rings = [];
-  for(let i = 0; i < segs.length; i++){
-    if(used[i]) continue;
-    used[i] = true;
-    const ring = [segs[i][0], segs[i][1]];
-    for(let guard = 0; guard < segs.length + 2; guard++){
-      const end = ring[ring.length - 1], ke = K(end);
-      const next = (byPt.get(ke) || []).find(j => !used[j]);
-      if(next === undefined) break;
-      used[next] = true;
-      const sg = segs[next];
-      ring.push(K(sg[0]) === ke ? sg[1] : sg[0]);
-    }
-    if(ring.length >= 4) rings.push(ring);
-  }
-  return rings;
-}
-
-// The outline of one cluster: marching squares over a mask of just that
-// cluster, at the halfway level, stitched into rings. Corners come out cut on
-// the diagonal rather than stepped, which reads like an outlook polygon.
-function afdClusterRings(cells){
-  const {cols, rows, rects} = afdGrid;
-  // Pad the mask with a border of zeros. Marching squares works on quads
-  // between cell centers, so without this a cluster reaching the edge of the
-  // grid has nothing to close against and comes back as open fragments.
-  const dLat = rects[0][1][0] - rects[0][0][0];
-  const dLon = rects[0][1][1] - rects[0][0][1];
-  const s0 = rects[0][0][0], w0 = rects[0][0][1];
-  const C = cols + 2, R = rows + 2;
-  const m = new Array(C * R).fill(0);
-  const pad = [];
-  for(let r = 0; r < R; r++){
-    for(let c = 0; c < C; c++){
-      const sy = s0 + (r - 1) * dLat, wx = w0 + (c - 1) * dLon;
-      pad.push([[sy, wx], [sy + dLat, wx + dLon]]);
-    }
-  }
-  for(const i of cells) m[(Math.floor(i / cols) + 1) * C + (i % cols) + 1] = 1;
-  const rings = afdStitchRings(contourSegments(m, pad, C, R, 0.5));
-  return rings.sort((a, b) => afdRingSpan(b) - afdRingSpan(a));
-}
-function afdRingSpan(ring){
-  let s = 90, n = -90, w = 180, e = -180;
-  for(const [la, lo] of ring){
-    if(la < s) s = la; if(la > n) n = la;
-    if(lo < w) w = lo; if(lo > e) e = lo;
-  }
-  return (n - s) * (e - w);
-}
-
-function afdClock(i){
-  if(!afdGrid || !afdGrid.times[i]) return '';
-  return new Date(afdGrid.times[i] + 'Z')
-    .toLocaleString([], {hour: 'numeric'}).replace(/\s/g, '').toUpperCase();
-}
-function afdDayTag(i){
-  if(!afdGrid || !afdGrid.times[i]) return '';
-  const d = new Date(afdGrid.times[i] + 'Z'), now = new Date();
-  return d.toDateString() === now.toDateString() ? '' :
-    d.toLocaleString([], {weekday: 'short'}).toUpperCase() + ' ';
-}
-// "CAPE 3000+ · SHR 40+" — the thresholds themselves, short enough to sit on a box.
-function afdBoxTitle(){
-  return afdActiveCriteria().filter(c => c.plottable).map(c => {
-    const p = AFD_PARAMS[c.param];
-    const v = afdThreshold(c);
-    return `${p.abbr} ${v}${c.op === 'lt' ? '-' : '+'}`;
-  }).join(' · ');
-}
-
-// One rectangle per episode, labelled like a warning: what, then when. The
-// episode covering the hour you're looking at is drawn solid; later ones are
-// dashed and dimmer, so "now" and "next" are distinguishable at a glance.
-function renderAfdBoxes(){
-  if(!afdBoxLayer) return;
-  afdBoxLayer.clearLayers();
-  if(!afdGrid || !afdActiveCriteria().filter(c => c.plottable).length) return;
-  const title = afdBoxTitle();
-  // Collect every cluster from every episode, then keep the biggest few —
-  // a lone cell is usually model speckle rather than a threat area, but if
-  // that is all there is, still show the best one rather than nothing.
-  let boxes = [];
-  for(const ep of afdEpisodes()){
-    // Drop lone cells as model speckle first, then buffer what survives and
-    // re-cluster, so neighbouring lobes merge into one readable area.
-    const raw = afdEpisodeCells(ep);
-    const groups = afdClusters(raw).filter(g => g.length > 1);
-    const keep = groups.length ? groups : afdClusters(raw).slice(0, 1);
-    if(!keep.length) continue;
-    const seed = new Array(raw.length).fill(false);
-    for(const g of keep) for(const i of g) seed[i] = true;
-    for(const cells of afdClusters(afdDilate(seed, AFD_BUFFER))) boxes.push({ep, cells});
-  }
-  if(!boxes.length) return;
-  boxes.sort((a, b) => b.cells.length - a.cells.length);
-  boxes = boxes.slice(0, AFD_MAX_BOXES);
-  boxes.sort((a, b) => a.ep.h0 - b.ep.h0 || b.cells.length - a.cells.length);
-  // One caption per episode, on its largest lobe. Repeating the same "7PM-3AM"
-  // over three neighbouring boxes just adds clutter; the outlines already say
-  // they belong together.
-  const captioned = {};
-  for(const bx of boxes) if(!captioned[bx.ep.h0]) captioned[bx.ep.h0] = bx;
-
-  for(const bx of boxes){
-    const {ep, cells} = bx;
-    const rings = afdClusterRings(cells);
-    if(!rings.length) continue;
-    const live = afdHour >= ep.h0 && afdHour <= ep.h1;
-    const color = live ? '#FF3AF5' : '#F2B705';
-    const style = {color, weight: live ? 2.5 : 1.8, fillColor: color,
-                   fillOpacity: live ? 0.10 : 0.05,
-                   dashArray: live ? null : '6 4', interactive: false};
-    // Largest ring is the outline; any smaller ones are holes in the area, so
-    // trace them without a second fill.
-    L.polygon(rings[0], style).addTo(afdBoxLayer);
-    for(let k = 1; k < rings.length; k++)
-      L.polyline(rings[k], Object.assign({}, style, {fill: false})).addTo(afdBoxLayer);
-    if(captioned[ep.h0] !== bx) continue;
-    const span = ep.h0 === ep.h1 ? afdDayTag(ep.h0) + afdClock(ep.h0)
-               : `${afdDayTag(ep.h0)}${afdClock(ep.h0)}–${afdDayTag(ep.h1)}${afdClock(ep.h1)}`;
-    const html = `<div class="afd-box-lbl${live ? ' live' : ''}">` +
-                 `<div class="t">${afdEsc(title)}</div>` +
-                 `<div class="s">${afdEsc(span)}${live ? ' · NOW' : ''}</div></div>`;
-    const at = afdCellsCenter(cells);
-    L.marker(at, {icon: L.divIcon({className: 'afd-box-icon', html, iconSize: [0, 0], iconAnchor: [0, 0]}),
-                  interactive: false, keyboard: false}).addTo(afdBoxLayer);
-  }
-}
-
-/* ---- panel + scrubber UI ---- */
-
-function afdEsc(t){
-  return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-function afdFmt(param, v){
-  if(v == null) return '—';
-  if(param === 'pwat') return v.toFixed(2);
-  if(param === 'lapse' || param === 'li') return v.toFixed(1);
-  return Math.round(v).toLocaleString();
-}
-function afdHourLabel(i){
-  if(!afdGrid || !afdGrid.times[i]) return '';
-  const d = new Date(afdGrid.times[i] + 'Z');
-  return d.toLocaleString([], {weekday: 'short', hour: 'numeric'}).toUpperCase();
-}
-
-function toggleAfd(){
-  afdOpen = !afdOpen;
-  if(afdOpen && feedOpen) toggleFeed();     // one side panel at a time
-  document.getElementById('afdPanel').classList.toggle('open', afdOpen);
-  if(afdOpen && !afdText && !afdLoading) loadAfd();
-  else renderAfdPanel();
+function toggleAfdOutline(cb){
+  afdOutlineOn = cb.checked;
+  renderAfdOutline();
   if(syncRole === 'phone') broadcastState();
-}
-
-// Chip row: every decoded threshold, with the ones on the map lit amber and
-// joined by AND so a compound selection reads as the sentence it came from.
-function afdChipsHTML(){
-  if(!afdCriteria.length) return '';
-  let html = '<div class="afd-chips">';
-  const on = afdCriteria.filter(c => afdActive.includes(c.id));
-  const off = afdCriteria.filter(c => !afdActive.includes(c.id));
-  on.forEach((c, i) => {
-    if(i) html += '<span class="afd-and">AND</span>';
-    html += `<span class="afd-chip on" onclick="toggleAfdCriterion('${c.id}')">${afdEsc(afdLabel(c))}</span>`;
-  });
-  if(on.length && off.length) html += '<div style="height:4px"></div>';
-  for(const c of off){
-    const cls = c.plottable ? 'afd-chip' : 'afd-chip nogrid';
-    const note = c.plottable ? '' : '<span class="n">no grid</span>';
-    const click = c.plottable ? ` onclick="toggleAfdCriterion('${c.id}')"` : '';
-    html += `<span class="${cls}"${click} title="${afdEsc(AFD_PARAMS[c.param].gloss)}">${afdEsc(afdLabel(c))}${note}</span>`;
-  }
-  html += '</div>';
-  if(on.length){
-    const c = on[0];
-    html += `<div class="afd-gloss">${afdEsc(AFD_PARAMS[c.param].gloss)}</div>`;
-    for(const a of on) html += afdCheckHTML(a);
-    html += `<div class="afd-acts"><span onclick="clearAfdCriteria()">clear all</span>`;
-    if(afdGrid) html += `<span style="text-decoration:none;cursor:default">${afdGrid.source} · ${afdGrid.times.length} h</span>`;
-    html += `</div>`;
-  }
-  return html;
-}
-
-// "Does the data actually back this up?" — the AFD's own number against what the
-// grid shows across the view. Deliberately never says the forecaster is wrong: a
-// 14x10 sample of a 3 km model smooths the point extremes they were looking at.
-function afdCheckHTML(c){
-  const r = afdRealityCheck(c);
-  if(!r) return '';
-  const pct = Math.round((r.metHours / afdGrid.times.length) * 100);
-  let cls = 'afd-v-no', word = 'not showing in this view';
-  if(pct >= 25){ cls = 'afd-v-yes'; word = 'on track'; }
-  else if(r.everMet){ cls = 'afd-v-loc'; word = 'briefly / locally'; }
-  else if(r.best != null && Math.abs(r.best - afdThreshold(c)) <= Math.abs(afdThreshold(c)) * 0.15){
-    cls = 'afd-v-loc'; word = 'close, just under';
-  }
-  const peak = afdInverted(c.param) ? 'min' : 'peak';
-  return `<div class="afd-check"><b>${afdEsc(afdLabel(c))}</b> — <span class="${cls}">${word}</span><br>` +
-         `${afdGrid.source} ${peak} ${afdFmt(c.param, r.best)} ${afdEsc(AFD_PARAMS[c.param].unit)}` +
-         `${r.everMet ? ` · met in ${r.metHours} of ${afdGrid.times.length} h` : ''}</div>`;
-}
-
-// The discussion itself. Matched phrases are marked inline and clicking one
-// toggles the same criterion its chip does.
-function afdBodyHTML(){
-  let html = '';
-  for(const sec of afdSections){
-    const hits = afdCriteria.filter(c => c.section === sec.name);
-    const open = hits.length > 0 || /KEY MESSAGES/i.test(sec.name);
-    html += `<div class="afd-sec${open ? ' open' : ''}">` +
-            `<div class="afd-sec-h" onclick="this.parentNode.classList.toggle('open')">` +
-            `${afdEsc(sec.name)}${hits.length ? `<span class="n">${hits.length}</span>` : ''}</div>` +
-            `<div class="afd-sec-b">${afdMarkSection(sec, hits)}</div></div>`;
-  }
-  return html;
-}
-
-// Escape and mark up in one pass. The criteria carry their phrase text rather
-// than an offset into the flattened body, so find each phrase in the wrapped
-// original and wrap the first unclaimed occurrence.
-function afdMarkSection(sec, hits){
-  let html = afdEsc(sec.body.trim());
-  for(const c of hits){
-    const needle = c.phrase.split(/\s+/).slice(0, 6).join('\\s+');
-    if(!needle) continue;
-    const re = new RegExp('(?![^<]*>)(' + needle.replace(/[.*+?^${}()|[\]\\]/g, m => (m === '\\' ? m : '\\' + m)) + ')', 'i');
-    const on = afdActive.includes(c.id) ? ' on' : '';
-    html = html.replace(re, `<mark class="afd-hit${on}" onclick="toggleAfdCriterion('${c.id}')" title="${afdEsc(AFD_PARAMS[c.param].gloss)}">$1</mark>`);
-  }
-  return html;
-}
-
-function renderAfdPanel(){
-  const el = document.getElementById('afdBody');
-  const tab = document.getElementById('afdTab');
-  if(tab) tab.classList.toggle('live', afdActive.length > 0);
-  if(!el) return;
-  if(!afdOpen) return;
-  if(afdLoading){ el.innerHTML = '<div class="feed-empty">Reading the latest discussion…</div>'; return; }
-  if(afdError){
-    el.innerHTML = `<div class="feed-empty">${afdEsc(afdError)}</div>` +
-                   `<div class="afd-acts"><span onclick="loadAfd()">retry</span></div>`;
-    return;
-  }
-  if(!afdText){ el.innerHTML = '<div class="feed-empty">Open to load the discussion for this area.</div>'; return; }
-
-  const opts = afdOffices.map(o =>
-    `<option value="${o}"${o === afdWFO ? ' selected' : ''}>${o}</option>`).join('');
-  const when = afdIssued ? afdIssued.toLocaleString([], {weekday: 'short', hour: 'numeric', minute: '2-digit'}) : '';
-  let html = `<div class="feed-note"><b>K${afdWFO} · ${afdCriteria.length} threshold${afdCriteria.length === 1 ? '' : 's'} decoded</b>` +
-             `issued ${afdEsc(when)} · office <select id="afdOffice" onchange="loadAfd(this.value)">${opts}</select>` +
-             `${afdOffices.length > 1 ? ' · your view crosses ' + afdOffices.length + ' offices' : ''}` +
-             `<label style="display:flex;align-items:center;gap:6px;margin-top:6px;cursor:pointer;">` +
-             `<input type="checkbox" id="afdAreaChk"${afdAreaOn ? ' checked' : ''} onchange="toggleAfdArea(this)"> outline this office's area on the map</label>` +
-             `<label style="display:flex;align-items:center;gap:6px;margin-top:3px;cursor:pointer;">` +
-             `<input type="checkbox" id="afdValChk"${afdValuesOn ? ' checked' : ''} onchange="toggleAfdValues(this)"> print the values on the grid</label>` +
-             `<label style="display:flex;align-items:center;gap:6px;margin-top:3px;cursor:pointer;">` +
-             `<input type="checkbox" id="afdFieldChk"${afdFieldOn ? ' checked' : ''} onchange="toggleAfdField(this)"> shade the whole field behind them</label></div>`;
-  if(!afdCriteria.length){
-    html += '<div class="feed-empty">This discussion doesn’t put numbers on anything — the forecaster described the setup in words only. The text is below.</div>';
-  }
-  if(afdGridError) html += `<div class="feed-note" style="color:#FFB4B4">${afdEsc(afdGridError)}</div>`;
-  html += afdChipsHTML();
-  html += afdBodyHTML();
-  el.innerHTML = html;
-}
-
-/* ---- the coverage timeline ---- */
-
-function renderAfdScrubber(){
-  const bar = document.getElementById('afdScrub');
-  if(!bar) return;
-  const live = !!(afdGrid && afdActive.length);
-  const note = !live && afdActive.length && (afdGridLoading || afdGridError);
-  bar.classList.toggle('show', live || !!note);
-  const rowEl = bar.querySelector('.afd-srow'), sparkEl = document.getElementById('afdSpark');
-  let msgEl = document.getElementById('afdMsg');
-  if(!msgEl){
-    msgEl = document.createElement('div');
-    msgEl.id = 'afdMsg';
-    bar.appendChild(msgEl);
-  }
-  if(rowEl) rowEl.style.display = live ? '' : 'none';
-  if(sparkEl) sparkEl.style.display = live ? '' : 'none';
-  msgEl.style.display = note ? '' : 'none';
-  if(note){
-    msgEl.textContent = afdGridLoading
-      ? `Reading ${afdGrid ? '' : 'HRRR '}model data for ${afdWFO || 'this area'}…`
-      : afdGridError;
-    msgEl.className = afdGridError ? 'err' : '';
-  }
-  if(!live){ afdStopPlay(); return; }
-  const rng = document.getElementById('afdHourRange');
-  if(rng){ rng.max = afdGrid.times.length - 1; rng.value = afdHour; }
-  const cov = afdCoverage();
-  const pct = Math.round((cov[afdHour] || 0) * 100);
-  const clk = document.getElementById('afdClock');
-  if(clk) clk.textContent = `${afdHourLabel(afdHour)} · ${pct}% of view`;
-  drawAfdSpark(cov);
-}
-
-// Bars = share of the visible grid meeting every active criterion, hour by hour.
-// This is what turns "overnight" into a window you can actually see.
-function drawAfdSpark(cov){
-  const cv = document.getElementById('afdSpark');
-  if(!cv) return;
-  const dpr = window.devicePixelRatio || 1;
-  const W = cv.clientWidth || 560, H = 34;
-  cv.width = W * dpr; cv.height = H * dpr;
-  const g = cv.getContext('2d');
-  g.setTransform(dpr, 0, 0, dpr, 0, 0);
-  g.clearRect(0, 0, W, H);
-  g.fillStyle = '#0d1420'; g.fillRect(0, 0, W, H);
-  const n = cov.length;
-  if(!n) return;
-  const bw = W / n;
-  let peak = 0, peakH = 0;
-  for(let i = 0; i < n; i++) if(cov[i] > peak){ peak = cov[i]; peakH = i; }
-  for(let i = 0; i < n; i++){
-    const h = Math.max(cov[i] > 0 ? 1.5 : 0, cov[i] * (H - 9));
-    g.fillStyle = (i === afdHour) ? '#FFE96B' : 'rgba(242,183,5,0.6)';
-    g.fillRect(i * bw + 0.5, H - 7 - h, Math.max(1, bw - 1), h);
-    // midnight ticks give the bars a time anchor
-    if(afdGrid && new Date(afdGrid.times[i] + 'Z').getHours() === 0){
-      g.fillStyle = 'rgba(255,255,255,0.22)'; g.fillRect(i * bw, 0, 1, H - 6);
-    }
-  }
-  g.fillStyle = '#25324a'; g.fillRect(0, H - 6, W, 1);
-  g.font = '8px monospace'; g.fillStyle = '#8A93A6';
-  g.fillText(afdHourLabel(0), 2, H - 1);
-  const rt = afdHourLabel(n - 1);
-  g.fillText(rt, Math.max(0, W - g.measureText(rt).width - 2), H - 1);
-  if(peak > 0){
-    const lbl = `peak ${Math.round(peak * 100)}% ${afdHourLabel(peakH)}`;
-    g.fillStyle = '#FF3AF5';
-    g.fillText(lbl, Math.min(Math.max(2, peakH * bw - 24), W - g.measureText(lbl).width - 2), 8);
-  }
-  // cursor
-  g.fillStyle = '#FFFFFF';
-  g.fillRect(afdHour * bw + bw / 2, 0, 1, H - 6);
-}
-
-// Click or drag anywhere on the timeline to jump to that hour.
-function afdSparkSeek(ev){
-  if(!afdGrid) return;
-  const cv = document.getElementById('afdSpark');
-  const r = cv.getBoundingClientRect();
-  const x = (ev.touches ? ev.touches[0].clientX : ev.clientX) - r.left;
-  setAfdHour(Math.round((x / r.width) * (afdGrid.times.length - 1)));
 }
 
 /* ---------------- Precipitation accumulation (live estimates) ----------------
@@ -3372,40 +2238,14 @@ function schedulePrecipRefresh(){
 }
 
 // Tap the map for the estimate at that exact spot, with its measured window.
-function afdPointHTML(latlng){
-  if(!afdGrid || !afdActive.length) return '';
-  let best = -1, bd = Infinity;
-  for(let i = 0; i < afdGrid.rects.length; i++){
-    const r = afdGrid.rects[i];
-    const d = haversineKm(latlng.lat, latlng.lng, (r[0][0] + r[1][0]) / 2, (r[0][1] + r[1][1]) / 2);
-    if(d < bd){ bd = d; best = i; }
-  }
-  if(best < 0) return '';
-  let out = `<br><span style="opacity:.65">${afdHourLabel(afdHour)} · ${afdGrid.source}</span>`;
-  for(const c of afdActiveCriteria()){
-    if(!afdGrid.vals[c.param]) continue;
-    const v = afdGrid.vals[c.param][afdHour][best];
-    const ok = afdMeets(c, v);
-    out += `<br><b>${afdEsc(AFD_PARAMS[c.param].name)}</b> ${afdFmt(c.param, v)} ${afdEsc(AFD_PARAMS[c.param].unit)}` +
-           ` <span style="color:${ok ? '#2ECC71' : '#8A93A6'}">${ok ? '✔' : '✘'} needs ${afdOpSymbol(c) || '≥'} ${afdThreshold(c)}</span>`;
-  }
-  return out;
-}
-
 async function precipPointPopup(e){
-  const afdOn = !!(afdGrid && afdActive.length);
-  if(precipMode === 'off' && !afdOn) return;
+  if(precipMode === 'off') return;
   const ll = e.latlng;
   const pop = L.popup({className: 'precip-pop'}).setLatLng(ll)
     .setContent('<div class="alert-popup">Sampling…</div>').openOn(map);
   const coords = `<span style="color:#8A93A6;font-size:11px;">${ll.lat.toFixed(3)}, ${ll.lng.toFixed(3)}</span>`;
   const label = (txt, color) => `<div class="alert-popup"><b style="color:${color || '#F5F3EC'}">${txt}</b>` +
-    `${precipSourceLabel()}<br>${precipSpanText()}<br>${coords}${afdPointHTML(ll)}</div>`;
-  if(precipMode === 'off'){
-    // Decoder only — everything needed is already in memory.
-    pop.setContent(`<div class="alert-popup"><b>Discussion criteria here</b>${coords}${afdPointHTML(ll)}</div>`);
-    return;
-  }
+    `${precipSourceLabel()}<br>${precipSpanText()}<br>${coords}</div>`;
   try{
     let inches = null;
     if(precipMode === 'rain'){
@@ -3717,9 +2557,7 @@ function getSyncState(){
     stationsOn, stationMetric, windBarbsOn,
     radarMode, singleSite, singleProduct, modelField, brightnessIdx,
     precipMode, precipWindow, feedOpen, kiosk: kioskOn,
-    afdOpen, afdHour, afdWFO, afdAreaOn, afdValuesOn, afdFieldOn, afdPlaying: !!afdPlayTimer,
-    afdCrit: afdActiveCriteria().map(c => ({param: c.param, op: c.op, value: c.value,
-             value2: c.value2, unit: c.unit, section: c.section, phrase: c.phrase, plottable: c.plottable})),
+    afdAreasOn, afdOutlineOn,
     lblScale: document.documentElement.style.getPropertyValue('--lblscale') || '1',
     radarOpacity: radarLayer ? radarLayer.options.opacity : 0.6
   };
@@ -3761,37 +2599,16 @@ function applyState(s){
     const cb = document.getElementById('windBarbsChk'); if(cb) cb.checked = windBarbsOn;
     renderStations();
   }
-  if('afdCrit' in s){
-    const mine = JSON.stringify(afdActiveCriteria().map(c => [c.param, c.op, c.value, c.value2]));
-    const theirs = JSON.stringify((s.afdCrit || []).map(c => [c.param, c.op, c.value, c.value2]));
-    if(mine !== theirs){
-      // Rehydrate as standalone criteria so the TV plots exactly what the phone
-      // selected even if it never loaded (or parsed) the same discussion.
-      afdCriteria = (s.afdCrit || []).map((c, i) => Object.assign({}, c, {id: 'sync' + i, raw: c.phrase}))
-                      .concat(afdCriteria.filter(c => !String(c.id).startsWith('sync')));
-      afdActive = afdCriteria.filter(c => String(c.id).startsWith('sync')).map(c => c.id);
-      if(afdActive.length) fetchAfdGrid(); else { afdGrid = null; renderAfd(); }
-    }
+  if('afdAreasOn' in s && s.afdAreasOn !== afdAreasOn){
+    afdAreasOn = s.afdAreasOn;
+    const cb = document.getElementById('afdAreasChk'); if(cb) cb.checked = afdAreasOn;
+    renderAfdAreas();
   }
-  if('afdWFO' in s && s.afdWFO && s.afdWFO !== afdWFO && !afdManual) loadAfd(s.afdWFO);
-  if('afdAreaOn' in s && s.afdAreaOn !== afdAreaOn){
-    afdAreaOn = s.afdAreaOn;
-    const cb = document.getElementById('afdAreaChk'); if(cb) cb.checked = afdAreaOn;
-    renderAfdArea();
+  if('afdOutlineOn' in s && s.afdOutlineOn !== afdOutlineOn){
+    afdOutlineOn = s.afdOutlineOn;
+    const cb = document.getElementById('afdOutlineChk'); if(cb) cb.checked = afdOutlineOn;
+    renderAfdOutline();
   }
-  if('afdValuesOn' in s && s.afdValuesOn !== afdValuesOn){
-    afdValuesOn = s.afdValuesOn;
-    const cb = document.getElementById('afdValChk'); if(cb) cb.checked = afdValuesOn;
-    renderAfdValues();
-  }
-  if('afdFieldOn' in s && s.afdFieldOn !== afdFieldOn){
-    afdFieldOn = s.afdFieldOn;
-    const cb = document.getElementById('afdFieldChk'); if(cb) cb.checked = afdFieldOn;
-    renderAfdOverlay();
-  }
-  if('afdHour' in s && s.afdHour !== afdHour && afdGrid) setAfdHour(s.afdHour);
-  if('afdPlaying' in s && !!s.afdPlaying !== !!afdPlayTimer) toggleAfdPlay();
-  if('afdOpen' in s && s.afdOpen !== afdOpen) toggleAfd();
   if(s.radarMode){
     singleSite = s.singleSite || singleSite;
     singleProduct = s.singleProduct || singleProduct;
@@ -3849,7 +2666,6 @@ function hookSync(){
 let feedOpen = false;
 function toggleFeed(){
   feedOpen = !feedOpen;
-  if(feedOpen && afdOpen) toggleAfd();
   document.getElementById('feedPanel').classList.toggle('open', feedOpen);
   if(feedOpen) renderFeed();
   else if(feedLayerGroup) feedLayerGroup.clearLayers();   // hide pins when tab closes
@@ -3996,9 +2812,9 @@ async function boot(){
   setInterval(loadPrecip, 5 * 60 * 1000);   // MRMS QPE refreshes hourly; snow grid drifts slower
   setInterval(computeLightning, 3000);
   setInterval(() => { if(feedOpen) renderFeed(); }, 30000);   // keep "Xm ago" fresh
-  loadAfd();
-  setInterval(() => { if(afdOpen || afdActive.length) loadAfd(); }, 15 * 60 * 1000);
-  setInterval(() => { if(afdActive.length) fetchAfdGrid(); }, 20 * 60 * 1000);
+  loadAfdAreas();
+  afdOfficeAt(lat, lon).then(w => { afdWFO = w; renderAfdOutline(); });
+  setInterval(loadAfdAreas, 20 * 60 * 1000);
   // Auto-pair as the controller when opened via a scanned QR (?join=CODE);
   // otherwise pick the last pairing back up so a reload doesn't break the link.
   const joinCode = new URLSearchParams(location.search).get('join');
