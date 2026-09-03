@@ -16,6 +16,11 @@ const OUT = 'data/afd-areas.json';
 const OFFICES = 'data/offices.json';
 const UA = 'super-radar (github.com/samjalbr-cmd/Super-Radar)';
 const MODEL = process.env.AFD_MODEL || 'claude-opus-5';
+// Adaptive thinking and server-side refusal fallbacks exist on the 4.6-and-later
+// families; Haiku 4.5 rejects both. Keep the request shape model-appropriate so
+// a cheaper model can be compared without editing the script.
+const MODERN = /^claude-(opus-(5|4-[678])|sonnet-5|sonnet-4-6|fable-|mythos-)/.test(MODEL);
+
 const DRY = process.argv.includes('--dry-run');
 const ONLY = (process.argv.find(a => a.startsWith('--only=')) || '').split('=')[1];
 
@@ -166,16 +171,19 @@ async function main() {
 
       if (DRY) { console.log(`${wfo}: would send ${prompt.length} chars`); continue; }
 
-      const res = await client.beta.messages.create({
+      const req = {
         model: MODEL,
         max_tokens: 16000,
         system: SYSTEM,
-        thinking: { type: 'adaptive' },
         output_config: { format: { type: 'json_schema', schema: SCHEMA } },
-        betas: ['server-side-fallback-2026-07-01'],
-        fallbacks: 'default',
         messages: [{ role: 'user', content: prompt }],
-      });
+      };
+      if (MODERN) {
+        req.thinking = { type: 'adaptive' };
+        req.betas = ['server-side-fallback-2026-07-01'];
+        req.fallbacks = 'default';
+      }
+      const res = await client.beta.messages.create(req);
       calls++;
       if (res.stop_reason === 'refusal') { console.log(`${wfo}: refused (${res.stop_details?.category})`); continue; }
 
