@@ -190,7 +190,15 @@ async function main() {
       const u = res.usage;
       console.log(`${wfo}: ${areas.length} area(s)  [in ${u.input_tokens} / out ${u.output_tokens}]  ${parsed.headline}`);
     } catch (e) {
-      console.log(`${wfo}: FAILED — ${e.message}`);
+      const msg = e.message || String(e);
+      if (/credit balance|authentication|invalid x-api-key|permission|401|403/i.test(msg)) {
+        console.error(`\nFATAL — this affects every office, stopping.\n${msg}\n`);
+        if (/credit balance/i.test(msg))
+          console.error('Add API credit at console.anthropic.com -> Plans & Billing.\n' +
+                        'A Claude subscription is billed separately and does not fund the API.');
+        process.exit(1);
+      }
+      console.log(`${wfo}: FAILED — ${msg}`);
     }
   }
 
