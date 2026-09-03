@@ -426,7 +426,6 @@
     </div>
     <label style="margin-top:8px;">Forecast Discussion</label>
     <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" id="afdAreasChk" checked onchange="toggleAfdAreas(this)"> Hazard areas from the discussion</label>
-    <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" id="afdOutlineChk" checked onchange="toggleAfdOutline(this)"> Outline the issuing office</label>
     <label style="margin-top:8px;">Model Layers</label>
     <select id="modelField" onchange="setModelField(this.value)">
       <option value="off">Off</option>
@@ -513,7 +512,7 @@
 <script>
 let lat = 42.907058, lon = -85.763014;
 let map, basemap, basemapLabels, radarLayer, marker, alertLayerGroup, lightningLayerGroup, feedLayerGroup;
-let spcOutlookLayer, mcdLayer, lsrLayer, stationLayer, modelLayer, modelMarkers, afdAreaLayer, afdHazardLayer;
+let spcOutlookLayer, mcdLayer, lsrLayer, stationLayer, modelLayer, modelMarkers, afdHazardLayer;
 let precipGroup, precipMarkers;
 const ESRI_CANVAS = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/';
 
@@ -556,7 +555,6 @@ function initMap(){
   modelMarkers = L.layerGroup().addTo(map);
   spcOutlookLayer = L.layerGroup().addTo(map);
   alertLayerGroup = L.layerGroup().addTo(map);
-  afdAreaLayer = L.layerGroup().addTo(map);
   afdHazardLayer = L.layerGroup().addTo(map);
   mcdLayer = L.layerGroup().addTo(map);
   lsrLayer = L.layerGroup().addTo(map);
@@ -1776,10 +1774,7 @@ function scheduleModelRefresh(){
 
 const AFD_DATA_URL = 'data/afd-areas.json';
 let afdAreas = null;          // {generated, offices:{WFO:{headline, issued, areas[]}}}
-let afdWFO = null;            // office under the map center, for the outline
-let afdOfficeTimer = null;
 let afdAreasOn = true;
-let afdOutlineOn = true;
 
 // Colour by what the hazard is, matching the alert palette so a discussion area
 // and a warning for the same thing read the same way.
@@ -1876,104 +1871,14 @@ function afdEsc(t){
   return String(t == null ? '' : t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-/* ---- the issuing office's outline, drawn like a mesoscale discussion ---- */
-
-// NWS County Warning Area polygons, generalized server-side to well under a
-// kilobyte. CORS-open, same host as the QPE service.
-const CWA_URL = 'https://mapservices.weather.noaa.gov/static/rest/services/' +
-                'nws_reference_maps/nws_reference_map/FeatureServer/1/query';
-const cwaCache = {};
-
-function cwaVertexCount(feat){
-  let n = 0;
-  (function walk(c){
-    if(!c || !c.length) return;
-    if(typeof c[0][0] === 'number') n += c.length; else c.forEach(walk);
-  })(feat.geometry.coordinates);
-  return n;
-}
-async function cwaGeometry(wfo){
-  if(cwaCache[wfo] !== undefined) return cwaCache[wfo];
-  const q = off => `${CWA_URL}?where=cwa%3D%27${encodeURIComponent(wfo)}%27` +
-                   `&outFields=cwa,citystate&returnGeometry=true&outSR=4326` +
-                   `&maxAllowableOffset=${off}&f=geojson`;
-  try{
-    let d = await (await fetch(q(0.005))).json();
-    let f = (d.features && d.features[0]) || null;
-    // Island-heavy coastlines (Anchorage is 12k vertices at this tolerance) come
-    // back far too detailed for an outline — coarsen once rather than ship 226 KB.
-    if(f && cwaVertexCount(f) > 2500){
-      const d2 = await (await fetch(q(0.15))).json();
-      f = (d2.features && d2.features[0]) || f;
-    }
-    cwaCache[wfo] = f;
-  }catch(e){ cwaCache[wfo] = null; }
-  return cwaCache[wfo];
-}
-
-async function afdOfficeAt(lat, lon){
-  try{
-    const r = await fetch(`https://api.weather.gov/points/${lat.toFixed(4)},${lon.toFixed(4)}`);
-    if(!r.ok) return null;
-    const d = await r.json();
-    return (d.properties && d.properties.cwa) || null;
-  }catch(e){ return null; }
-}
-
-async function renderAfdOutline(){
-  if(!afdAreaLayer) return;
-  afdAreaLayer.clearLayers();
-  if(!afdOutlineOn || !afdWFO) return;
-  const wfo = afdWFO;
-  const feat = await cwaGeometry(wfo);
-  if(!feat || wfo !== afdWFO || !afdOutlineOn) return;
-  const layer = L.geoJSON(feat, {
-    style: {color: '#F2B705', weight: 1.6, fillColor: '#F2B705',
-            fillOpacity: 0.02, dashArray: '7 5'}
-  });
-  const off = (afdAreas && afdAreas.offices && afdAreas.offices[wfo]) || null;
-  const where = (feat.properties && feat.properties.citystate) || wfo;
-  const n = off ? (off.areas || []).length : 0;
-  layer.bindPopup(`<div class="alert-popup"><b>Forecast Discussion · ${afdEsc(where)}</b>` +
-    `${afdEsc(off ? off.headline : 'Not read yet for this office.')}<br>` +
-    `<span style="color:#8FD3FF">${off ? (n ? n + ' area' + (n === 1 ? '' : 's') + ' drawn · ' + afdIssuedText(off)
-                                            : 'no hazard areas in this issuance')
-                                     : ''}</span></div>`);
-  layer.addTo(afdAreaLayer);
-  if(off && off.headline){
-    try{
-      const b = layer.getBounds();
-      const at = [b.getNorth() - (b.getNorth() - b.getSouth()) * 0.07, b.getCenter().lng];
-      let sub = off.headline;
-      if(sub.length > 56) sub = sub.slice(0, 56) + '…';
-      const html = `<div class="afd-area-lbl" style="color:#F2B705">` +
-                   `<div class="t">${afdEsc(wfo)} FORECAST DISCUSSION</div>` +
-                   `<div class="s">${afdEsc(sub)}</div></div>`;
-      L.marker(at, {icon: L.divIcon({className: 'afd-area-icon', html, iconSize: [0, 0], iconAnchor: [0, 0]}),
-                    interactive: false, keyboard: false}).addTo(afdAreaLayer);
-    }catch(e){}
-  }
-}
-
-// Follow the map: the outline tracks whichever office you are looking at.
+// Areas are already loaded; panning only changes which ones are in view.
 function scheduleAfdRefresh(){
-  renderAfdAreas();                       // viewport filter only — no refetch
-  clearTimeout(afdOfficeTimer);
-  afdOfficeTimer = setTimeout(async () => {
-    const c = map.getCenter();
-    const now = await afdOfficeAt(c.lat, c.lng);
-    if(now && now !== afdWFO){ afdWFO = now; renderAfdOutline(); }
-  }, 1200);
+  renderAfdAreas();
 }
 
 function toggleAfdAreas(cb){
   afdAreasOn = cb.checked;
   renderAfdAreas();
-  if(syncRole === 'phone') broadcastState();
-}
-function toggleAfdOutline(cb){
-  afdOutlineOn = cb.checked;
-  renderAfdOutline();
   if(syncRole === 'phone') broadcastState();
 }
 
@@ -2557,7 +2462,7 @@ function getSyncState(){
     stationsOn, stationMetric, windBarbsOn,
     radarMode, singleSite, singleProduct, modelField, brightnessIdx,
     precipMode, precipWindow, feedOpen, kiosk: kioskOn,
-    afdAreasOn, afdOutlineOn,
+    afdAreasOn,
     lblScale: document.documentElement.style.getPropertyValue('--lblscale') || '1',
     radarOpacity: radarLayer ? radarLayer.options.opacity : 0.6
   };
@@ -2603,11 +2508,6 @@ function applyState(s){
     afdAreasOn = s.afdAreasOn;
     const cb = document.getElementById('afdAreasChk'); if(cb) cb.checked = afdAreasOn;
     renderAfdAreas();
-  }
-  if('afdOutlineOn' in s && s.afdOutlineOn !== afdOutlineOn){
-    afdOutlineOn = s.afdOutlineOn;
-    const cb = document.getElementById('afdOutlineChk'); if(cb) cb.checked = afdOutlineOn;
-    renderAfdOutline();
   }
   if(s.radarMode){
     singleSite = s.singleSite || singleSite;
@@ -2813,7 +2713,6 @@ async function boot(){
   setInterval(computeLightning, 3000);
   setInterval(() => { if(feedOpen) renderFeed(); }, 30000);   // keep "Xm ago" fresh
   loadAfdAreas();
-  afdOfficeAt(lat, lon).then(w => { afdWFO = w; renderAfdOutline(); });
   setInterval(loadAfdAreas, 20 * 60 * 1000);
   // Auto-pair as the controller when opened via a scanned QR (?join=CODE);
   // otherwise pick the last pairing back up so a reload doesn't break the link.
