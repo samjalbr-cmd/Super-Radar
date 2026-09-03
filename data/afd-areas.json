@@ -1,125 +1,23 @@
 {
- "generated": "2026-09-03T01:15:52.383Z",
+ "generated": "2026-09-03T08:08:05.585Z",
  "offices": {
   "GRR": {
-   "product": "610fb0e8-68e3-45e4-a109-6bbada6dce42",
-   "issued": "2026-09-02T23:18:00+00:00",
+   "product": "67ba1ef9-1f7f-4643-9cb3-e6023d67dd25",
+   "issued": "2026-09-03T08:00:00+00:00",
    "office": "Grand Rapids MI",
-   "headline": "Heat indices near 100 through evening; nightly storms with hail and downpours",
+   "headline": "Slight Risk: damaging winds main threat today into tonight",
    "areas": [
     {
-     "hazard": "heat",
-     "label": "Heat indices 95-100 through evening",
-     "confidence": "high",
-     "start": "2026-09-02T23:18:00.000Z",
-     "end": "2026-09-03T00:00:00.000Z",
-     "quote": "Widespread indices of 95 to 100 are occurring and will continue to occur across southern Lower Michigan through this afternoon and evening given air temps in the upper 80s to low 90s and dew points of 70 to 75 making it feel pretty miserable in the sun.",
-     "polygon": [
-      [
-       43.2,
-       -86.23
-      ],
-      [
-       43.2,
-       -84.6
-      ],
-      [
-       42.78,
-       -84.16
-      ],
-      [
-       42.08,
-       -84.15
-      ],
-      [
-       42.08,
-       -86.22
-      ],
-      [
-       42.45,
-       -86.28
-      ],
-      [
-       42.99,
-       -86.23
-      ]
-     ]
-    },
-    {
-     "hazard": "severe storms",
-     "label": "Overnight storms, hail, downpours",
-     "confidence": "high",
-     "start": "2026-09-03T05:00:00.000Z",
-     "end": "2026-09-03T12:00:00.000Z",
-     "quote": "Scattered showers/storms may develop especially from Muskegon to Lansing during the 05z-12z time frame.",
-     "polygon": [
-      [
-       43.45,
-       -86.35
-      ],
-      [
-       43.1,
-       -84.45
-      ],
-      [
-       42.55,
-       -84.45
-      ],
-      [
-       42.85,
-       -86.25
-      ]
-     ]
-    },
-    {
      "hazard": "damaging wind",
-     "label": "Isolated strong gusts, hail Thursday",
-     "confidence": "medium",
-     "start": "2026-09-03T16:00:00.000Z",
-     "end": "2026-09-04T02:00:00.000Z",
-     "quote": "Deep layer shear of around 40 kts will be present north of I-96.",
+     "label": "Damaging winds, severe storms",
+     "confidence": "high",
+     "start": "2026-09-03T12:00:00.000Z",
+     "end": "2026-09-04T12:00:00.000Z",
+     "quote": "Wind appears to be the main threat per machine learning data like NadoCast which is supported by the SPC outlooks.",
      "polygon": [
       [
-       43.23,
-       -86.3
-      ],
-      [
-       42.96,
-       -85.67
-      ],
-      [
-       42.74,
-       -84.6
-      ],
-      [
-       43.46,
-       -84.4
-      ],
-      [
-       44.15,
-       -84.62
-      ],
-      [
-       44.17,
-       -86.38
-      ],
-      [
-       43.63,
-       -86.54
-      ]
-     ]
-    },
-    {
-     "hazard": "flash flooding",
-     "label": "Heavy downpours, street flooding",
-     "confidence": "medium",
-     "start": "2026-09-04T02:00:00.000Z",
-     "end": "2026-09-04T13:00:00.000Z",
-     "quote": "Very heavy downpours and some street flooding may develop if organized convection gets going on the nose of the LLJ Thursday night into Friday morning.",
-     "polygon": [
-      [
-       44.17,
-       -86.38
+       44.18,
+       -86.39
       ],
       [
        44.16,
@@ -127,53 +25,187 @@
       ],
       [
        43.47,
-       -84.45
+       -84.61
+      ],
+      [
+       43.47,
+       -84.37
       ],
       [
        42.78,
        -84.16
       ],
       [
-       42.08,
-       -84.15
+       42.07,
+       -84.13
       ],
       [
-       42.08,
+       42.07,
        -86.22
       ],
       [
-       42.45,
-       -86.28
+       42.24,
+       -86.37
       ],
       [
-       43,
+       42.59,
+       -86.23
+      ],
+      [
+       42.99,
        -86.23
       ],
       [
        43.63,
        -86.54
+      ],
+      [
+       43.97,
+       -86.46
+      ]
+     ]
+    },
+    {
+     "hazard": "flash flooding",
+     "label": "Localized short term flooding",
+     "confidence": "medium",
+     "start": "2026-09-03T12:00:00.000Z",
+     "end": "2026-09-04T12:00:00.000Z",
+     "quote": "If storms can train over certain areas or if motion is slower than anticipated hydro concerns will increase (localized short term flooding).",
+     "polygon": [
+      [
+       44.18,
+       -86.39
+      ],
+      [
+       44.16,
+       -84.61
+      ],
+      [
+       43.47,
+       -84.61
+      ],
+      [
+       43.47,
+       -84.37
+      ],
+      [
+       42.78,
+       -84.16
+      ],
+      [
+       42.07,
+       -84.13
+      ],
+      [
+       42.07,
+       -86.22
+      ],
+      [
+       42.24,
+       -86.37
+      ],
+      [
+       42.99,
+       -86.23
+      ],
+      [
+       43.63,
+       -86.54
+      ],
+      [
+       43.97,
+       -86.46
+      ]
+     ]
+    },
+    {
+     "hazard": "severe storms",
+     "label": "Marginal risk far southwest Friday",
+     "confidence": "medium",
+     "start": "2026-09-04T10:00:00.000Z",
+     "end": "2026-09-04T22:00:00.000Z",
+     "quote": "SPC has a marginal threat for severe weather in our far southwest which makes sense given the moisture will be pooled in this area as the front likely sags to the southwest.",
+     "polygon": [
+      [
+       42.07,
+       -86.3
+      ],
+      [
+       42.6,
+       -86.24
+      ],
+      [
+       42.6,
+       -85.4
+      ],
+      [
+       42.07,
+       -85.4
+      ]
+     ]
+    },
+    {
+     "hazard": "marine",
+     "label": "Thunderstorm winds on the nearshore",
+     "confidence": "medium",
+     "start": "2026-09-03T12:00:00.000Z",
+     "end": "2026-09-04T06:00:00.000Z",
+     "quote": "Winds and waves can obviously be higher in and near thunderstorms and mariners will need to remain alert to this threat.",
+     "polygon": [
+      [
+       42.07,
+       -86.22
+      ],
+      [
+       42.24,
+       -86.37
+      ],
+      [
+       42.59,
+       -86.23
+      ],
+      [
+       42.99,
+       -86.23
+      ],
+      [
+       43.63,
+       -86.54
+      ],
+      [
+       44.18,
+       -86.39
+      ],
+      [
+       44.18,
+       -86.9
+      ],
+      [
+       42.07,
+       -86.7
       ]
      ]
     }
    ]
   },
   "DTX": {
-   "product": "4b6a5a3e-145a-4e86-b2fa-b980c9c44674",
-   "issued": "2026-09-02T23:52:00+00:00",
+   "product": "08ba023f-58ea-4720-8499-54ee5f39cb27",
+   "issued": "2026-09-03T07:45:00+00:00",
    "office": "Detroit/Pontiac MI",
-   "headline": "Slight Risk severe storms this evening; 70 mph winds, 1.5\" hail possible",
+   "headline": "Slight Risk severe storms today; heavy rain south of M-59 tonight",
    "areas": [
     {
      "hazard": "severe storms",
-     "label": "Damaging winds, large hail, isolated tornado",
+     "label": "Damaging winds, isolated large hail",
      "confidence": "high",
-     "start": "2026-09-03T00:00:00.000Z",
-     "end": "2026-09-03T06:00:00.000Z",
-     "quote": "A Slight Risk for severe storms continues this evening. Damaging \nwinds to 70 mph, hail to 1.5 inch, and an isolated tornado threat \nare all possible.",
+     "start": "2026-09-03T16:00:00.000Z",
+     "end": "2026-09-04T06:00:00.000Z",
+     "quote": "Mean flow and forecasted storm motion would carry this activity SE towards lower Michigan through the afternoon and evening, placing all of SE MI within the corridor for potential strong to severe thunderstorm development.",
      "polygon": [
       [
-       44.05,
-       -82.95
+       44.07,
+       -82.92
       ],
       [
        43.58,
@@ -206,156 +238,92 @@
      ]
     },
     {
-     "hazard": "flash flooding",
-     "label": "Heavy downpours, localized flooding",
-     "confidence": "medium",
-     "start": "2026-09-03T00:00:00.000Z",
-     "end": "2026-09-03T12:00:00.000Z",
-     "quote": "First round of showers and thunderstorms is ongoing across the \nSaginaw Valley and Thumb regions, with chances continuing overnight.",
+     "hazard": "heat",
+     "label": "Heat indices mid to upper 90s",
+     "confidence": "high",
+     "start": "2026-09-03T16:00:00.000Z",
+     "end": "2026-09-04T00:00:00.000Z",
+     "quote": "Regardless, temperatures will be capable of pushing back into the upper 80s to low 90s through the MI/OH border into the Metro region with heat indices in the mid to upper 90s.",
      "polygon": [
       [
-       44.05,
+       41.72,
+       -84.3
+      ],
+      [
+       41.74,
+       -83.42
+      ],
+      [
+       42.35,
        -82.95
       ],
       [
-       43.58,
-       -83.68
+       42.63,
+       -82.55
       ],
       [
-       44,
-       -84.05
-      ],
-      [
-       43.8,
-       -84.55
-      ],
-      [
-       43.3,
-       -84.25
-      ],
-      [
-       43.05,
+       42.75,
        -83.4
       ],
       [
-       43.05,
-       -82.7
+       42.7,
+       -84
       ],
       [
-       43.5,
-       -82.5
+       42.2,
+       -84.2
       ]
      ]
     },
     {
-     "hazard": "dense fog",
-     "label": "Areas of dense fog on waterways",
+     "hazard": "flash flooding",
+     "label": "1-2+\" rain south of M-59",
      "confidence": "medium",
-     "start": "2026-09-03T06:00:00.000Z",
-     "end": "2026-09-03T14:00:00.000Z",
-     "quote": "No long-fused headline concerns \nthrough the weekend, although areas of dense fog could become an \nissue again late tonight into Thursday morning for portions of the \nwaterways.",
+     "start": "2026-09-04T03:00:00.000Z",
+     "end": "2026-09-04T14:00:00.000Z",
+     "quote": "Overnight, there is a signal for showers or thunderstorm development to then set up around or south of M59, which will be capable of producing an additional 1-2+\" of rainfall pending where this rainfall axis sets up.",
      "polygon": [
       [
-       44.02,
-       -82.94
+       42.7,
+       -84.19
       ],
       [
-       43.5,
-       -82.58
+       42.7,
+       -83.4
       ],
       [
-       43,
-       -82.5
+       42.66,
+       -82.75
       ],
       [
-       42.6,
-       -82.45
+       42.35,
+       -82.93
       ],
       [
-       42.5,
-       -82.72
+       41.74,
+       -83.42
       ],
       [
-       43,
-       -82.85
-      ],
-      [
-       43.6,
-       -83.05
+       41.72,
+       -84.31
       ]
      ]
     }
    ]
   },
   "MKX": {
-   "product": "54c2d369-9cf3-4f39-8e88-3f385764ec2f",
-   "issued": "2026-09-03T00:21:00+00:00",
+   "product": "225ee30a-7ed1-4d4f-86ed-80c5ed40d5b3",
+   "issued": "2026-09-03T06:07:00+00:00",
    "office": "Milwaukee/Sullivan WI",
-   "headline": "Muggy heat near 100 heat index; overnight storms with wind threat",
+   "headline": "Damaging winds, heavy rain likely evening/overnight in eastern CWA",
    "areas": [
     {
      "hazard": "heat",
-     "label": "Heat indices near 100 in south",
-     "confidence": "medium",
-     "start": "2026-09-03T16:00:00.000Z",
+     "label": "Heat indices near 100F",
+     "confidence": "high",
+     "start": "2026-09-03T17:00:00.000Z",
      "end": "2026-09-04T00:00:00.000Z",
-     "quote": "This means that the areas on the border line of a heat advisory are those WI/IL border counties.",
-     "polygon": [
-      [
-       42.51,
-       -90.42
-      ],
-      [
-       42.5,
-       -87.82
-      ],
-      [
-       43.05,
-       -87.88
-      ],
-      [
-       43.05,
-       -90.42
-      ]
-     ]
-    },
-    {
-     "hazard": "damaging wind",
-     "label": "Overnight storms, wind threat",
-     "confidence": "medium",
-     "start": "2026-09-03T06:00:00.000Z",
-     "end": "2026-09-03T14:00:00.000Z",
-     "quote": "Across south central Wisconsin precipitation chances jump to 40-60% under the more favorable support.",
-     "polygon": [
-      [
-       42.55,
-       -90.4
-      ],
-      [
-       42.55,
-       -88.6
-      ],
-      [
-       43.6,
-       -88.7
-      ],
-      [
-       43.6,
-       -89.6
-      ],
-      [
-       43.2,
-       -90.3
-      ]
-     ]
-    },
-    {
-     "hazard": "severe storms",
-     "label": "Strong storms, wind and small hail",
-     "confidence": "medium",
-     "start": "2026-09-04T00:00:00.000Z",
-     "end": "2026-09-04T09:00:00.000Z",
-     "quote": "Again with shear around 40 kts, there will be a potential for organized convection. Strong winds will again be the main threat, but can't rule out some small hail.",
+     "quote": "Looking at temps creeping back into the mid- upper 80s and dewpoints in the 70s resulting in heat indices especially along and south of I-94 warming back into the 90s and approaching 100F toward the WI/IL border this afternoon.",
      "polygon": [
       [
        42.5,
@@ -363,33 +331,45 @@
       ],
       [
        42.49,
-       -87.82
+       -87.81
       ],
       [
-       43.2,
+       43.03,
        -87.9
       ],
       [
-       43.2,
-       -90.42
+       43.08,
+       -89.4
+      ],
+      [
+       43.4,
+       -90.43
       ]
      ]
     },
     {
-     "hazard": "dense fog",
-     "label": "Lakeshore stratus, IFR/LIFR",
+     "hazard": "damaging wind",
+     "label": "Damaging winds, isolated spin-up",
      "confidence": "medium",
-     "start": "2026-09-03T03:00:00.000Z",
-     "end": "2026-09-03T13:00:00.000Z",
-     "quote": "However, models do hint at the elevated low-level moisture and light winds along the lakeshore, especially north of Port Washington may result in some low stratus to develop bring IFR to LIFR ceilings and maybe even a drop of visibility mainly for SBM.",
+     "start": "2026-09-03T23:00:00.000Z",
+     "end": "2026-09-04T12:00:00.000Z",
+     "quote": "00z HREF shows the theta-E gradient setup from northwest to southeast across our eastern half of the CWA.",
      "polygon": [
       [
-       43.39,
-       -88.05
+       42.49,
+       -89.2
       ],
       [
-       43.39,
-       -87.86
+       42.49,
+       -87.81
+      ],
+      [
+       43.17,
+       -87.88
+      ],
+      [
+       43.75,
+       -87.72
       ],
       [
        43.89,
@@ -397,57 +377,109 @@
       ],
       [
        43.89,
-       -88.05
+       -89.2
+      ]
+     ]
+    },
+    {
+     "hazard": "flash flooding",
+     "label": "Heavy rain, ponding/minor flooding",
+     "confidence": "medium",
+     "start": "2026-09-03T23:00:00.000Z",
+     "end": "2026-09-04T12:00:00.000Z",
+     "quote": "While the antecedent conditions support the ground being able to take this rainfall, higher hourly rainfall rates along with any rain training over the same area could lead to ponding and minor flooding.",
+     "polygon": [
+      [
+       42.49,
+       -89.3
+      ],
+      [
+       42.49,
+       -87.81
+      ],
+      [
+       43.17,
+       -87.88
+      ],
+      [
+       43.75,
+       -87.72
+      ],
+      [
+       43.89,
+       -87.73
+      ],
+      [
+       43.89,
+       -89.3
+      ]
+     ]
+    },
+    {
+     "hazard": "dense fog",
+     "label": "Patchy fog, LIFR at SBM",
+     "confidence": "low",
+     "start": "2026-09-03T06:07:00.000Z",
+     "end": "2026-09-03T14:00:00.000Z",
+     "quote": "Otherwise, expected patchy fog and pockets of lower stratus to impact southern WI terminals overnight.",
+     "polygon": [
+      [
+       43.89,
+       -89.5
+      ],
+      [
+       43.89,
+       -87.73
+      ],
+      [
+       43.17,
+       -87.88
+      ],
+      [
+       42.6,
+       -87.82
+      ],
+      [
+       42.5,
+       -89.5
       ]
      ]
     }
    ]
   },
   "APX": {
-   "product": "07cd0be4-f7c6-4c85-b647-913b999d8979",
-   "issued": "2026-09-02T23:46:00+00:00",
+   "product": "e873ae73-6ebe-4318-83cb-dc7ff770a643",
+   "issued": "2026-09-03T07:54:00+00:00",
    "office": "Gaylord MI",
-   "headline": "Overnight fog; non-severe showers/storms tonight and Thursday",
+   "headline": "Heavy rain and a stronger storm or two today into Friday",
    "areas": [
     {
-     "hazard": "dense fog",
-     "label": "Overnight fog, IFR/LIFR at CIU",
+     "hazard": "severe storms",
+     "label": "Storms, locally strong",
      "confidence": "medium",
-     "start": "2026-09-03T04:00:00.000Z",
-     "end": "2026-09-03T13:00:00.000Z",
-     "quote": "Some fog expected at all sites but TVC overnight. CIU is the\nmost likely to drop to IFR/LIFR.",
+     "start": "2026-09-03T14:00:00.000Z",
+     "end": "2026-09-04T12:00:00.000Z",
+     "quote": "Rain/storm chances hang out in the region through at least \nFriday/Friday night...heavy rain and a stronger storm or two \npossible at times, especially today/tonight.",
      "polygon": [
       [
        45.78,
        -84.75
       ],
       [
-       46.3,
-       -84.3
-      ],
-      [
-       46.5,
-       -84.9
+       46.45,
+       -84.35
       ],
       [
        46,
        -85.9
       ],
       [
-       45.1,
-       -86.1
-      ],
-      [
        44.18,
-       -86.35
+       -86.39
       ],
       [
        44.05,
-       -84.5
-      ],
-      [
-       44.05,
-       -83.6
+       -83.58
       ],
       [
        45.27,
@@ -456,254 +488,200 @@
      ]
     },
     {
-     "hazard": "severe storms",
-     "label": "Showers/storms near M-55 corridor",
+     "hazard": "flash flooding",
+     "label": "Heavy rain, 1\"+ possible",
      "confidence": "medium",
-     "start": "2026-09-03T03:00:00.000Z",
-     "end": "2026-09-03T11:00:00.000Z",
-     "quote": "Additional showers and a few storms may form along the warm front \nacross mid Michigan, perhaps working into the M-55 corridor into \nearly Thursday morning.",
-     "polygon": [
-      [
-       44.18,
-       -86.25
-      ],
-      [
-       44.05,
-       -84.6
-      ],
-      [
-       44.05,
-       -83.6
-      ],
-      [
-       44.5,
-       -83.45
-      ],
-      [
-       44.55,
-       -86.05
-      ]
-     ]
-    },
-    {
-     "hazard": "severe storms",
-     "label": "Storms along and south of M-72",
-     "confidence": "high",
      "start": "2026-09-03T16:00:00.000Z",
-     "end": "2026-09-04T02:00:00.000Z",
-     "quote": "Best \nchances for showers/storms will come along and south of M-72.",
+     "end": "2026-09-04T18:00:00.000Z",
+     "quote": "If we end up with some sort of deformation axis forcing going this afternoon, we could be looking at a swath of rainfall in excess of 0.75-1in in 6hrs or less, perhaps near the M-\n72/M-55 corridor...but any storms could certainly put down over an inch of rain (hi-res prob guidance suggests a non-zer",
      "polygon": [
       [
-       44.05,
-       -83.6
+       44.9,
+       -86.05
       ],
       [
-       44.7,
-       -83.35
-      ],
-      [
-       44.75,
-       -85.65
-      ],
-      [
-       44.6,
-       -86.2
-      ],
-      [
-       44.18,
-       -86.3
-      ],
-      [
-       44.05,
+       44.88,
        -84.6
+      ],
+      [
+       44.8,
+       -83.4
+      ],
+      [
+       44.1,
+       -83.55
+      ],
+      [
+       44.15,
+       -84.6
+      ],
+      [
+       44.25,
+       -86.32
       ]
      ]
     }
    ]
   },
   "GRB": {
-   "product": "e103fb58-bf9d-4ce7-99c3-a80797073393",
-   "issued": "2026-09-02T23:58:00+00:00",
+   "product": "eeca891d-5d20-4593-aa06-9ac929905e49",
+   "issued": "2026-09-03T07:16:00+00:00",
    "office": "Green Bay WI",
-   "headline": "Rounds of storms late tonight-Thursday; wind and hail threat",
+   "headline": "Severe storms today, greatest risk south of Highway 29",
    "areas": [
     {
      "hazard": "severe storms",
-     "label": "Low-end hail, 40-60 mph gusts",
-     "confidence": "medium",
-     "start": "2026-09-03T07:00:00.000Z",
-     "end": "2026-09-03T17:00:00.000Z",
-     "quote": "There is still a lot of spread amounts the latest \nCAMs as to how morning convection will play out exactly, but a \nparameter space of ~1500 J/kg and 40-45kt 0-6km shear along and just \nnorth of I-90 does point to at least a low (10-20% chance) for \nstrong to severe storms with up to 1 inch hail and ",
+     "label": "Damaging wind, large hail, heavy rain",
+     "confidence": "high",
+     "start": "2026-09-03T08:00:00.000Z",
+     "end": "2026-09-03T19:00:00.000Z",
+     "quote": "Some of the storms could become severe with damaging winds and large hail along and south of Highway 29.",
      "polygon": [
       [
-       45.35,
-       -90.04
+       44.87,
+       -90.3
       ],
       [
-       45.35,
-       -88.6
-      ],
-      [
-       45.05,
+       44.87,
        -87.6
       ],
       [
-       44.5,
-       -87.5
-      ],
-      [
-       44.09,
-       -87.66
-      ],
-      [
-       43.89,
+       44.15,
        -87.73
       ],
       [
-       43.98,
+       43.9,
+       -87.75
+      ],
+      [
+       43.9,
+       -88.4
+      ],
+      [
+       43.99,
        -89.6
       ],
       [
        44.25,
-       -90.31
-      ],
-      [
-       45.03,
-       -90.2
-      ],
-      [
-       45.35,
-       -90.04
+       -90.32
       ]
      ]
     },
     {
-     "hazard": "damaging wind",
-     "label": "Possible MCS, damaging winds",
-     "confidence": "high",
-     "start": "2026-09-03T18:00:00.000Z",
-     "end": "2026-09-04T04:00:00.000Z",
-     "quote": "This would put parts of the forecast area, \nsouth of a Merrill to Green Bay line in play, however, there is still \na lot of uncertainty with how convection will evolve through the \nafternoon and evening.",
+     "hazard": "severe storms",
+     "label": "Second round of strong/severe storms",
+     "confidence": "medium",
+     "start": "2026-09-03T20:00:00.000Z",
+     "end": "2026-09-04T09:00:00.000Z",
+     "quote": "With the best instability to our south, scattered thunderstorms may redevelop during the peak heating of the day across central into east-central WI closer to the best instability.",
      "polygon": [
       [
-       45.12,
-       -90.04
+       45.3,
+       -90.05
       ],
       [
-       45.18,
-       -89.68
+       45.25,
+       -87.6
       ],
       [
-       44.51,
-       -88.02
+       44.6,
+       -87.45
       ],
       [
-       44.09,
-       -87.66
-      ],
-      [
-       43.89,
+       44.15,
        -87.73
       ],
       [
-       43.98,
-       -88.9
+       43.9,
+       -87.75
       ],
       [
-       43.98,
+       43.9,
+       -88.4
+      ],
+      [
+       43.99,
        -89.6
       ],
       [
        44.25,
-       -90.31
-      ],
-      [
-       45.03,
-       -90.2
-      ],
-      [
-       45.12,
-       -90.04
+       -90.32
       ]
      ]
     },
     {
      "hazard": "dense fog",
-     "label": "Patchy fog, reduced visibility",
-     "confidence": "medium",
-     "start": "2026-09-03T04:00:00.000Z",
-     "end": "2026-09-03T13:00:00.000Z",
-     "quote": "The light winds, clear skies will allow for some fog to form, but\nguidance not very bullish on anything widespread or dense, with\nthe higher chances (under 30% for under 3 mile vsby) over eastern\nWI.",
+     "label": "Patchy dense fog on Lake Michigan",
+     "confidence": "low",
+     "start": "2026-09-03T07:16:00.000Z",
+     "end": "2026-09-03T14:00:00.000Z",
+     "quote": "Patchy fog developed in some spots and will monitor the lakeshore where some patchy dense fog may be possible on Lake Michigan where recent upwelling has cooled off water temperatures.",
      "polygon": [
       [
        45.35,
-       -88.6
+       -87.05
       ],
       [
-       45.1,
+       45.2,
+       -86.9
+      ],
+      [
+       44.7,
+       -87.2
+      ],
+      [
+       44.1,
        -87.6
       ],
       [
-       44.5,
-       -87.45
-      ],
-      [
-       44.09,
-       -87.66
-      ],
-      [
-       43.89,
-       -87.73
-      ],
-      [
        43.9,
-       -88.6
+       -87.74
       ],
       [
-       45.35,
-       -88.6
+       44.3,
+       -87.5
+      ],
+      [
+       44.8,
+       -87.32
+      ],
+      [
+       45.15,
+       -87.1
       ]
      ]
     }
    ]
   },
   "LOT": {
-   "product": "8e1c646a-5c0c-4356-b574-f57b78ae712e",
-   "issued": "2026-09-02T23:35:00+00:00",
+   "product": "28260e98-604d-4cd8-bbe0-7805e52af0fd",
+   "issued": "2026-09-03T05:26:00+00:00",
    "office": "Chicago IL",
-   "headline": "Heat indices to 105F Thursday; severe storms, training rain Thu night",
+   "headline": "Heat indices 100-105 south of I-80; severe storms Thursday into Friday",
    "areas": [
     {
      "hazard": "heat",
      "label": "Heat indices 100-105F",
      "confidence": "high",
-     "start": "2026-09-02T23:35:00.000Z",
+     "start": "2026-09-03T14:00:00.000Z",
      "end": "2026-09-04T02:00:00.000Z",
-     "quote": "Hot and humid conditions will persist through Thursday\n  afternoon, especially south of I-80, with peak heat indices \n  around 100 to 105F.",
+     "quote": "That said, where heat indices due break the 100 degree mark there will be the danger for heat related illnesses which is why the Heat Advisory has been extended through 9 PM CDT Thursday evening for our north-central IL counties and all of our northwest IN counties.",
      "polygon": [
       [
-       41.93,
-       -89.69
+       41.72,
+       -89.63
       ],
       [
-       41.93,
-       -88.7
-      ],
-      [
-       41.8,
-       -88
+       41.72,
+       -88.2
       ],
       [
        41.71,
-       -87.53
-      ],
-      [
-       41.71,
-       -86.93
+       -86.94
       ],
       [
        40.48,
-       -86.99
+       -86.95
       ],
       [
        40.4,
@@ -718,19 +696,11 @@
        -88.57
       ],
       [
-       40.93,
-       -88.93
-      ],
-      [
        41.1,
        -89.05
       ],
       [
-       41.59,
-       -89.16
-      ],
-      [
-       41.59,
+       41.585,
        -89.63
       ]
      ]
@@ -738,38 +708,34 @@
     {
      "hazard": "severe storms",
      "label": "Damaging winds, large hail",
-     "confidence": "high",
+     "confidence": "medium",
      "start": "2026-09-03T18:00:00.000Z",
      "end": "2026-09-04T04:00:00.000Z",
-     "quote": "Because of this severe threat \nthe Storm Prediction Center has maintained the marginal (level 1\nof 5) risk for our entire area for Thursday afternoon and \nevening.",
+     "quote": "Because of this severe threat the Storm Prediction Center has maintained the marginal (level 1 of 5) risk for our entire area for Thursday afternoon and evening.",
      "polygon": [
       [
-       42.5,
-       -89.39
+       42.49,
+       -89.38
       ],
       [
        42.49,
-       -87.8
+       -87.82
       ],
       [
-       42.27,
-       -87.83
-      ],
-      [
-       41.89,
-       -87.6
+       42.07,
+       -87.66
       ],
       [
        41.71,
-       -87.53
+       -87.52
       ],
       [
        41.71,
-       -86.93
+       -86.94
       ],
       [
        40.48,
-       -86.99
+       -86.95
       ],
       [
        40.4,
@@ -780,11 +746,7 @@
        -88.46
       ],
       [
-       40.62,
-       -88.57
-      ],
-      [
-       40.93,
+       40.75,
        -88.93
       ],
       [
@@ -792,12 +754,20 @@
        -89.05
       ],
       [
-       41.59,
-       -89.17
+       41.585,
+       -89.63
       ],
       [
        41.93,
+       -89.68
+      ],
+      [
+       42.2,
        -89.69
+      ],
+      [
+       42.5,
+       -89.39
       ]
      ]
     },
@@ -806,32 +776,28 @@
      "label": "Training storms, 1-2+ inch rain",
      "confidence": "medium",
      "start": "2026-09-04T05:00:00.000Z",
-     "end": "2026-09-04T13:00:00.000Z",
-     "quote": "Right now it is unclear where \nexactly this complex will track and thus where the heaviest \nrainfall will occur, but it seems that somewhere in northern IL \nand/or northwest IN could see an area of 1-2+ inch rain amounts.",
+     "end": "2026-09-04T14:00:00.000Z",
+     "quote": "Right now it is unclear where exactly this complex will track and thus where the heaviest rainfall will occur, but it seems that somewhere in northern IL and/or northwest IN could see an area of 1-2+ inch rain amounts.",
      "polygon": [
       [
-       42.5,
-       -89.39
+       42.49,
+       -89.38
       ],
       [
        42.49,
-       -87.8
+       -87.82
       ],
       [
-       42.27,
-       -87.83
-      ],
-      [
-       41.89,
-       -87.6
+       42.07,
+       -87.66
       ],
       [
        41.71,
-       -87.53
+       -87.52
       ],
       [
        41.71,
-       -86.93
+       -86.94
       ],
       [
        41,
@@ -839,18 +805,14 @@
       ],
       [
        41,
-       -88.6
+       -89.16
       ],
       [
-       41.1,
-       -89.05
+       41.585,
+       -89.63
       ],
       [
-       41.59,
-       -89.17
-      ],
-      [
-       41.93,
+       42.2,
        -89.69
       ]
      ]
@@ -858,142 +820,22 @@
    ]
   },
   "IWX": {
-   "product": "34c6fb2f-36e9-41ae-901d-a77107fce5c5",
-   "issued": "2026-09-02T22:13:00+00:00",
+   "product": "b567983e-5eca-4938-852b-bf6ffa2625bf",
+   "issued": "2026-09-03T07:17:00+00:00",
    "office": "Northern Indiana",
-   "headline": "Heat indices near 100 along/south of US 30 Thu; storms possible",
+   "headline": "Heat indices near 100 today; severe storm cluster possible overnight",
    "areas": [
     {
      "hazard": "heat",
-     "label": "Heat indices near 100F",
+     "label": "Heat indices near 100",
      "confidence": "high",
-     "start": "2026-09-03T14:00:00.000Z",
+     "start": "2026-09-03T15:00:00.000Z",
      "end": "2026-09-04T00:00:00.000Z",
-     "quote": "Confidence is growing that heat indices will be at or slightly above 100 degrees tomorrow in the vicinity of the US 30 corridor, where there are lower chances for convection and/or clouds.",
-     "polygon": [
-      [
-       41.47,
-       -86.93
-      ],
-      [
-       41.35,
-       -86.2
-      ],
-      [
-       41.24,
-       -85.8
-      ],
-      [
-       41.1,
-       -85.15
-      ],
-      [
-       40.95,
-       -84.6
-      ],
-      [
-       40.75,
-       -83.9
-      ],
-      [
-       40.645,
-       -83.88
-      ],
-      [
-       40.31,
-       -84.804
-      ],
-      [
-       40.379,
-       -85.219
-      ],
-      [
-       40.565,
-       -85.864
-      ],
-      [
-       40.561,
-       -86.374
-      ],
-      [
-       40.735,
-       -86.525
-      ],
-      [
-       40.562,
-       -86.773
-      ],
-      [
-       40.564,
-       -87.095
-      ],
-      [
-       40.838,
-       -87.1
-      ],
-      [
-       40.913,
-       -86.93
-      ]
-     ]
-    },
-    {
-     "hazard": "severe storms",
-     "label": "Early storm chances north of I-80/90",
-     "confidence": "medium",
-     "start": "2026-09-03T06:00:00.000Z",
-     "end": "2026-09-03T18:00:00.000Z",
-     "quote": "Have maintained 15-20% chances for isolated convection between 06-18Z mainly north of I-80/I-90, with broader 15-20% expanding into the entire area after 18Z Thursday in line with the 12Z suite of CAMs.",
+     "quote": "The heat advisory was expanded to the entire forecast area.",
      "polygon": [
       [
        42.244,
        -86.25
-      ],
-      [
-       42.072,
-       -84.363
-      ],
-      [
-       41.707,
-       -84.36
-      ],
-      [
-       41.62,
-       -85.5
-      ],
-      [
-       41.62,
-       -86.75
-      ],
-      [
-       41.85,
-       -86.63
-      ],
-      [
-       42.116,
-       -86.489
-      ],
-      [
-       42.243,
-       -86.365
-      ]
-     ]
-    },
-    {
-     "hazard": "damaging wind",
-     "label": "Storms w/ damaging wind risk area-wide",
-     "confidence": "medium",
-     "start": "2026-09-03T18:00:00.000Z",
-     "end": "2026-09-04T14:00:00.000Z",
-     "quote": "20-30% chances of thunderstorms Thursday, beginning prior to daybreak mainly north of I-80/I-90 then expanding area-wide by the afternoon and evening. Storms may produce damaging winds.",
-     "polygon": [
-      [
-       42.244,
-       -86.25
-      ],
-      [
-       42.116,
-       -86.489
       ],
       [
        41.894,
@@ -1008,20 +850,62 @@
        -86.931
       ],
       [
-       40.838,
-       -87.1
-      ],
-      [
        40.564,
        -87.095
       ],
       [
-       40.561,
-       -86.374
+       40.379,
+       -85.219
       ],
       [
-       40.565,
-       -85.864
+       40.31,
+       -84.804
+      ],
+      [
+       40.645,
+       -83.88
+      ],
+      [
+       41.72,
+       -83.88
+      ],
+      [
+       42.074,
+       -84.363
+      ],
+      [
+       42.072,
+       -86.223
+      ]
+     ]
+    },
+    {
+     "hazard": "severe storms",
+     "label": "Damaging winds, hail overnight",
+     "confidence": "medium",
+     "start": "2026-09-03T23:00:00.000Z",
+     "end": "2026-09-04T12:00:00.000Z",
+     "quote": "Damaging wind gusts and hail appear to be the most likely outcome from storm clusters that emerge from southern Wisconsin.",
+     "polygon": [
+      [
+       42.244,
+       -86.25
+      ],
+      [
+       41.894,
+       -86.619
+      ],
+      [
+       41.71,
+       -86.933
+      ],
+      [
+       40.913,
+       -86.931
+      ],
+      [
+       40.564,
+       -87.095
       ],
       [
        40.379,
@@ -1052,22 +936,26 @@
    ]
   },
   "IND": {
-   "product": "910bf2ed-3b7b-4c1f-bb79-7e408a888415",
-   "issued": "2026-09-02T23:39:00+00:00",
+   "product": "12d38e34-9c8b-4feb-af3c-f9ce0594b412",
+   "issued": "2026-09-03T07:34:00+00:00",
    "office": "Indianapolis IN",
-   "headline": "Dangerous heat through Friday; storm/wind threat Thu-Fri",
+   "headline": "Heat indices to 108 through Friday; conditional storms north",
    "areas": [
     {
      "hazard": "heat",
-     "label": "Heat index up to 108",
+     "label": "Heat index up to 108, advisory",
      "confidence": "high",
-     "start": "2026-09-02T23:39:00.000Z",
+     "start": "2026-09-03T07:34:00.000Z",
      "end": "2026-09-05T00:00:00.000Z",
-     "quote": "Heat Advisory in effect for all of central Indiana through \nFriday evening with peak heat index values up to 108 are \npossible each afternoon",
+     "quote": "Heat Advisory in effect for all of central Indiana through late \nFriday with peak afternoon heat index values up to 108 degrees",
      "polygon": [
       [
        40.737,
        -86.721
+      ],
+      [
+       40.564,
+       -87.095
       ],
       [
        40.477,
@@ -1076,6 +964,10 @@
       [
        39.348,
        -87.532
+      ],
+      [
+       39.056,
+       -87.572
       ],
       [
        38.741,
@@ -1098,6 +990,10 @@
        -86.308
       ],
       [
+       38.763,
+       -85.936
+      ],
+      [
        38.912,
        -85.537
       ],
@@ -1110,54 +1006,12 @@
        -85.302
       ],
       [
-       40.31,
-       -84.804
-      ],
-      [
-       40.565,
-       -85.864
-      ],
-      [
-       40.735,
-       -86.525
-      ]
-     ]
-    },
-    {
-     "hazard": "damaging wind",
-     "label": "Strong wind gusts, north CWA",
-     "confidence": "medium",
-     "start": "2026-09-03T17:00:00.000Z",
-     "end": "2026-09-04T04:00:00.000Z",
-     "quote": "The greatest potential exists across our northern \nCWA, and especially into northern Indiana.",
-     "polygon": [
-      [
-       40.737,
-       -86.721
-      ],
-      [
-       40.477,
-       -87.527
-      ],
-      [
-       40,
-       -87.53
-      ],
-      [
        40.005,
        -85.201
       ],
       [
-       40.005,
-       -84.811
-      ],
-      [
        40.31,
        -84.804
-      ],
-      [
-       40.307,
-       -85.219
       ],
       [
        40.378,
@@ -1175,63 +1029,47 @@
     },
     {
      "hazard": "severe storms",
-     "label": "MCS: strong winds, flooding",
-     "confidence": "low",
-     "start": "2026-09-04T18:00:00.000Z",
-     "end": "2026-09-05T14:00:00.000Z",
-     "quote": "Like with any potential late summer MCS, strong winds \nand flooding are the primary hazards.",
+     "label": "Conditional wind/hail, north",
+     "confidence": "medium",
+     "start": "2026-09-03T19:00:00.000Z",
+     "end": "2026-09-04T15:00:00.000Z",
+     "quote": "Should these storms reach central Indiana, \ncan't rule out isolated severe in the form of brief damaging \nwinds or hail, but this threat is quite conditional.",
      "polygon": [
       [
        40.737,
        -86.721
       ],
       [
+       40.564,
+       -87.095
+      ],
+      [
        40.477,
        -87.527
       ],
       [
-       39.348,
+       39.75,
        -87.532
       ],
       [
-       38.741,
-       -87.496
-      ],
-      [
-       38.466,
-       -87.754
-      ],
-      [
-       38.502,
-       -87.064
-      ],
-      [
-       38.526,
-       -86.682
-      ],
-      [
-       38.688,
-       -86.308
-      ],
-      [
-       38.912,
-       -85.537
-      ],
-      [
-       39.195,
-       -85.441
-      ],
-      [
-       39.788,
+       39.79,
        -85.302
+      ],
+      [
+       40.005,
+       -85.201
       ],
       [
        40.31,
        -84.804
       ],
       [
-       40.565,
-       -85.864
+       40.378,
+       -85.862
+      ],
+      [
+       40.561,
+       -86.374
       ],
       [
        40.735,
@@ -1242,74 +1080,74 @@
    ]
   },
   "ILX": {
-   "product": "2181c279-e262-4be6-8795-f03b1f78966b",
-   "issued": "2026-09-02T23:11:00+00:00",
+   "product": "e1d335cb-8055-4b99-8f3c-c61a2d0f53d2",
+   "issued": "2026-09-03T05:37:00+00:00",
    "office": "Lincoln IL",
-   "headline": "Extreme Heat Warning: heat index ~105F through Friday",
+   "headline": "Extreme Heat Warning through Friday; highs near 100F, heat index 105F",
    "areas": [
     {
      "hazard": "heat",
-     "label": "Extreme heat, index near 105F",
+     "label": "Extreme Heat Warning, heat index 105F",
      "confidence": "high",
-     "start": "2026-09-02T23:11:00.000Z",
+     "start": "2026-09-03T05:37:00.000Z",
      "end": "2026-09-05T00:00:00.000Z",
      "quote": "Extreme Heat: An Extreme Heat Warning is in effect through\n  Friday as high heat and humidity push peak heat index values\n  to around 105F.",
      "polygon": [
       [
-       41.23,
-       -89.85
+       41.234,
+       -89.853
       ],
       [
-       41.15,
-       -90.44
+       41.151,
+       -90.438
       ],
       [
-       40.28,
+       40.277,
        -90.45
       ],
       [
-       40.1,
-       -90.9
+       40.104,
+       -90.914
       ],
       [
-       39.52,
-       -90.58
+       39.704,
+       -90.646
       ],
       [
-       39.52,
-       -89.53
+       39.522,
+       -90.581
       ],
       [
-       39.22,
+       39.349,
        -89.14
       ],
       [
-       38.91,
-       -88.81
+       38.912,
+       -88.807
       ],
       [
-       38.6,
-       -88.7
+       38.598,
+       -88.154
       ],
       [
-       38.59,
-       -87.61
+       38.589,
+       -87.613
       ],
       [
-       39.35,
-       -87.53
+       38.955,
+       -87.513
       ],
       [
-       40.49,
-       -87.53
+       40.492,
+       -87.527
       ],
       [
-       40.4,
+       40.399,
        -88.46
       ],
       [
-       40.93,
-       -89.05
+       40.758,
+       -88.929
       ]
      ]
     },
@@ -1317,40 +1155,36 @@
      "hazard": "heat",
      "label": "Highs may exceed 100F",
      "confidence": "high",
-     "start": "2026-09-02T23:11:00.000Z",
+     "start": "2026-09-03T17:00:00.000Z",
      "end": "2026-09-05T00:00:00.000Z",
      "quote": "Highs may exceed 100F (40% to 80% chance)\n  south of a Springfield to Casey line through Friday, with heat\n  indices lingering near 100F into Saturday.",
      "polygon": [
-      [
-       40.1,
-       -90.88
-      ],
       [
        39.8,
        -89.65
       ],
       [
-       39.3,
+       39.33,
        -87.99
       ],
       [
-       39.16,
+       39.3,
        -87.53
       ],
       [
-       38.62,
+       38.6,
        -87.55
       ],
       [
-       38.59,
+       38.57,
        -88.15
       ],
       [
-       38.6,
-       -88.7
+       38.9,
+       -88.75
       ],
       [
-       38.91,
+       39.22,
        -88.81
       ],
       [
@@ -1363,19 +1197,11 @@
       ],
       [
        39.52,
-       -89.53
-      ],
-      [
-       39.52,
        -90.58
       ],
       [
-       39.98,
-       -90.51
-      ],
-      [
-       40.1,
-       -90.9
+       39.7,
+       -90.65
       ]
      ]
     },
@@ -1384,534 +1210,560 @@
      "label": "Isolated pulse storms, wind/hail",
      "confidence": "low",
      "start": "2026-09-03T18:00:00.000Z",
-     "end": "2026-09-05T03:00:00.000Z",
-     "quote": "Any storm that develop could become severe with localized \n  strong winds or hail.",
+     "end": "2026-09-05T04:00:00.000Z",
+     "quote": "Isolated Severe Storm Potential: While dry conditions\n  dominate, there is a low risk (under 20% chance) for isolated\n  pop-up afternoon or evening thunderstorm Thursday and Friday.",
      "polygon": [
       [
-       41.23,
-       -89.85
+       41.234,
+       -89.853
       ],
       [
-       41.15,
-       -90.44
+       41.151,
+       -90.438
       ],
       [
-       40.28,
+       40.277,
        -90.45
       ],
       [
-       40.1,
-       -90.9
+       40.104,
+       -90.914
       ],
       [
-       39.52,
-       -90.58
+       39.704,
+       -90.646
       ],
       [
-       39.52,
-       -89.53
+       39.522,
+       -90.581
       ],
       [
-       39.22,
+       39.349,
        -89.14
       ],
       [
-       38.91,
-       -88.81
+       38.912,
+       -88.807
       ],
       [
-       38.6,
-       -88.7
+       38.598,
+       -88.154
       ],
       [
-       38.59,
-       -87.61
+       38.589,
+       -87.613
       ],
       [
-       39.35,
-       -87.53
+       38.955,
+       -87.513
       ],
       [
-       40.49,
-       -87.53
+       40.492,
+       -87.527
       ],
       [
-       40.4,
+       40.399,
        -88.46
       ],
       [
-       40.93,
-       -89.05
+       40.758,
+       -88.929
       ]
      ]
     }
    ]
   },
   "DVN": {
-   "product": "8ad22fe4-df0a-43fb-b192-b0b070767dff",
-   "issued": "2026-09-02T23:54:00+00:00",
+   "product": "63d2499f-13c6-40b5-b45a-00b19d9582bd",
+   "issued": "2026-09-03T06:45:00+00:00",
    "office": "Quad Cities IA IL",
-   "headline": "Dangerous heat through Friday; marginal severe storm risk north",
+   "headline": "Heat indices 100-110 areawide; isolated severe storms north of I-80",
    "areas": [
     {
      "hazard": "heat",
-     "label": "Extreme heat, indices 100-105",
+     "label": "Heat indices 100 to 110",
      "confidence": "high",
-     "start": "2026-09-02T23:54:00.000Z",
+     "start": "2026-09-03T06:45:00.000Z",
      "end": "2026-09-05T00:00:00.000Z",
-     "quote": "An Excessive Heat Warning remains in effect for the I-80 corridor on south through Friday with heat indices ranging from 100-105 degrees.",
+     "quote": "Impactful heat will continue across the area today and Friday.",
      "polygon": [
       [
-       41.6,
-       -92.3
+       42.647,
+       -90.75
       ],
       [
-       41.52,
-       -91
+       42.642,
+       -92.082
       ],
       [
-       41.5,
-       -89.17
+       42.297,
+       -92.299
       ],
       [
-       41.12,
-       -89.16
+       41.51,
+       -92.412
       ],
       [
-       41.15,
-       -90.44
+       41.162,
+       -92.41
       ],
       [
-       40.28,
+       40.601,
+       -92.18
+      ],
+      [
+       40.303,
+       -92.348
+      ],
+      [
+       40.249,
+       -91.497
+      ],
+      [
+       40.193,
+       -90.913
+      ],
+      [
+       40.277,
        -90.45
       ],
       [
-       40.29,
-       -90.91
+       41.151,
+       -90.438
       ],
       [
-       40.2,
-       -91.5
+       41.148,
+       -89.33
       ],
       [
-       40.25,
-       -91.95
+       41.104,
+       -89.162
       ],
       [
-       40.3,
-       -92.35
+       41.585,
+       -89.632
       ],
       [
-       40.6,
-       -92.18
-      ],
-      [
-       41.16,
-       -92.18
-      ],
-      [
-       41.16,
-       -92.41
-      ],
-      [
-       41.51,
-       -92.41
-      ]
-     ]
-    },
-    {
-     "hazard": "heat",
-     "label": "Heat advisory north of I-80",
-     "confidence": "high",
-     "start": "2026-09-02T23:54:00.000Z",
-     "end": "2026-09-04T00:00:00.000Z",
-     "quote": "A Heat Advisory remains in effect \n  through Thursday north of I-80.",
-     "polygon": [
-      [
-       42.65,
-       -90.75
-      ],
-      [
-       42.64,
-       -92.08
-      ],
-      [
-       42.3,
-       -92.3
-      ],
-      [
-       41.51,
-       -92.41
-      ],
-      [
-       41.55,
-       -91
-      ],
-      [
-       41.5,
-       -89.4
-      ],
-      [
-       41.58,
-       -89.17
-      ],
-      [
-       41.93,
-       -89.63
-      ],
-      [
-       42.2,
-       -89.69
-      ],
-      [
-       42.2,
-       -89.4
+       42.203,
+       -89.396
       ],
       [
        42.5,
-       -89.4
-      ],
-      [
-       42.51,
-       -90.64
+       -89.401
       ]
      ]
     },
     {
-     "hazard": "damaging wind",
+     "hazard": "severe storms",
      "label": "Damaging winds, some hail",
-     "confidence": "medium",
-     "start": "2026-09-03T18:00:00.000Z",
-     "end": "2026-09-05T06:00:00.000Z",
-     "quote": "But then \nthere are a few model solutions that bleed some of the late night \nstorm clusters or MCS acrs northeast IA and southwest WI down into \nat least the northeastern DVN CWA by Friday morning, obviously using \ncold pool mechanics to dig this far south into the lingering ridge.",
+     "confidence": "high",
+     "start": "2026-09-03T17:00:00.000Z",
+     "end": "2026-09-06T05:00:00.000Z",
+     "quote": "Isolated severe storms are possible today through Saturday\n  mainly north of I-80.",
      "polygon": [
       [
-       42.65,
-       -90.75
-      ],
-      [
-       42.64,
-       -92.08
-      ],
-      [
-       42.3,
+       41.58,
        -92.3
       ],
       [
-       41.51,
-       -92.41
+       42.297,
+       -92.299
       ],
       [
-       41.55,
-       -91
+       42.642,
+       -92.07
       ],
       [
-       41.5,
-       -89.4
-      ],
-      [
-       41.58,
-       -89.17
-      ],
-      [
-       41.93,
-       -89.63
-      ],
-      [
-       42.2,
-       -89.69
-      ],
-      [
-       42.2,
-       -89.4
+       42.647,
+       -90.75
       ],
       [
        42.5,
        -89.4
       ],
       [
-       42.51,
+       41.93,
+       -89.63
+      ],
+      [
+       41.585,
+       -89.167
+      ],
+      [
+       41.58,
+       -92.3
+      ]
+     ]
+    },
+    {
+     "hazard": "severe storms",
+     "label": "Nocturnal storms NE of Independence line",
+     "confidence": "medium",
+     "start": "2026-09-04T05:00:00.000Z",
+     "end": "2026-09-04T14:00:00.000Z",
+     "quote": "However, with the upper ridge slowly retrograding into the Plains, a weakness in the heat dome develops which would place areas north and east of a line from Independence, IA to Mt. Carroll, IL in a more favorable set up for nocturnal convection.",
+     "polygon": [
+      [
+       42.507,
+       -92.08
+      ],
+      [
+       42.642,
+       -92.082
+      ],
+      [
+       42.647,
+       -90.75
+      ],
+      [
+       42.508,
        -90.64
+      ],
+      [
+       42.5,
+       -89.401
+      ],
+      [
+       42.203,
+       -89.396
+      ],
+      [
+       42.1,
+       -89.98
+      ],
+      [
+       42.47,
+       -91.89
       ]
      ]
     }
    ]
   },
   "ARX": {
-   "product": "d2f826da-0e76-46e0-857e-64ae50907117",
-   "issued": "2026-09-02T23:53:00+00:00",
+   "product": "b5323b17-9e52-41f1-b35e-de03642006f2",
+   "issued": "2026-09-03T05:50:00+00:00",
    "office": "La Crosse WI",
-   "headline": "Storms Thu morning, possible damaging-wind MCS Thursday night",
+   "headline": "Morning storms with hail, possible evening MCS with damaging winds",
    "areas": [
     {
-     "hazard": "flash flooding",
-     "label": "Training storms, heavy rain",
+     "hazard": "hail",
+     "label": "Elevated storms, large hail possible",
      "confidence": "medium",
-     "start": "2026-09-03T00:00:00.000Z",
-     "end": "2026-09-03T04:00:00.000Z",
-     "quote": "Isolated to scattered showers and storms are possible this\n  afternoon, mainly along and south of Highway 18 (10-20%).",
+     "start": "2026-09-03T06:00:00.000Z",
+     "end": "2026-09-03T17:00:00.000Z",
+     "quote": "However, cannot rule out some large hail with stronger cores as both elongated hodographs in the recent RAP and modest mid-level lapse rates of 6.5-7 C/km are present during the morning.",
      "polygon": [
       [
-       43.15,
-       -93.02
+       45.38,
+       -90.04
       ],
       [
-       43.15,
-       -90.43
+       45.38,
+       -90.92
+      ],
+      [
+       44.6,
+       -90.92
+      ],
+      [
+       44.57,
+       -92.04
+      ],
+      [
+       44.2,
+       -92.55
+      ],
+      [
+       44.2,
+       -93.04
+      ],
+      [
+       42.91,
+       -93.03
+      ],
+      [
+       42.65,
+       -92.08
       ],
       [
        42.51,
        -90.43
       ],
       [
-       42.64,
-       -90.9
+       43.21,
+       -90.3
       ],
       [
-       42.64,
-       -92.08
+       43.64,
+       -90.31
       ],
       [
-       42.91,
-       -93.02
-      ]
-     ]
-    },
-    {
-     "hazard": "hail",
-     "label": "Hail, damaging winds north of I-94",
-     "confidence": "medium",
-     "start": "2026-09-03T11:00:00.000Z",
-     "end": "2026-09-03T19:00:00.000Z",
-     "quote": "The 02.09z RAP suggests mid-level lapse rates steepen to 7- 7.5 C/km\nin this already favorable environment which would support hail \ndevelopment along with damaging winds given DCAPE around 1000 \nJ/kg.",
-     "polygon": [
-      [
-       44.45,
-       -92
+       43.64,
+       -89.6
       ],
       [
-       44.596,
-       -90.922
+       44.25,
+       -89.6
       ],
       [
-       45.379,
-       -90.925
+       44.25,
+       -90.32
       ],
       [
-       45.382,
-       -90.042
-      ],
-      [
-       45.034,
+       45.03,
        -90.2
-      ],
-      [
-       44.249,
-       -90.318
-      ],
-      [
-       44,
-       -90.5
-      ],
-      [
-       44.3,
-       -90.9
-      ],
-      [
-       44.45,
-       -91.5
       ]
      ]
     },
     {
      "hazard": "damaging wind",
-     "label": "MCS: damaging winds, brief tornado",
-     "confidence": "medium",
-     "start": "2026-09-04T00:00:00.000Z",
+     "label": "Possible MCS, gusts over 70 mph",
+     "confidence": "low",
+     "start": "2026-09-03T23:00:00.000Z",
      "end": "2026-09-04T09:00:00.000Z",
-     "quote": "As of right now, would expect damaging winds\nto be the primary threat though a tornado or two can't be ruled\nout within favorably oriented bowing segments given 0-3km shear\nof 30-35kts, assuming the system become surface based.",
+     "quote": "If this round of storms does\n  manifest, a potential convective system may bring the risk for\n  damaging wind gusts this evening/overnight for the area.",
      "polygon": [
       [
-       45.382,
-       -90.042
+       45.38,
+       -90.04
       ],
       [
-       45.379,
-       -90.925
+       45.38,
+       -90.92
       ],
       [
-       44.596,
-       -90.922
+       44.6,
+       -90.92
       ],
       [
-       44.596,
-       -92.004
+       44.57,
+       -92.04
       ],
       [
-       44.408,
-       -92.084
+       44.2,
+       -92.55
       ],
       [
-       44.455,
-       -92.43
+       44.2,
+       -93.04
       ],
       [
-       44.368,
-       -92.551
+       42.91,
+       -93.03
       ],
       [
-       44.197,
-       -93.046
+       42.65,
+       -92.08
       ],
       [
-       42.908,
-       -93.025
+       42.51,
+       -90.43
       ],
       [
-       42.646,
-       -90.897
+       43.21,
+       -90.3
       ],
       [
-       42.507,
-       -90.426
+       43.64,
+       -90.31
       ],
       [
-       43.208,
-       -90.297
-      ],
-      [
-       43.554,
-       -90.192
-      ],
-      [
-       43.643,
+       43.64,
        -89.6
       ],
       [
-       44.246,
+       44.25,
        -89.6
       ],
       [
-       44.249,
-       -90.318
+       44.25,
+       -90.32
       ],
       [
-       45.034,
-       -90.198
+       45.03,
+       -90.2
+      ]
+     ]
+    },
+    {
+     "hazard": "flash flooding",
+     "label": "Training storms, heavy rain risk",
+     "confidence": "low",
+     "start": "2026-09-04T00:00:00.000Z",
+     "end": "2026-09-04T11:00:00.000Z",
+     "quote": "Cannot rule out some heavy rain potential if this scenario pans out given warm cloud depths in excess of 4km and precipitable waters over 1.75\".",
+     "polygon": [
+      [
+       45.38,
+       -90.04
+      ],
+      [
+       45.38,
+       -90.92
+      ],
+      [
+       44.6,
+       -90.92
+      ],
+      [
+       44.57,
+       -92.04
+      ],
+      [
+       44.2,
+       -92.55
+      ],
+      [
+       44.2,
+       -93.04
+      ],
+      [
+       42.91,
+       -93.03
+      ],
+      [
+       42.65,
+       -92.08
+      ],
+      [
+       42.51,
+       -90.43
+      ],
+      [
+       43.21,
+       -90.3
+      ],
+      [
+       43.64,
+       -90.31
+      ],
+      [
+       43.64,
+       -89.6
+      ],
+      [
+       44.25,
+       -89.6
+      ],
+      [
+       44.25,
+       -90.32
+      ],
+      [
+       45.03,
+       -90.2
+      ]
+     ]
+    },
+    {
+     "hazard": "severe storms",
+     "label": "Low-end wind/hail risk Friday",
+     "confidence": "medium",
+     "start": "2026-09-04T17:00:00.000Z",
+     "end": "2026-09-05T05:00:00.000Z",
+     "quote": "This coupled with robust DCAPE values in the RAP would suggest any collapsing cores could have a damaging wind gust risk and perhaps some large hail with mid-level lapse rates hovering around 6.5C/km.",
+     "polygon": [
+      [
+       45.38,
+       -90.04
+      ],
+      [
+       45.38,
+       -90.92
+      ],
+      [
+       44.6,
+       -90.92
+      ],
+      [
+       44.57,
+       -92.04
+      ],
+      [
+       44.2,
+       -92.55
+      ],
+      [
+       44.2,
+       -93.04
+      ],
+      [
+       42.91,
+       -93.03
+      ],
+      [
+       42.65,
+       -92.08
+      ],
+      [
+       42.51,
+       -90.43
+      ],
+      [
+       43.21,
+       -90.3
+      ],
+      [
+       43.64,
+       -90.31
+      ],
+      [
+       43.64,
+       -89.6
+      ],
+      [
+       44.25,
+       -89.6
+      ],
+      [
+       44.25,
+       -90.32
+      ],
+      [
+       45.03,
+       -90.2
       ]
      ]
     }
    ]
   },
   "CLE": {
-   "product": "5326edec-fc19-4b35-8aa5-83fd191f8d34",
-   "issued": "2026-09-02T23:24:00+00:00",
+   "product": "c38609b7-eb29-4025-8baf-129b809452b4",
+   "issued": "2026-09-03T07:48:00+00:00",
    "office": "Cleveland OH",
-   "headline": "Enhanced Risk for damaging winds, tornado in Erie County PA tonight",
+   "headline": "Heat Advisory for central/NW Ohio; severe storms and flooding threat today into Friday",
    "areas": [
     {
-     "hazard": "severe storms",
-     "label": "Damaging winds, tornado threat",
-     "confidence": "high",
-     "start": "2026-09-02T23:30:00.000Z",
-     "end": "2026-09-03T09:00:00.000Z",
-     "quote": "The SPC has raised the severe weather \noutlook across New York and extending into Erie County PA to an \nEnhanced Risk (level 3 of 5) while a Slight Risk (level 2 of 5) \nremains from nearly Toledo to Youngstown.",
-     "polygon": [
-      [
-       42.27,
-       -79.76
-      ],
-      [
-       41.62,
-       -79.61
-      ],
-      [
-       41.49,
-       -80.52
-      ],
-      [
-       41,
-       -81
-      ],
-      [
-       41,
-       -81.7
-      ],
-      [
-       41.6,
-       -81.72
-      ],
-      [
-       42.1,
-       -80.9
-      ]
-     ]
-    },
-    {
      "hazard": "heat",
-     "label": "Heat index upper 90s, I-75 corridor",
+     "label": "Heat indices near 100F",
      "confidence": "high",
-     "start": "2026-09-03T16:00:00.000Z",
+     "start": "2026-09-03T18:00:00.000Z",
      "end": "2026-09-04T00:00:00.000Z",
-     "quote": "The hottest area will be along the I-75 \ncorridor where highs will still be near 90 and heat index values \nwill reach the upper 90s.",
-     "polygon": [
-      [
-       41.73,
-       -83.88
-      ],
-      [
-       41.72,
-       -83.45
-      ],
-      [
-       41.3,
-       -83.2
-      ],
-      [
-       40.82,
-       -83.3
-      ],
-      [
-       40.82,
-       -83.88
-      ]
-     ]
-    },
-    {
-     "hazard": "severe storms",
-     "label": "Severe storms, heavy rain",
-     "confidence": "medium",
-     "start": "2026-09-03T17:00:00.000Z",
-     "end": "2026-09-04T10:00:00.000Z",
-     "quote": "This could initially be focused from northwest to southeast across \nthe eastern counties of Ohio but think we will see an expansion of \nstorms across much of northern Ohio during the evening.",
+     "quote": "Based on this, a Heat Advisory\nhas been issued for Central and Western Ohio for this afternoon\ninto the evening.",
      "polygon": [
       [
        41.72,
        -83.88
       ],
       [
-       41.6,
+       41.72,
+       -83.4
+      ],
+      [
+       41.48,
        -82.7
       ],
       [
-       41.5,
-       -81.7
+       41.4,
+       -82.3
       ],
       [
-       41.49,
-       -80.52
+       40.3,
+       -82.3
       ],
       [
-       40.9,
-       -80.52
-      ],
-      [
-       40.44,
-       -81.67
-      ],
-      [
-       40.24,
-       -82.2
+       40.35,
+       -82.75
       ],
       [
        40.5,
@@ -1924,44 +1776,160 @@
      ]
     },
     {
-     "hazard": "marine",
-     "label": "Storms, damaging gusts, large hail",
-     "confidence": "medium",
-     "start": "2026-09-02T23:30:00.000Z",
-     "end": "2026-09-04T12:00:00.000Z",
-     "quote": "The main marine concern over the next 36 hours will be several\nrounds of showers and thunderstorms across the lake with the\npotential for strong, damaging wind gusts and large hail.",
+     "hazard": "severe storms",
+     "label": "Damaging winds, hail, isolated tornado",
+     "confidence": "high",
+     "start": "2026-09-03T16:00:00.000Z",
+     "end": "2026-09-04T10:00:00.000Z",
+     "quote": "SPC has highlighted the entire area today in a Slight Risk (Level 2 out of 5) for severe weather due to this.",
      "polygon": [
       [
        41.72,
-       -83.45
+       -83.88
       ],
       [
-       42,
-       -82.5
+       41.72,
+       -83.35
       ],
       [
-       42.25,
+       41.5,
+       -82
+      ],
+      [
+       41.9,
        -80.6
       ],
       [
        42.27,
-       -79.78
-      ],
-      [
-       42.1,
-       -80.15
-      ],
-      [
-       41.51,
-       -81.71
-      ],
-      [
-       41.45,
-       -82.5
+       -79.76
       ],
       [
        41.6,
-       -83.2
+       -79.61
+      ],
+      [
+       41.49,
+       -80.52
+      ],
+      [
+       40.9,
+       -80.52
+      ],
+      [
+       40.65,
+       -81.24
+      ],
+      [
+       40.24,
+       -82.19
+      ],
+      [
+       40.5,
+       -83.42
+      ],
+      [
+       40.82,
+       -83.88
+      ]
+     ]
+    },
+    {
+     "hazard": "flash flooding",
+     "label": "Heavy rain, localized flooding",
+     "confidence": "medium",
+     "start": "2026-09-04T02:00:00.000Z",
+     "end": "2026-09-05T04:00:00.000Z",
+     "quote": "Generally, the time frame that looks to be the most \nsusceptible to flooding will be tonight into Friday.",
+     "polygon": [
+      [
+       41.72,
+       -83.88
+      ],
+      [
+       41.72,
+       -83.35
+      ],
+      [
+       41.5,
+       -82
+      ],
+      [
+       41.9,
+       -80.6
+      ],
+      [
+       42.27,
+       -79.76
+      ],
+      [
+       41.6,
+       -79.61
+      ],
+      [
+       41.49,
+       -80.52
+      ],
+      [
+       40.9,
+       -80.52
+      ],
+      [
+       40.65,
+       -81.24
+      ],
+      [
+       40.24,
+       -82.19
+      ],
+      [
+       40.5,
+       -83.42
+      ],
+      [
+       40.82,
+       -83.88
+      ]
+     ]
+    },
+    {
+     "hazard": "severe storms",
+     "label": "Lower-end Friday storm threat",
+     "confidence": "medium",
+     "start": "2026-09-04T14:00:00.000Z",
+     "end": "2026-09-05T06:00:00.000Z",
+     "quote": "That being said, there will still be plenty of \ninstability, especially in Central and Northwestern Ohio that will \nhelp support any severe weather.",
+     "polygon": [
+      [
+       41.72,
+       -83.88
+      ],
+      [
+       41.72,
+       -83.4
+      ],
+      [
+       41.5,
+       -82.6
+      ],
+      [
+       41.4,
+       -82.1
+      ],
+      [
+       40.3,
+       -82.2
+      ],
+      [
+       40.4,
+       -82.9
+      ],
+      [
+       40.5,
+       -83.42
+      ],
+      [
+       40.82,
+       -83.88
       ]
      ]
     }
