@@ -1,4 +1,489 @@
 {
- "generated": "2026-09-03T00:29:57.898Z",
- "offices": {}
+ "generated": "2026-09-03T01:07:47.287Z",
+ "offices": {
+  "GRR": {
+   "product": "610fb0e8-68e3-45e4-a109-6bbada6dce42",
+   "issued": "2026-09-02T23:18:00+00:00",
+   "office": "Grand Rapids MI",
+   "headline": "Heat indices near 100 this evening; storms overnight and Thursday",
+   "areas": [
+    {
+     "hazard": "heat",
+     "label": "Heat indices 95-100",
+     "confidence": "high",
+     "start": "2026-09-02T23:18:00.000Z",
+     "end": "2026-09-03T00:00:00.000Z",
+     "quote": "Widespread indices of 95 to 100 are occurring and will continue to occur across southern Lower Michigan through this afternoon and evening given air temps in the upper 80s to low 90s and dew points of 70 to 75 making it feel pretty miserable in the sun.",
+     "polygon": [
+      [
+       43.2,
+       -86.24
+      ],
+      [
+       43.2,
+       -84.4
+      ],
+      [
+       42.78,
+       -84.16
+      ],
+      [
+       42.08,
+       -84.14
+      ],
+      [
+       42.08,
+       -86.22
+      ],
+      [
+       42.25,
+       -86.22
+      ],
+      [
+       42.45,
+       -86.26
+      ],
+      [
+       42.59,
+       -86.23
+      ],
+      [
+       43,
+       -86.23
+      ]
+     ]
+    },
+    {
+     "hazard": "flash flooding",
+     "label": "Overnight storms, minor flooding",
+     "confidence": "medium",
+     "start": "2026-09-03T05:00:00.000Z",
+     "end": "2026-09-03T12:00:00.000Z",
+     "quote": "Scattered showers/storms may develop especially from Muskegon to Lansing during the 05z-12z time frame.",
+     "polygon": [
+      [
+       43.55,
+       -86.4
+      ],
+      [
+       43.1,
+       -84.45
+      ],
+      [
+       42.55,
+       -84.5
+      ],
+      [
+       42.95,
+       -86.25
+      ],
+      [
+       43.25,
+       -86.28
+      ]
+     ]
+    },
+    {
+     "hazard": "severe storms",
+     "label": "Isolated strong gusts and hail",
+     "confidence": "medium",
+     "start": "2026-09-03T16:00:00.000Z",
+     "end": "2026-09-04T03:00:00.000Z",
+     "quote": "At this point, the SPC Marginal Risk seems to cover the spatial threat well, with some isolated/scattered instances of strong wind gusts and hail possible.",
+     "polygon": [
+      [
+       44.16,
+       -86.38
+      ],
+      [
+       44.15,
+       -84.61
+      ],
+      [
+       43.47,
+       -84.61
+      ],
+      [
+       43.46,
+       -84.37
+      ],
+      [
+       42.78,
+       -84.16
+      ],
+      [
+       42.07,
+       -84.14
+      ],
+      [
+       42.07,
+       -86.22
+      ],
+      [
+       42.45,
+       -86.26
+      ],
+      [
+       42.99,
+       -86.23
+      ],
+      [
+       43.63,
+       -86.54
+      ],
+      [
+       43.97,
+       -86.46
+      ]
+     ]
+    },
+    {
+     "hazard": "flash flooding",
+     "label": "Heavy downpours, street flooding",
+     "confidence": "medium",
+     "start": "2026-09-04T03:00:00.000Z",
+     "end": "2026-09-04T14:00:00.000Z",
+     "quote": "Very heavy downpours and some street flooding may develop if organized convection gets going on the nose of the LLJ Thursday night into Friday morning.",
+     "polygon": [
+      [
+       44.16,
+       -86.38
+      ],
+      [
+       44.15,
+       -84.61
+      ],
+      [
+       43.47,
+       -84.61
+      ],
+      [
+       43.46,
+       -84.37
+      ],
+      [
+       42.78,
+       -84.16
+      ],
+      [
+       42.07,
+       -84.14
+      ],
+      [
+       42.07,
+       -86.22
+      ],
+      [
+       42.45,
+       -86.26
+      ],
+      [
+       42.99,
+       -86.23
+      ],
+      [
+       43.63,
+       -86.54
+      ],
+      [
+       43.97,
+       -86.46
+      ]
+     ]
+    }
+   ]
+  },
+  "DTX": {
+   "product": "4b6a5a3e-145a-4e86-b2fa-b980c9c44674",
+   "issued": "2026-09-02T23:52:00+00:00",
+   "office": "Detroit/Pontiac MI",
+   "headline": "Slight Risk severe storms this evening; 70 mph winds, 1.5\" hail possible",
+   "areas": [
+    {
+     "hazard": "severe storms",
+     "label": "Damaging wind, hail, isolated tornado",
+     "confidence": "high",
+     "start": "2026-09-02T23:52:00.000Z",
+     "end": "2026-09-03T05:00:00.000Z",
+     "quote": "A Slight Risk for severe storms continues this evening. Damaging \n  winds to 70 mph, hail to 1.5 inch, and an isolated tornado threat \n  are all possible.",
+     "polygon": [
+      [
+       44.07,
+       -82.92
+      ],
+      [
+       43.58,
+       -83.68
+      ],
+      [
+       44,
+       -84.05
+      ],
+      [
+       43.81,
+       -84.61
+      ],
+      [
+       42.78,
+       -84.16
+      ],
+      [
+       41.71,
+       -84.36
+      ],
+      [
+       41.74,
+       -83.42
+      ],
+      [
+       42.63,
+       -82.52
+      ]
+     ]
+    },
+    {
+     "hazard": "damaging wind",
+     "label": "Higher severe threat Saginaw Valley/Thumb",
+     "confidence": "high",
+     "start": "2026-09-02T23:52:00.000Z",
+     "end": "2026-09-03T05:00:00.000Z",
+     "quote": "These solutions carry higher \nconfidence for the Saginaw Valley/Thumb than the metro Detroit \nregion.",
+     "polygon": [
+      [
+       44,
+       -84.05
+      ],
+      [
+       43.81,
+       -84.61
+      ],
+      [
+       43.3,
+       -84.28
+      ],
+      [
+       43,
+       -83.9
+      ],
+      [
+       43,
+       -82.7
+      ],
+      [
+       43.5,
+       -82.6
+      ],
+      [
+       44.07,
+       -82.92
+      ],
+      [
+       43.58,
+       -83.68
+      ]
+     ]
+    },
+    {
+     "hazard": "flash flooding",
+     "label": "Heavy downpours, localized flooding",
+     "confidence": "medium",
+     "start": "2026-09-03T00:00:00.000Z",
+     "end": "2026-09-03T12:00:00.000Z",
+     "quote": "First round of showers and thunderstorms is ongoing across the \nSaginaw Valley and Thumb regions, with chances continuing overnight.",
+     "polygon": [
+      [
+       44,
+       -84.05
+      ],
+      [
+       43.81,
+       -84.61
+      ],
+      [
+       43.2,
+       -84.2
+      ],
+      [
+       43,
+       -83.7
+      ],
+      [
+       43,
+       -82.7
+      ],
+      [
+       43.5,
+       -82.6
+      ],
+      [
+       44.07,
+       -82.92
+      ],
+      [
+       43.58,
+       -83.68
+      ]
+     ]
+    },
+    {
+     "hazard": "dense fog",
+     "label": "Dense fog over the waterways",
+     "confidence": "medium",
+     "start": "2026-09-03T06:00:00.000Z",
+     "end": "2026-09-03T14:00:00.000Z",
+     "quote": "No long-fused headline concerns \nthrough the weekend, although areas of dense fog could become an \nissue again late tonight into Thursday morning for portions of the \nwaterways.",
+     "polygon": [
+      [
+       44.05,
+       -82.95
+      ],
+      [
+       43.6,
+       -82.6
+      ],
+      [
+       42.9,
+       -82.45
+      ],
+      [
+       42.5,
+       -82.53
+      ],
+      [
+       42.65,
+       -82.9
+      ],
+      [
+       43.4,
+       -83.15
+      ],
+      [
+       43.9,
+       -83.35
+      ]
+     ]
+    }
+   ]
+  },
+  "MKX": {
+   "product": "54c2d369-9cf3-4f39-8e88-3f385764ec2f",
+   "issued": "2026-09-03T00:21:00+00:00",
+   "office": "Milwaukee/Sullivan WI",
+   "headline": "Near-100 heat indices in far south; nocturnal storms may turn strong",
+   "areas": [
+    {
+     "hazard": "heat",
+     "label": "Heat indices near 100",
+     "confidence": "medium",
+     "start": "2026-09-03T16:00:00.000Z",
+     "end": "2026-09-05T00:00:00.000Z",
+     "quote": "This means that the areas on the border line of a heat advisory are those WI/IL border counties.",
+     "polygon": [
+      [
+       42.5,
+       -90.42
+      ],
+      [
+       42.5,
+       -87.81
+      ],
+      [
+       43.05,
+       -87.87
+      ],
+      [
+       43.05,
+       -90.43
+      ]
+     ]
+    },
+    {
+     "hazard": "severe storms",
+     "label": "Overnight storms, wind threat",
+     "confidence": "medium",
+     "start": "2026-09-03T06:00:00.000Z",
+     "end": "2026-09-03T15:00:00.000Z",
+     "quote": "Across south central Wisconsin precipitation chances jump to 40-60% under the more favorable support.",
+     "polygon": [
+      [
+       42.55,
+       -90.42
+      ],
+      [
+       42.55,
+       -87.83
+      ],
+      [
+       43.2,
+       -87.9
+      ],
+      [
+       43.6,
+       -88.4
+      ],
+      [
+       43.6,
+       -90.3
+      ]
+     ]
+    },
+    {
+     "hazard": "damaging wind",
+     "label": "Strong winds, small hail Thu night",
+     "confidence": "medium",
+     "start": "2026-09-04T00:00:00.000Z",
+     "end": "2026-09-04T12:00:00.000Z",
+     "quote": "Again with shear around 40 kts, there will be a potential for organized convection. Strong winds will again be the main threat, but can't rule out some small hail.",
+     "polygon": [
+      [
+       42.5,
+       -90.42
+      ],
+      [
+       42.5,
+       -87.81
+      ],
+      [
+       43.1,
+       -87.88
+      ],
+      [
+       43.5,
+       -88.2
+      ],
+      [
+       43.5,
+       -90.35
+      ]
+     ]
+    },
+    {
+     "hazard": "dense fog",
+     "label": "Lakeshore stratus, IFR/LIFR",
+     "confidence": "medium",
+     "start": "2026-09-03T02:00:00.000Z",
+     "end": "2026-09-03T13:00:00.000Z",
+     "quote": "However, models do hint at the elevated low-level moisture and light winds along the lakeshore, especially north of Port Washington may result in some low stratus to develop bring IFR to LIFR ceilings and maybe even a drop of visibility mainly for SBM.",
+     "polygon": [
+      [
+       43.38,
+       -87.87
+      ],
+      [
+       43.38,
+       -87.7
+      ],
+      [
+       43.89,
+       -87.71
+      ],
+      [
+       43.89,
+       -87.79
+      ]
+     ]
+    }
+   ]
+  }
+ }
 }
