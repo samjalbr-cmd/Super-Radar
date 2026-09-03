@@ -15,7 +15,7 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 const OUT = 'data/afd-areas.json';
 const OFFICES = 'data/offices.json';
 const UA = 'super-radar (github.com/samjalbr-cmd/Super-Radar)';
-const MODEL = 'claude-opus-5';
+const MODEL = process.env.AFD_MODEL || 'claude-opus-5';
 const DRY = process.argv.includes('--dry-run');
 const ONLY = (process.argv.find(a => a.startsWith('--only=')) || '').split('=')[1];
 
@@ -135,8 +135,10 @@ async function main() {
   let out = { generated: null, offices: {} };
   try { out = JSON.parse(readFileSync(OUT, 'utf8')); } catch {}
   out.offices ||= {};
+  const before = JSON.stringify(out.offices);
 
   const client = new Anthropic();
+  console.log(`model: ${MODEL}`);
   const list = ONLY ? ONLY.split(',') : offices;
   let calls = 0, drawn = 0;
 
@@ -203,6 +205,11 @@ async function main() {
   }
 
   if (DRY) return;
+  const body = JSON.stringify(out.offices);
+  if (body === before) {
+    console.log(`\n${calls} model call(s), nothing changed — leaving ${OUT} alone`);
+    return;
+  }
   out.generated = new Date().toISOString();
   mkdirSync('data', { recursive: true });
   writeFileSync(OUT, JSON.stringify(out, null, 1) + '\n');

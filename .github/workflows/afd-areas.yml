@@ -20,6 +20,9 @@ on:
       only:
         description: 'Comma-separated offices to force (ignores the unchanged check), e.g. GRR,DTX'
         required: false
+      model:
+        description: 'Model to use (default claude-opus-5; claude-haiku-4-5 is ~5x cheaper)'
+        required: false
       dry_run:
         description: 'Build the prompts and stop, without calling the model'
         type: boolean
@@ -47,6 +50,7 @@ jobs:
       - name: Read the discussions
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          AFD_MODEL: ${{ inputs.model }}
         run: |
           node scripts/afd-areas.mjs \
             ${{ inputs.dry_run && '--dry-run' || '' }} \
