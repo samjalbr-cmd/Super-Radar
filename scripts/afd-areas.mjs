@@ -36,7 +36,7 @@ const SCHEMA = {
     headline: { type: 'string', description: 'The single most important thing this discussion says, under 70 characters.' },
     areas: {
       type: 'array',
-      maxItems: 4,
+      description: 'At most 4 areas. Fewer is better; omit entirely if the discussion describes no hazard.',
       items: {
         type: 'object',
         additionalProperties: false,
@@ -48,9 +48,9 @@ const SCHEMA = {
           start: { type: 'string', description: 'ISO 8601 UTC, e.g. 2026-09-02T02:00:00Z' },
           end:   { type: 'string', description: 'ISO 8601 UTC' },
           polygon: {
-            type: 'array', minItems: 3, maxItems: 14,
-            description: '[latitude, longitude] pairs, in order, forming a closed area.',
-            items: { type: 'array', minItems: 2, maxItems: 2, items: { type: 'number' } },
+            type: 'array',
+            description: 'Between 3 and 14 [latitude, longitude] pairs, in order, forming a closed area. Each entry is exactly two numbers: latitude first, then longitude.',
+            items: { type: 'array', items: { type: 'number' } },
           },
           quote: { type: 'string', description: 'The sentence from the discussion this area comes from, verbatim.' },
         },
@@ -107,8 +107,10 @@ function bbox(feat) {
 function validate(area, box, wfo) {
   const bad = (why) => { console.log(`    rejected (${why}): ${area.label}`); return null; };
   if (!Array.isArray(area.polygon) || area.polygon.length < 3) return bad('too few vertices');
+  if (area.polygon.length > 24) return bad(`${area.polygon.length} vertices`);
   const pts = [];
   for (const p of area.polygon) {
+    if (!Array.isArray(p) || p.length !== 2) return bad('vertex is not a [lat, lon] pair');
     const [lat, lon] = p;
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) return bad('non-numeric vertex');
     if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return bad('vertex off the earth');
@@ -179,7 +181,7 @@ async function main() {
 
       const text = res.content.find(b => b.type === 'text')?.text;
       const parsed = JSON.parse(text);
-      const areas = (parsed.areas || []).map(a => validate(a, box, wfo)).filter(Boolean);
+      const areas = (parsed.areas || []).map(a => validate(a, box, wfo)).filter(Boolean).slice(0, 4);
       drawn += areas.length;
 
       out.offices[wfo] = {
