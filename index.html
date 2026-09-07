@@ -243,6 +243,15 @@
   .afd-area-lbl .t{ font-weight:800;font-size:calc(11px * var(--lblscale, 1));letter-spacing:0.03em; }
   .afd-area-lbl .s{ font-weight:700;font-size:calc(9px * var(--lblscale, 1));color:#fff;opacity:0.92; }
 
+  /* Front pips. The box is rotated to the line's screen direction and the
+     symbol sits above centre inside it, so it always lands on the same side. */
+  .sfc-icon{ background:none; border:none; }
+  .sfc-pip{ position:relative; width:0; height:0; }
+  .sfc-pip .sfc-sym{
+    position:absolute; left:-6px; bottom:0; line-height:0;
+    filter:drop-shadow(0 0 2px #000);
+  }
+
   /* Mesoscale Discussion labels. */
   .mcd-icon{ background:none; border:none; }
   .mcd-label{
@@ -424,6 +433,8 @@
       <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" data-spc="mcd" checked onchange="toggleSpc(this)"> Mesoscale Discussions</label>
       <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" data-spc="lsr" checked onchange="toggleSpc(this)"> Storm Reports (24h)</label>
     </div>
+    <label style="margin-top:8px;">Surface Analysis</label>
+    <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" id="sfcChk" checked onchange="toggleSurface(this)"> Fronts and pressure centers</label>
     <label style="margin-top:8px;">Forecast Discussion</label>
     <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" id="afdAreasChk" checked onchange="toggleAfdAreas(this)"> Hazard areas from the discussion</label>
     <label style="margin-top:8px;">Model Layers</label>
@@ -512,7 +523,7 @@
 <script>
 let lat = 42.907058, lon = -85.763014;
 let map, basemap, basemapLabels, radarLayer, marker, alertLayerGroup, lightningLayerGroup, feedLayerGroup;
-let spcOutlookLayer, mcdLayer, lsrLayer, stationLayer, modelLayer, modelMarkers, afdHazardLayer;
+let spcOutlookLayer, mcdLayer, lsrLayer, stationLayer, modelLayer, modelMarkers, afdHazardLayer, sfcLayer;
 let precipGroup, precipMarkers;
 const ESRI_CANVAS = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/';
 
@@ -556,6 +567,7 @@ function initMap(){
   spcOutlookLayer = L.layerGroup().addTo(map);
   alertLayerGroup = L.layerGroup().addTo(map);
   afdHazardLayer = L.layerGroup().addTo(map);
+  sfcLayer = L.layerGroup().addTo(map);
   mcdLayer = L.layerGroup().addTo(map);
   lsrLayer = L.layerGroup().addTo(map);
   stationLayer = L.layerGroup().addTo(map);
@@ -565,6 +577,7 @@ function initMap(){
   map.on('moveend', renderStations);
   map.on('moveend', scheduleModelRefresh);
   map.on('moveend', scheduleAfdRefresh);
+  map.on('moveend', renderSurface);
   map.on('moveend', schedulePrecipRefresh);
   map.on('click', precipPointPopup);   // tap anywhere for the estimate at that point
   map.on('moveend', () => { if(feedOpen) renderFeed(); });
@@ -1882,6 +1895,197 @@ function toggleAfdAreas(cb){
   if(syncRole === 'phone') broadcastState();
 }
 
+/* ---------------- Surface analysis (WPC coded bulletin) ----------------
+   The Weather Prediction Center publishes its 3-hourly surface analysis as a
+   coded text bulletin: fronts as strings of coordinates, plus the pressure
+   centers. api.weather.gov serves it CORS-open like every other NWS product.
+
+   ASUS02 is the high-resolution version (tenths of a degree, "3100943" =
+   31.0N 94.3W); ASUS01 is the same analysis rounded to whole degrees and is
+   used only as a fallback. Both wrap at ~72 columns with no keyword on the
+   continuation lines, so the parser accumulates until the next keyword. */
+
+const SFC_URL = 'https://api.weather.gov/products/types/COD';
+let sfcOn = true;
+let sfcData = null;        // {valid, fronts:[{kind, pts}], centers:[{kind, mb, pt}]}
+
+// Which side of a front the symbols go on. WPC digitises fronts so that the
+// left of the direction of travel is the leading edge: on today's analysis all
+// eight cold fronts put their pips in the southeast quadrant, which is where
+// North American cold fronts move. Flip this if a future bulletin disagrees.
+const SFC_PIP_LEFT = true;
+
+const SFC_STYLE = {
+  COLD:  {color: '#3AA0FF', weight: 2.4, pip: 'tri'},
+  WARM:  {color: '#E10600', weight: 2.4, pip: 'arc'},
+  STNRY: {color: '#3AA0FF', weight: 2.4, pip: 'alt'},
+  OCFNT: {color: '#B14FFF', weight: 2.4, pip: 'both'},
+  TROF:  {color: '#D89A3F', weight: 1.6, pip: null, dash: '7 5'},
+};
+
+// A coordinate token. High-res is lat*10 (3 digits) + lon*10 (4); low-res is
+// lat (2) + lon (2 or 3). Longitude is west throughout this product.
+function sfcPoint(tok, hi){
+  if(!/^\d+$/.test(tok)) return null;
+  let la, lo;
+  if(hi){
+    if(tok.length !== 7) return null;
+    la = +tok.slice(0, 3) / 10; lo = +tok.slice(3) / 10;
+  }else{
+    if(tok.length < 4 || tok.length > 5) return null;
+    la = +tok.slice(0, 2); lo = +tok.slice(2);
+  }
+  if(!(la >= 0 && la <= 90) || !(lo >= 0 && lo <= 180)) return null;
+  return [la, -lo];
+}
+
+function parseSfc(text, hi){
+  const fronts = [], centers = [];
+  let cur = null;
+  for(const raw of text.split('\n')){
+    const line = raw.trim();
+    if(!line || line === '$$') continue;
+    const m = line.match(/^(HIGHS|LOWS|COLD|WARM|STNRY|OCFNT|TROF)\b\s*(.*)$/);
+    if(m){ cur = {kind: m[1], toks: m[2] ? m[2].split(/\s+/) : []}; sfcPush(cur, fronts, centers, hi); }
+    else if(cur && /^[\d\s]+$/.test(line)){ cur.toks.push(...line.split(/\s+/)); sfcPush(cur, fronts, centers, hi); }
+    else cur = null;                       // prose or header — the section is over
+  }
+  const v = text.match(/^VALID\s+(\d{2})(\d{2})(\d{2})Z/m);   // MMDDHH
+  let valid = null;
+  if(v){
+    const now = new Date();
+    let year = now.getUTCFullYear();
+    const d = new Date(Date.UTC(year, +v[1] - 1, +v[2], +v[3]));
+    if(d - now > 200 * 864e5) d.setUTCFullYear(year - 1);      // turn of the year
+    valid = d;
+  }
+  return {valid, fronts: fronts.filter(f => f.pts.length >= 2), centers};
+}
+// Re-derive a section in place each time it grows, so wrapped lines just extend it.
+function sfcPush(cur, fronts, centers, hi){
+  if(cur.kind === 'HIGHS' || cur.kind === 'LOWS'){
+    if(cur.out) centers.splice(centers.indexOf(cur.out[0]), cur.out.length);
+    cur.out = [];
+    for(let i = 0; i + 1 < cur.toks.length; i += 2){
+      const mb = cur.toks[i], p = sfcPoint(cur.toks[i + 1], hi);
+      if(p && /^\d{3,4}$/.test(mb)) cur.out.push({kind: cur.kind === 'HIGHS' ? 'H' : 'L', mb: +mb, pt: p});
+    }
+    centers.push(...cur.out);
+  }else{
+    if(cur.rec){ fronts.splice(fronts.indexOf(cur.rec), 1); }
+    const pts = cur.toks.map(t => sfcPoint(t, hi)).filter(Boolean);
+    cur.rec = {kind: cur.kind, pts};
+    fronts.push(cur.rec);
+  }
+}
+
+async function loadSurfaceAnalysis(){
+  try{
+    const list = await (await fetch(SFC_URL)).json();
+    const g = list['@graph'] || [];
+    const pick = g.find(p => p.wmoCollectiveId === 'ASUS02') || g.find(p => p.wmoCollectiveId === 'ASUS01');
+    if(!pick) return;
+    const prod = await (await fetch(`https://api.weather.gov/products/${pick.id}`)).json();
+    sfcData = parseSfc(prod.productText || '', pick.wmoCollectiveId === 'ASUS02');
+    sfcData.res = pick.wmoCollectiveId;
+    renderSurface();
+  }catch(e){ console.error('surface analysis', e); }
+}
+
+// Walk a polyline in screen space and drop a marker every `gap` pixels, so the
+// symbols stay evenly spaced however far you zoom.
+function sfcPipPoints(pts, gap){
+  const out = [];
+  const px = pts.map(p => map.latLngToLayerPoint(p));
+  let carry = gap * 0.55;                       // start part-way in, not on the end
+  for(let i = 0; i < px.length - 1; i++){
+    const a = px[i], b = px[i + 1];
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const len = Math.hypot(dx, dy);
+    if(len < 0.5) continue;
+    const ang = Math.atan2(dy, dx) * 180 / Math.PI;
+    for(let d = carry; d < len; d += gap){
+      const t = d / len;
+      out.push({ll: map.layerPointToLatLng(L.point(a.x + dx * t, a.y + dy * t)), ang});
+    }
+    carry = Math.max(0, carry - len) || gap - ((len - carry) % gap);
+  }
+  return out;
+}
+
+const SFC_TRI = '<svg viewBox="0 0 12 8" width="12" height="8"><path d="M0 8 L6 0 L12 8 Z" fill="COLOR"/></svg>';
+const SFC_ARC = '<svg viewBox="0 0 12 8" width="12" height="8"><path d="M0 8 A6 6 0 0 1 12 8 Z" fill="COLOR"/></svg>';
+
+function sfcPip(ll, ang, shape, color, flip){
+  // The box is rotated to the direction of travel; the symbol sits above the
+  // line inside it, so it always lands on the same side of the front.
+  const svg = (shape === 'tri' ? SFC_TRI : SFC_ARC).replace('COLOR', color);
+  const side = (flip === !SFC_PIP_LEFT) ? 0 : 180;
+  const html = `<div class="sfc-pip" style="transform:rotate(${ang + side}deg)">` +
+               `<div class="sfc-sym">${svg}</div></div>`;
+  return L.marker(ll, {icon: L.divIcon({className: 'sfc-icon', html, iconSize: [0, 0], iconAnchor: [0, 0]}),
+                       interactive: false, keyboard: false});
+}
+
+function renderSurface(){
+  if(!sfcLayer) return;
+  sfcLayer.clearLayers();
+  if(!sfcOn || !sfcData) return;
+  const b = map.getBounds().pad(0.25);
+  const gap = 34;
+
+  for(const f of sfcData.fronts){
+    const st = SFC_STYLE[f.kind];
+    if(!st) continue;
+    if(!f.pts.some(p => b.contains(p))) continue;      // nothing of it in view
+    L.polyline(f.pts, {color: st.color, weight: st.weight, opacity: 0.95,
+                       dashArray: st.dash || null, interactive: false}).addTo(sfcLayer);
+    // A stationary front is drawn blue one way and red the other; overlaying a
+    // red dash on the blue line gives that alternating look in one pass.
+    if(f.kind === 'STNRY')
+      L.polyline(f.pts, {color: '#E10600', weight: st.weight, opacity: 0.95,
+                         dashArray: '10 10', interactive: false}).addTo(sfcLayer);
+    if(!st.pip) continue;
+    const pips = sfcPipPoints(f.pts, gap);
+    pips.forEach((p, i) => {
+      if(!b.contains(p.ll)) return;
+      let shape = st.pip, color = st.color, flip = false;
+      if(st.pip === 'alt'){                    // stationary: cold one side, warm the other
+        shape = (i % 2) ? 'arc' : 'tri';
+        color = (i % 2) ? '#E10600' : '#3AA0FF';
+        flip  = !!(i % 2);
+      }else if(st.pip === 'both'){             // occluded: both symbols, same side
+        shape = (i % 2) ? 'arc' : 'tri';
+      }
+      sfcPip(p.ll, p.ang, shape, color, flip).addTo(sfcLayer);
+    });
+  }
+
+  for(const c of sfcData.centers){
+    if(!b.contains(c.pt)) continue;
+    const color = c.kind === 'H' ? '#3A6FE0' : '#E10600';
+    const icon = L.divIcon({className: 'hl-icon',
+      html: `<div class="hl-mark" style="color:${color}">${c.kind}<span class="hl-mb">${c.mb}</span></div>`,
+      iconSize: [0, 0], iconAnchor: [0, 0]});
+    L.marker(c.pt, {icon, keyboard: false})
+      .bindPopup(`<div class="alert-popup"><b>${c.kind === 'H' ? 'High' : 'Low'} ${c.mb} mb</b>` +
+                 `WPC surface analysis${sfcValidText()}</div>`)
+      .addTo(sfcLayer);
+  }
+}
+function sfcValidText(){
+  if(!sfcData || !sfcData.valid) return '';
+  return '<br>valid ' + sfcData.valid.toLocaleString([], {weekday: 'short', hour: 'numeric'}) +
+         (sfcData.res === 'ASUS01' ? ' · low resolution' : '');
+}
+
+function toggleSurface(cb){
+  sfcOn = cb.checked;
+  renderSurface();
+  if(syncRole === 'phone') broadcastState();
+}
+
+
 /* ---------------- Precipitation accumulation (live estimates) ----------------
    Rainfall: the NWS MRMS radar-derived QPE mosaic (1 km, updated hourly) for a
    1–72 h window, pulled as a georeferenced image for the current view plus a
@@ -2462,7 +2666,7 @@ function getSyncState(){
     stationsOn, stationMetric, windBarbsOn,
     radarMode, singleSite, singleProduct, modelField, brightnessIdx,
     precipMode, precipWindow, feedOpen, kiosk: kioskOn,
-    afdAreasOn,
+    afdAreasOn, sfcOn,
     lblScale: document.documentElement.style.getPropertyValue('--lblscale') || '1',
     radarOpacity: radarLayer ? radarLayer.options.opacity : 0.6
   };
@@ -2503,6 +2707,11 @@ function applyState(s){
     windBarbsOn = s.windBarbsOn;
     const cb = document.getElementById('windBarbsChk'); if(cb) cb.checked = windBarbsOn;
     renderStations();
+  }
+  if('sfcOn' in s && s.sfcOn !== sfcOn){
+    sfcOn = s.sfcOn;
+    const cb = document.getElementById('sfcChk'); if(cb) cb.checked = sfcOn;
+    renderSurface();
   }
   if('afdAreasOn' in s && s.afdAreasOn !== afdAreasOn){
     afdAreasOn = s.afdAreasOn;
@@ -2713,7 +2922,9 @@ async function boot(){
   setInterval(computeLightning, 3000);
   setInterval(() => { if(feedOpen) renderFeed(); }, 30000);   // keep "Xm ago" fresh
   loadAfdAreas();
+  loadSurfaceAnalysis();
   setInterval(loadAfdAreas, 20 * 60 * 1000);
+  setInterval(loadSurfaceAnalysis, 20 * 60 * 1000);   // WPC reanalyses every 3 h
   // Auto-pair as the controller when opened via a scanned QR (?join=CODE);
   // otherwise pick the last pairing back up so a reload doesn't break the link.
   const joinCode = new URLSearchParams(location.search).get('join');
