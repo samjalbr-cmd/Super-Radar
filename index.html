@@ -45,19 +45,88 @@
     color:var(--dim);cursor:pointer;font-size:16px;
   }
   #settingsPanel{
-    position:absolute;top:46px;right:0;width:280px;max-width:calc(100vw - 32px);
+    position:absolute;top:46px;right:0;width:306px;max-width:calc(100vw - 32px);
     max-height:calc(100vh - 96px);overflow-y:auto;-webkit-overflow-scrolling:touch;
     overscroll-behavior:contain;
-    padding:18px;display:none;flex-direction:column;gap:10px;
+    display:none;flex-direction:column;
     background:var(--panel);border:1px solid var(--border);border-radius:14px;
     backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
   }
   #settingsPanel.open{display:flex;}
-  #settingsPanel label{font-family:monospace;font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:0.05em;}
-  #settingsPanel input, #settingsPanel select{
-    background:#0d1420;border:1px solid var(--border);border-radius:8px;
-    color:#F5F3EC;padding:8px 10px;font-family:sans-serif;font-size:14px;
+
+  /* Sticky header so the panel stays identifiable while its long body scrolls. */
+  .set-head{
+    position:sticky;top:0;z-index:2;display:flex;align-items:center;justify-content:space-between;
+    padding:13px 15px;border-bottom:1px solid var(--border);
+    background:rgba(16,25,43,0.92);backdrop-filter:blur(10px);
+    border-radius:14px 14px 0 0;
   }
+  .set-title{font-family:sans-serif;font-weight:700;font-size:14px;color:#F5F3EC;letter-spacing:0.02em;}
+  .set-close{background:none;border:none;color:var(--dim);font-size:15px;cursor:pointer;line-height:1;padding:2px 4px;}
+  .set-close:hover{color:#F5F3EC;}
+
+  /* Each group collapses, so twenty settings stay scannable instead of being
+     one long scroll. <details> gives the behaviour without any script. */
+  .set-sec{border-bottom:1px solid rgba(255,255,255,0.055);}
+  .set-sec > summary{
+    list-style:none;cursor:pointer;user-select:none;
+    padding:11px 15px;display:flex;align-items:center;gap:7px;
+    font-family:monospace;font-size:11px;color:var(--dim);
+    text-transform:uppercase;letter-spacing:0.07em;
+  }
+  .set-sec > summary::-webkit-details-marker{display:none;}
+  .set-sec > summary::before{
+    content:'';width:0;height:0;flex-shrink:0;
+    border-left:4px solid currentColor;border-top:3.5px solid transparent;border-bottom:3.5px solid transparent;
+    transition:transform 0.18s ease;
+  }
+  .set-sec[open] > summary::before{transform:rotate(90deg) translateX(1px);}
+  .set-sec > summary:hover{color:#F5F3EC;}
+  .set-body{padding:2px 15px 14px;display:flex;flex-direction:column;gap:8px;}
+
+  .set-cap{font-family:monospace;font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:0.06em;margin-top:2px;}
+  .set-field{
+    width:100%;box-sizing:border-box;
+    background:#0d1420;border:1px solid var(--border);border-radius:8px;
+    color:#F5F3EC;padding:8px 10px;font-family:sans-serif;font-size:13.5px;
+  }
+  .set-field:focus{outline:none;border-color:var(--amber);}
+  .set-inline{display:flex;gap:7px;}
+  .set-inline .set-field{flex:1;}
+  .set-btn{
+    background:var(--amber);color:#181205;border:none;border-radius:8px;
+    padding:0 14px;font-weight:700;font-size:13px;cursor:pointer;flex-shrink:0;
+  }
+  .set-btn:hover{filter:brightness(1.08);}
+  .set-range{width:100%;accent-color:var(--amber);background:transparent;border:none;padding:0;}
+
+  /* A real switch rather than a default checkbox — the rows read as a list of
+     things that are on or off, which is what they are. */
+  .set-row{
+    display:flex;align-items:center;gap:9px;cursor:pointer;
+    font-family:sans-serif;font-size:13px;color:#F5F3EC;
+    text-transform:none;letter-spacing:0;padding:1px 0;
+  }
+  .set-row input{position:absolute;opacity:0;width:0;height:0;}
+  .sw-t{
+    position:relative;width:30px;height:17px;border-radius:9px;flex-shrink:0;
+    background:#0d1420;border:1px solid var(--border);transition:background 0.15s ease,border-color 0.15s ease;
+  }
+  .sw-t::after{
+    content:'';position:absolute;top:2px;left:2px;width:11px;height:11px;border-radius:50%;
+    background:var(--dim);transition:transform 0.15s ease,background 0.15s ease;
+  }
+  .set-row input:checked + .sw-t{background:rgba(242,183,5,0.22);border-color:var(--amber);}
+  .set-row input:checked + .sw-t::after{transform:translateX(13px);background:var(--amber);}
+  .set-row input:focus-visible + .sw-t{outline:2px solid var(--amber);outline-offset:2px;}
+
+  .set-legend{display:flex;flex-direction:column;gap:5px;}
+  .set-foot{
+    padding:12px 15px 14px;border-top:1px solid var(--border);
+    font-family:monospace;font-size:9.5px;line-height:1.6;color:var(--dim);
+  }
+  .set-foot .dim{opacity:0.75;}
+  .legend-row.dim{color:var(--dim);}
   #settingsPanel button{
     background:var(--amber);color:#181205;border:none;border-radius:8px;
     padding:9px;font-weight:600;font-size:13px;cursor:pointer;margin-top:4px;
@@ -334,141 +403,196 @@
 <div id="gear">
   <div id="gearbtn" onclick="document.getElementById('settingsPanel').classList.toggle('open')">⚙</div>
   <div id="settingsPanel">
-    <label style="margin-top:8px;">Change Location</label>
-    <input id="cityInput" type="text" placeholder="City, State" />
-    <button onclick="searchCity()">Set Location</button>
-    <label style="margin-top:8px;">Show Alert Types</label>
-    <div id="hazardToggles" style="display:flex;flex-direction:column;gap:6px;font-size:13px;color:#F5F3EC;">
-      <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" data-hazard="tornado" checked onchange="toggleHazard(this)"> Tornado</label>
-      <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" data-hazard="thunderstorm" checked onchange="toggleHazard(this)"> Thunderstorm</label>
-      <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" data-hazard="flood" checked onchange="toggleHazard(this)"> Flood</label>
-      <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" data-hazard="winter" checked onchange="toggleHazard(this)"> Winter</label>
-      <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" data-hazard="heat" checked onchange="toggleHazard(this)"> Heat</label>
-      <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" data-hazard="other" checked onchange="toggleHazard(this)"> Other</label>
-      <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" data-hazard="watches" checked onchange="toggleHazard(this)"> Include Watches</label>
-      <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" data-hazard="lightning" checked onchange="toggleHazard(this)"> Lightning</label>
+    <div class="set-head">
+      <span class="set-title">Nightwatch</span>
+      <button class="set-close" onclick="document.getElementById('settingsPanel').classList.remove('open')" title="Close">✕</button>
     </div>
-    <label style="margin-top:8px;">Radar opacity</label>
-    <input id="radarOpacity" type="range" min="0.2" max="1" step="0.05" value="0.6" oninput="setRadarOpacity(this.value)" style="width:100%;padding:0;background:transparent;border:none;" />
-    <label style="margin-top:8px;">Map label size</label>
-    <input id="lblScale" type="range" min="0.8" max="2" step="0.1" value="1" oninput="setLabelScale(this.value)" style="width:100%;padding:0;background:transparent;border:none;" />
-    <label style="margin-top:8px;">Radar Mode</label>
-    <select id="radarMode" onchange="setRadarMode(this.value)">
-      <option value="national">National Mosaic</option>
-      <option value="single">Single Radar</option>
-    </select>
-    <div id="singleControls" style="display:none;flex-direction:column;gap:8px;">
-      <label style="margin-top:2px;">Radar Site</label>
-      <select id="radarSite" onchange="onSiteChange(this.value)"></select>
-      <label style="margin-top:2px;">Product</label>
-      <select id="radarProduct" onchange="onProductChange(this.value)">
-        <option value="N0Q">Reflectivity</option>
-        <option value="N0U">Base Velocity</option>
-        <option value="N0S">Storm-Relative Velocity</option>
-      </select>
-    </div>
-    <label style="margin-top:8px;">Weather Stations (METAR)</label>
-    <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" id="stationsChk" checked onchange="toggleStations(this)"> Show live stations</label>
-    <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" id="windBarbsChk" onchange="setWindBarbs(this)"> Station model (barb · temp · dewpt · pres)</label>
-    <label style="margin-top:2px;">Station metric</label>
-    <select id="stationMetric" onchange="setStationMetric(this.value)">
-      <option value="temp">Temperature (°F)</option>
-      <option value="feel">Feels Like (°F)</option>
-      <option value="dwpf">Dewpoint (°F)</option>
-      <option value="wind">Wind — recent peak gust (mph)</option>
-      <option value="gust">Gust — current (mph)</option>
-      <option value="relh">Humidity (%)</option>
-      <option value="phour">Rain — past hour (in)</option>
-      <option value="pday">Rain — since midnight (in)</option>
-      <option value="snowday">Snowfall — since midnight (in)</option>
-      <option value="snowd">Snow depth — on ground (in)</option>
-    </select>
-    <label style="margin-top:8px;">SPC Severe Layers</label>
-    <div id="spcToggles" style="display:flex;flex-direction:column;gap:6px;">
-      <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" data-spc="outlook" checked onchange="toggleSpc(this)"> Convective Outlook</label>
-      <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" data-spc="mcd" checked onchange="toggleSpc(this)"> Mesoscale Discussions</label>
-      <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" data-spc="lsr" checked onchange="toggleSpc(this)"> Storm Reports (24h)</label>
-    </div>
-    <label style="margin-top:8px;">Surface Analysis</label>
-    <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" id="sfcChk" checked onchange="toggleSurface(this)"> Fronts and pressure centers</label>
-    <label style="margin-top:8px;">Forecast Discussion</label>
-    <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-family:sans-serif;font-size:13px;color:#F5F3EC;"><input type="checkbox" id="afdAreasChk" checked onchange="toggleAfdAreas(this)"> Hazard areas from the discussion</label>
-    <label style="margin-top:8px;">Model Layers</label>
-    <select id="modelField" onchange="setModelField(this.value)">
-      <option value="off">Off</option>
-      <option value="cape">CAPE (J/kg)</option>
-      <option value="cin">CIN — cap (J/kg)</option>
-      <option value="li">Lifted Index</option>
-      <option value="lapse">700–500mb Lapse (°C/km)</option>
-      <option value="dewp">2m Dewpoint (°F)</option>
-      <option value="shear">Deep-Layer Shear (kt)</option>
-      <option value="shear1">0–1km Shear (kt)</option>
-      <option value="pwat">Precipitable Water (in)</option>
-      <option value="heat">Heat Index (°F)</option>
-      <option value="gust">Wind Gusts (kt)</option>
-      <option value="mslp">Pressure MSLP + H/L</option>
-      <option value="wave">Wave Height (m)</option>
-    </select>
-    <div id="modelLegend" style="display:flex;flex-direction:column;gap:5px;"></div>
-    <label style="margin-top:8px;">Precipitation Estimates</label>
-    <select id="precipLayer" onchange="setPrecipMode(this.value)">
-      <option value="off">Off</option>
-      <option value="rain">Rainfall — radar (MRMS QPE)</option>
-      <option value="snow">Snowfall — model estimate</option>
-    </select>
-    <label style="margin-top:2px;">Accumulation window</label>
-    <select id="precipWindow" onchange="setPrecipWindow(this.value)">
-      <option value="1">Past 1 hour</option>
-      <option value="3">Past 3 hours</option>
-      <option value="6">Past 6 hours</option>
-      <option value="12">Past 12 hours</option>
-      <option value="24" selected>Past 24 hours</option>
-      <option value="48">Past 48 hours</option>
-      <option value="72">Past 72 hours</option>
-    </select>
-    <div id="precipLegend" style="display:flex;flex-direction:column;gap:5px;"></div>
-    <label style="margin-top:8px;">Legend</label>
-    <div style="display:flex;flex-direction:column;gap:5px;">
-      <div class="legend-row legend-head">Warnings / Watches</div>
-      <div class="legend-row"><span class="sw" style="background:#E10600;"></span>Tornado</div>
-      <div class="legend-row"><span class="sw" style="background:#FFD400;"></span>Thunderstorm</div>
-      <div class="legend-row"><span class="sw" style="background:#2ECC71;"></span>Flood</div>
-      <div class="legend-row"><span class="sw" style="background:#6FB7FF;"></span>Winter</div>
-      <div class="legend-row"><span class="sw" style="background:#FF7A00;"></span>Heat</div>
-      <div class="legend-row"><span class="sw" style="background:#B76FFF;"></span>Other</div>
-      <div class="legend-row" style="color:var(--dim);">solid = warning · dashed = watch</div>
-      <div class="legend-row legend-head">Storm Reports</div>
-      <div class="legend-row"><span class="dotsw" style="background:#E10600;"></span>Tornado</div>
-      <div class="legend-row"><span class="dotsw" style="background:#00E0D0;"></span>Hail</div>
-      <div class="legend-row"><span class="dotsw" style="background:#3AA0FF;"></span>Wind</div>
-      <div class="legend-row"><span class="dotsw" style="background:#2ECC71;"></span>Flood / Rain</div>
-      <div class="legend-row"><span class="dotsw" style="background:#CFE8FF;"></span>Snow / Ice</div>
-      <div class="legend-row"><span class="dotsw" style="background:#B76FFF;"></span>Other</div>
-      <div class="legend-row legend-head">Station Wind</div>
-      <div class="legend-row"><span class="dotsw" style="background:#4A6FA5;"></span>&lt; 15 kt</div>
-      <div class="legend-row"><span class="dotsw" style="background:#3AA0FF;"></span>15–24 kt</div>
-      <div class="legend-row"><span class="dotsw" style="background:#F2B705;"></span>25–33 kt</div>
-      <div class="legend-row"><span class="dotsw" style="background:#FF7A00;"></span>34–47 kt</div>
-      <div class="legend-row"><span class="dotsw" style="background:#E10600;"></span>≥ 48 kt</div>
-      <div class="legend-row legend-head">Station Temp (°F)</div>
-      <div class="legend-row"><span class="dotsw" style="background:#800080;"></span>&lt; 15</div>
-      <div class="legend-row"><span class="dotsw" style="background:#663399;"></span>15–25</div>
-      <div class="legend-row"><span class="dotsw" style="background:#3366FF;"></span>25–35</div>
-      <div class="legend-row"><span class="dotsw" style="background:#0099FF;"></span>35–45</div>
-      <div class="legend-row"><span class="dotsw" style="background:#00CCCC;"></span>45–55</div>
-      <div class="legend-row"><span class="dotsw" style="background:#33E633;"></span>55–65</div>
-      <div class="legend-row"><span class="dotsw" style="background:#99FF33;"></span>65–75</div>
-      <div class="legend-row"><span class="dotsw" style="background:#FFE600;"></span>75–85</div>
-      <div class="legend-row"><span class="dotsw" style="background:#FF9900;"></span>85–95</div>
-      <div class="legend-row"><span class="dotsw" style="background:#FF6600;"></span>95–105</div>
-      <div class="legend-row"><span class="dotsw" style="background:#FF0000;"></span>≥ 105</div>
-      <div class="legend-row legend-head">Humidity (%)</div>
-      <div class="legend-row"><span class="dotsw" style="background:#FF7A00;"></span>&lt; 20</div>
-      <div class="legend-row"><span class="dotsw" style="background:#F2B705;"></span>20–39</div>
-      <div class="legend-row"><span class="dotsw" style="background:#2ECC71;"></span>40–59</div>
-      <div class="legend-row"><span class="dotsw" style="background:#3AA0FF;"></span>60–79</div>
-      <div class="legend-row"><span class="dotsw" style="background:#4169E1;"></span>≥ 80</div>
-      <div class="legend-row" style="color:var(--dim);margin-top:4px;">Model layer scales appear under the selector above.</div>
+
+    <details class="set-sec" open>
+      <summary>Location</summary>
+      <div class="set-body">
+        <div class="set-inline">
+          <input id="cityInput" class="set-field" type="text" placeholder="City, State" />
+          <button class="set-btn" onclick="searchCity()">Go</button>
+        </div>
+      </div>
+    </details>
+
+    <details class="set-sec" open>
+      <summary>Radar</summary>
+      <div class="set-body">
+        <label class="set-cap" for="radarMode">Mode</label>
+        <select id="radarMode" class="set-field" onchange="setRadarMode(this.value)">
+          <option value="national">National Mosaic</option>
+          <option value="single">Single Radar</option>
+          </select>
+        <div id="singleControls" style="display:none;">
+          <label class="set-cap" for="radarSite">Site</label>
+          <select id="radarSite" class="set-field" onchange="onSiteChange(this.value)"></select>
+          <label class="set-cap" for="radarProduct">Product</label>
+          <select id="radarProduct" class="set-field" onchange="onProductChange(this.value)">
+          <option value="N0Q">Reflectivity</option>
+          <option value="N0U">Base Velocity</option>
+          <option value="N0S">Storm-Relative Velocity</option>
+          </select>
+        </div>
+        <label class="set-cap" for="radarOpacity">Opacity</label>
+        <input id="radarOpacity" class="set-range" type="range" min="0.2" max="1" step="0.05" value="0.6" oninput="setRadarOpacity(this.value)" />
+      </div>
+    </details>
+
+    <details class="set-sec" open>
+      <summary>Alerts</summary>
+      <div class="set-body" id="hazardToggles">
+        <label class="set-row"><input type="checkbox" data-hazard="tornado" checked onchange="toggleHazard(this)"><span class="sw-t"></span>Tornado</label>
+        <label class="set-row"><input type="checkbox" data-hazard="thunderstorm" checked onchange="toggleHazard(this)"><span class="sw-t"></span>Thunderstorm</label>
+        <label class="set-row"><input type="checkbox" data-hazard="flood" checked onchange="toggleHazard(this)"><span class="sw-t"></span>Flood</label>
+        <label class="set-row"><input type="checkbox" data-hazard="winter" checked onchange="toggleHazard(this)"><span class="sw-t"></span>Winter</label>
+        <label class="set-row"><input type="checkbox" data-hazard="heat" checked onchange="toggleHazard(this)"><span class="sw-t"></span>Heat</label>
+        <label class="set-row"><input type="checkbox" data-hazard="other" checked onchange="toggleHazard(this)"><span class="sw-t"></span>Other</label>
+        <label class="set-row"><input type="checkbox" data-hazard="watches" checked onchange="toggleHazard(this)"><span class="sw-t"></span>Include watches</label>
+        <label class="set-row"><input type="checkbox" data-hazard="lightning" checked onchange="toggleHazard(this)"><span class="sw-t"></span>Lightning strikes</label>
+      </div>
+    </details>
+
+    <details class="set-sec" open>
+      <summary>Severe weather</summary>
+      <div class="set-body">
+        <div id="spcToggles">
+          <label class="set-row"><input type="checkbox" data-spc="outlook" checked onchange="toggleSpc(this)"><span class="sw-t"></span>SPC convective outlook</label>
+          <label class="set-row"><input type="checkbox" data-spc="mcd" checked onchange="toggleSpc(this)"><span class="sw-t"></span>Mesoscale discussions</label>
+          <label class="set-row"><input type="checkbox" data-spc="lsr" checked onchange="toggleSpc(this)"><span class="sw-t"></span>Storm reports (24 h)</label>
+        </div>
+        <label class="set-row"><input type="checkbox" id="sfcChk" checked onchange="toggleSurface(this)"><span class="sw-t"></span>Surface fronts and pressure</label>
+        <label class="set-row"><input type="checkbox" id="afdAreasChk" checked onchange="toggleAfdAreas(this)"><span class="sw-t"></span>Forecast discussion areas</label>
+      </div>
+    </details>
+
+    <details class="set-sec">
+      <summary>Observations</summary>
+      <div class="set-body">
+        <label class="set-row"><input type="checkbox" id="stationsChk" checked onchange="toggleStations(this)"><span class="sw-t"></span>Live stations (METAR)</label>
+        <label class="set-row"><input type="checkbox" id="windBarbsChk" onchange="setWindBarbs(this)"><span class="sw-t"></span>Full station model</label>
+        <label class="set-cap" for="stationMetric">Station metric</label>
+        <select id="stationMetric" class="set-field" onchange="setStationMetric(this.value)">
+          <option value="temp">Temperature (°F)</option>
+          <option value="feel">Feels Like (°F)</option>
+          <option value="dwpf">Dewpoint (°F)</option>
+          <option value="wind">Wind — recent peak gust (mph)</option>
+          <option value="gust">Gust — current (mph)</option>
+          <option value="relh">Humidity (%)</option>
+          <option value="phour">Rain — past hour (in)</option>
+          <option value="pday">Rain — since midnight (in)</option>
+          <option value="snowday">Snowfall — since midnight (in)</option>
+          <option value="snowd">Snow depth — on ground (in)</option>
+          </select>
+      </div>
+    </details>
+
+    <details class="set-sec">
+      <summary>Model fields</summary>
+      <div class="set-body">
+        <select id="modelField" class="set-field" onchange="setModelField(this.value)">
+          <option value="off">Off</option>
+          <option value="cape">CAPE (J/kg)</option>
+          <option value="cin">CIN — cap (J/kg)</option>
+          <option value="li">Lifted Index</option>
+          <option value="lapse">700–500mb Lapse (°C/km)</option>
+          <option value="dewp">2m Dewpoint (°F)</option>
+          <option value="shear">Deep-Layer Shear (kt)</option>
+          <option value="shear1">0–1km Shear (kt)</option>
+          <option value="pwat">Precipitable Water (in)</option>
+          <option value="heat">Heat Index (°F)</option>
+          <option value="gust">Wind Gusts (kt)</option>
+          <option value="mslp">Pressure MSLP + H/L</option>
+          <option value="wave">Wave Height (m)</option>
+          </select>
+        <div id="modelLegend" class="set-legend"></div>
+      </div>
+    </details>
+
+    <details class="set-sec">
+      <summary>Precipitation</summary>
+      <div class="set-body">
+        <select id="precipLayer" class="set-field" onchange="setPrecipMode(this.value)">
+          <option value="off">Off</option>
+          <option value="rain">Rainfall — radar (MRMS QPE)</option>
+          <option value="snow">Snowfall — model estimate</option>
+          </select>
+        <label class="set-cap" for="precipWindow">Accumulation window</label>
+        <select id="precipWindow" class="set-field" onchange="setPrecipWindow(this.value)">
+          <option value="1">Past 1 hour</option>
+          <option value="3">Past 3 hours</option>
+          <option value="6">Past 6 hours</option>
+          <option value="12">Past 12 hours</option>
+          <option value="24" selected>Past 24 hours</option>
+          <option value="48">Past 48 hours</option>
+          <option value="72">Past 72 hours</option>
+          </select>
+        <div id="precipLegend" class="set-legend"></div>
+      </div>
+    </details>
+
+    <details class="set-sec">
+      <summary>Display</summary>
+      <div class="set-body">
+        <label class="set-cap" for="lblScale">Map label size</label>
+        <input id="lblScale" class="set-range" type="range" min="0.8" max="2" step="0.1" value="1" oninput="setLabelScale(this.value)" />
+      </div>
+    </details>
+
+    <details class="set-sec">
+      <summary>Legend</summary>
+      <div class="set-body set-legend">
+        <div class="legend-row legend-head">Warnings / watches</div>
+        <div class="legend-row"><span class="sw" style="background:#E10600;"></span>Tornado</div>
+        <div class="legend-row"><span class="sw" style="background:#FFD400;"></span>Thunderstorm</div>
+        <div class="legend-row"><span class="sw" style="background:#2ECC71;"></span>Flood</div>
+        <div class="legend-row"><span class="sw" style="background:#6FB7FF;"></span>Winter</div>
+        <div class="legend-row"><span class="sw" style="background:#FF7A00;"></span>Heat</div>
+        <div class="legend-row"><span class="sw" style="background:#B76FFF;"></span>Other</div>
+        <div class="legend-row dim">solid = warning · dashed = watch</div>
+        <div class="legend-row legend-head">Surface fronts</div>
+        <div class="legend-row"><span class="sw" style="background:#3AA0FF;"></span>Cold</div>
+        <div class="legend-row"><span class="sw" style="background:#E10600;"></span>Warm</div>
+        <div class="legend-row"><span class="sw" style="background:#B14FFF;"></span>Occluded</div>
+        <div class="legend-row"><span class="sw" style="background:#D89A3F;"></span>Trough</div>
+        <div class="legend-row legend-head">Storm reports</div>
+        <div class="legend-row"><span class="dotsw" style="background:#E10600;"></span>Tornado</div>
+        <div class="legend-row"><span class="dotsw" style="background:#00E0D0;"></span>Hail</div>
+        <div class="legend-row"><span class="dotsw" style="background:#3AA0FF;"></span>Wind</div>
+        <div class="legend-row"><span class="dotsw" style="background:#2ECC71;"></span>Flood / rain</div>
+        <div class="legend-row"><span class="dotsw" style="background:#CFE8FF;"></span>Snow / ice</div>
+        <div class="legend-row"><span class="dotsw" style="background:#B76FFF;"></span>Other</div>
+        <div class="legend-row legend-head">Station wind</div>
+        <div class="legend-row"><span class="dotsw" style="background:#4A6FA5;"></span>&lt; 15 kt</div>
+        <div class="legend-row"><span class="dotsw" style="background:#3AA0FF;"></span>15–24 kt</div>
+        <div class="legend-row"><span class="dotsw" style="background:#F2B705;"></span>25–33 kt</div>
+        <div class="legend-row"><span class="dotsw" style="background:#FF7A00;"></span>34–47 kt</div>
+        <div class="legend-row"><span class="dotsw" style="background:#E10600;"></span>≥ 48 kt</div>
+        <div class="legend-row legend-head">Station temp (°F)</div>
+        <div class="legend-row"><span class="dotsw" style="background:#800080;"></span>&lt; 15</div>
+        <div class="legend-row"><span class="dotsw" style="background:#3366FF;"></span>25–35</div>
+        <div class="legend-row"><span class="dotsw" style="background:#00CCCC;"></span>45–55</div>
+        <div class="legend-row"><span class="dotsw" style="background:#33E633;"></span>55–65</div>
+        <div class="legend-row"><span class="dotsw" style="background:#FFE600;"></span>75–85</div>
+        <div class="legend-row"><span class="dotsw" style="background:#FF6600;"></span>95–105</div>
+        <div class="legend-row"><span class="dotsw" style="background:#FF0000;"></span>≥ 105</div>
+        <div class="legend-row legend-head">Humidity (%)</div>
+        <div class="legend-row"><span class="dotsw" style="background:#FF7A00;"></span>&lt; 20</div>
+        <div class="legend-row"><span class="dotsw" style="background:#F2B705;"></span>20–39</div>
+        <div class="legend-row"><span class="dotsw" style="background:#2ECC71;"></span>40–59</div>
+        <div class="legend-row"><span class="dotsw" style="background:#3AA0FF;"></span>60–79</div>
+        <div class="legend-row"><span class="dotsw" style="background:#4169E1;"></span>≥ 80</div>
+      </div>
+    </details>
+
+    <div class="set-foot">
+      Alerts, radar and analysis: NOAA / NWS / SPC / WPC<br>
+      NEXRAD tiles and observations: Iowa Environmental Mesonet<br>
+      Model fields: Open-Meteo · Lightning: Blitzortung · Basemap: Esri<br>
+      <span class="dim">An unofficial viewer. Never rely on it for the protection
+      of life or property — always follow your local NWS office.</span>
     </div>
   </div>
 </div>
@@ -2546,6 +2670,20 @@ async function boot(){
   setInterval(loadAfdAreas, 20 * 60 * 1000);
   setInterval(loadSurfaceAnalysis, 20 * 60 * 1000);   // WPC reanalyses every 3 h
 }
+
+// Remember which settings groups were left open.
+const SET_KEY = 'nightwatch.settings.open';
+(function restoreSettingGroups(){
+  let open = null;
+  try{ open = JSON.parse(localStorage.getItem(SET_KEY) || 'null'); }catch(e){}
+  const secs = [...document.querySelectorAll('#settingsPanel .set-sec')];
+  secs.forEach((d, i) => { if(Array.isArray(open)) d.open = open.includes(i); });
+  secs.forEach((d, i) => d.addEventListener('toggle', () => {
+    try{
+      localStorage.setItem(SET_KEY, JSON.stringify(secs.flatMap((x, j) => x.open ? [j] : [])));
+    }catch(e){}
+  }));
+})();
 
 boot();
 </script>
