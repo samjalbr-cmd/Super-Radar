@@ -210,11 +210,38 @@
   /* Station value labels (replace dots): colored number on the map. */
   .stn-icon{ background:none; border:none; }
   /* Location pin for an item listed in the open Events feed. */
+  /* A pin is a dot; the highest-ranked one in each screen cell also gets a
+     label. Only warning-tier events pulse, so the pulse means something. */
+  .feed-mk{ position:relative; width:0; height:0; }
   .feed-pin{
-    width:14px; height:14px; border-radius:50%;
+    position:absolute; left:-6px; top:-6px;
+    width:12px; height:12px; border-radius:50%;
     border:2px solid #fff; box-sizing:border-box;
     box-shadow:0 0 0 1px rgba(0,0,0,.6), 0 0 8px currentColor;
-    animation:feedPinPulse 1.8s ease-in-out infinite;
+    transition:transform 0.12s ease;
+  }
+  .feed-pin.pulse{ animation:feedPinPulse 1.8s ease-in-out infinite; }
+  .feed-plbl{
+    position:absolute; left:10px; top:-7px; white-space:nowrap;
+    font-family:monospace; font-weight:700; font-size:calc(9.5px * var(--lblscale, 1));
+    text-shadow:0 0 3px #000, 0 0 2px #000, 0 1px 1px #000;
+    pointer-events:none;
+  }
+  .feed-mk.hot .feed-pin{ transform:scale(1.65); }
+  .feed-mk.hot .feed-plbl{ text-decoration:underline; }
+
+  .feed-chips{ display:flex; gap:6px; padding:9px 12px; border-bottom:1px solid var(--border); }
+  .feed-chip{
+    flex:1; text-align:center; cursor:pointer; user-select:none;
+    padding:4px 0; border-radius:999px; border:1px solid var(--border);
+    background:#0d1420; color:var(--dim);
+    font-family:monospace; font-size:9.5px; text-transform:uppercase; letter-spacing:0.05em;
+  }
+  .feed-chip.on{ border-color:var(--amber); color:var(--amber); background:rgba(242,183,5,0.12); }
+  #feedTab.alerting{ color:var(--amber); border-color:var(--amber); }
+  .feed-item.flash{ animation:feedRowFlash 1.6s ease-out; }
+  @keyframes feedRowFlash{
+    0%{ background:rgba(242,183,5,0.34); } 100%{ background:transparent; }
   }
   @keyframes feedPinPulse{ 0%,100%{ transform:scale(1); opacity:1; } 50%{ transform:scale(1.35); opacity:.75; } }
   /* Full station model: temp UL, dewpoint LL, coded pressure UR, barb center. */
@@ -667,7 +694,7 @@ function initMap(){
   map.on('moveend', renderSurface);
   map.on('moveend', schedulePrecipRefresh);
   map.on('click', precipPointPopup);   // tap anywhere for the estimate at that point
-  map.on('moveend', () => { if(feedOpen) renderFeed(); });
+  map.on('moveend', renderFeed);
   // Keep Leaflet's idea of the container size correct. Without this the map can
   // load tiles for only part of the viewport (half-rendered), especially on
   // mobile where layout settles after first paint, and on fullscreen/rotate.
@@ -853,7 +880,7 @@ async function loadAlerts(){
 
     lastAlertFeats = feats;
     renderAlerts();
-    if(feedOpen) renderFeed();
+    renderFeed();
   }catch(e){
     console.error('alerts error', e);
   }
@@ -1155,7 +1182,7 @@ async function loadMCD(){
         }catch(e){}
       }
     }).addTo(mcdLayer);
-    if(feedOpen) renderFeed();
+    renderFeed();
   }catch(e){ console.error('mcd error', e); }
 }
 
@@ -1195,7 +1222,7 @@ async function loadLSR(){
       const label = L.divIcon({className: 'lsr-icon', html: `<span class="lsr-val" style="color:${color}">${lsrValue(p)}</span>`, iconSize: [0, 0], iconAnchor: [0, 0]});
       L.marker([c[1], c[0]], {icon: label, keyboard: false}).bindPopup(popup).addTo(lsrLayer);
     }
-    if(feedOpen) renderFeed();
+    renderFeed();
   }catch(e){ console.error('lsr error', e); }
 }
 
@@ -1425,7 +1452,7 @@ async function loadStations(){
       .map(f => ({lon: f.geometry.coordinates[0], lat: f.geometry.coordinates[1], p: f.properties}));
     detectTempChanges();
     renderStations();
-    if(feedOpen) renderFeed();
+    renderFeed();
   }catch(e){ console.error('stations error', e); }
 }
 
@@ -2407,7 +2434,7 @@ async function loadPrecip(){
   try{
     if(precipMode === 'rain') await loadRainOverlay(seq);
     else await loadSnowOverlay(seq);
-    if(feedOpen) renderFeed();   // keep the feed's window header in step
+    renderFeed();   // keep the feed's window header in step
   }catch(e){ console.error('precip error', e); }
 }
 
@@ -2554,8 +2581,11 @@ let feedOpen = false;
 function toggleFeed(){
   feedOpen = !feedOpen;
   document.getElementById('feedPanel').classList.toggle('open', feedOpen);
-  if(feedOpen) renderFeed();
-  else if(feedLayerGroup) feedLayerGroup.clearLayers();   // hide pins when tab closes              // open it on the TV too
+  if(feedOpen){
+    feedSeenAt = Date.now();                       // opening clears the badge
+    try{ localStorage.setItem('nightwatch.feedSeen', String(feedSeenAt)); }catch(e){}
+  }
+  renderFeed();                                    // pins stay either way
 }
 function flyTo(lat, lon){ if(lat != null && lon != null) map.setView([lat, lon], Math.max(map.getZoom(), 9)); }
 function feedTimeMs(iso){ if(!iso) return 0; const t = new Date(iso).getTime(); return isNaN(t) ? 0 : t; }
@@ -2569,15 +2599,40 @@ function agoStr(ms){
 }
 function geomCenter(geom){ try{ const b = L.geoJSON(geom).getBounds(); return b.isValid() ? b.getCenter() : null; }catch(e){ return null; } }
 
-function renderFeed(){
-  if(!feedOpen) return;
-  const fb = document.getElementById('feedBody');
-  const savedScroll = fb ? fb.scrollTop : 0;
+/* Events are collected once, then rendered twice: as pins on the map (always,
+   so the map is useful with the panel shut) and as the list (only when it is
+   open). Ranking is by what a thing is before when it happened — sorting purely
+   by time let a 0.01" rain gauge outrank a tornado warning. */
+
+const FEED_CATS = {warning: 'Warnings', report: 'Reports', obs: 'Observations'};
+let feedFilter = {warning: true, report: true, obs: true};
+let feedSeenAt = 0;
+let feedHot = null;          // key of the row/pin under the cursor
+try{ feedSeenAt = +localStorage.getItem('nightwatch.feedSeen') || 0; }catch(e){}
+
+function alertRank(f){
+  const ev = f.properties.event || '';
+  if(f._cls === 'watch') return 70;
+  if(/Tornado/i.test(ev)) return 100;
+  if(/Flash Flood/i.test(ev)) return 95;
+  return 90;
+}
+function lsrRank(t){
+  t = (t || '').toUpperCase();
+  if(t.includes('TORNADO') || t.includes('FUNNEL')) return 96;
+  if(t.includes('HAIL')) return 60;
+  if(t.includes('WIND') || t.includes('TSTM')) return 55;
+  if(t.includes('FLOOD')) return 52;
+  return 45;
+}
+
+// Every source, normalised. `key` identifies a row across refreshes so hover
+// linkage survives them; `group` is what duplicates collapse on.
+function collectEvents(){
   const b = map.getBounds();
   const inView = (lat, lon) => lat != null && lon != null && b.contains([lat, lon]);
   const ev = [];
 
-  // Warnings + watches
   for(const f of lastAlertFeats){
     if(f._cls === 'advisory') continue;
     if(!f._geoms || !f._geoms.length) continue;
@@ -2587,35 +2642,39 @@ function renderFeed(){
     const c = lb.getCenter();
     if(!inView(c.lat, c.lng)) continue;
     const det = alertDetails(f.properties);
-    ev.push({t: feedTimeMs(f.properties.sent || f.properties.effective || f.properties.onset), color: alertColor(f.properties.event, f._cls),
-      main: f.properties.event, sub: det || (f.properties.areaDesc || '').split(';')[0], lat: c.lat, lon: c.lng});
+    ev.push({cat: 'warning', rank: alertRank(f), key: 'a' + (f.properties.id || f.properties.event + c.lat.toFixed(2)),
+      t: feedTimeMs(f.properties.sent || f.properties.effective || f.properties.onset),
+      color: alertColor(f.properties.event, f._cls), main: f.properties.event,
+      sub: det || (f.properties.areaDesc || '').split(';')[0], lat: c.lat, lon: c.lng,
+      pin: f.properties.event.replace(/\s*(Warning|Watch)\s*$/i, m => m.trim() === 'Watch' ? ' WATCH' : '').toUpperCase()});
   }
-  // Mesoscale Discussions
   for(const f of mcdData){
     const c = geomCenter(f.geometry); if(!c || !inView(c.lat, c.lng)) continue;
     const p = f.properties;
-    ev.push({t: feedTimeMs(p.issue), color: '#F2B705', main: `Mesoscale Disc #${p.num}`,
-      sub: (p.concerning || '').replace(/\.\.\./g, ' · ') + (p.watch_confidence != null ? ` (${p.watch_confidence}%)` : ''), lat: c.lat, lon: c.lng});
+    ev.push({cat: 'warning', rank: 60, key: 'm' + p.num, t: feedTimeMs(p.issue), color: '#F2B705',
+      main: `Mesoscale Disc #${p.num}`, pin: `MD #${p.num}`,
+      sub: (p.concerning || '').replace(/\.\.\./g, ' · ') + (p.watch_confidence != null ? ` (${p.watch_confidence}%)` : ''),
+      lat: c.lat, lon: c.lng});
   }
-  // Storm reports
   for(const f of lsrData){
     const c = f.geometry && f.geometry.coordinates; if(!c || !inView(c[1], c[0])) continue;
     const p = f.properties;
     const mag = p.magnitude ? ` ${p.magnitude} ${p.unit || ''}`.trimEnd() : '';
-    ev.push({t: feedTimeMs(p.valid), color: lsrColor(p.typetext), main: `${p.typetext || 'Report'}${mag}`,
-      sub: `${p.city || ''}, ${p.state || ''}`, lat: c[1], lon: c[0]});
+    const type = p.typetext || 'Report';
+    ev.push({cat: 'report', rank: lsrRank(type), key: 'l' + p.valid + type + c[0], t: feedTimeMs(p.valid),
+      color: lsrColor(type), main: `${type}${mag}`, pin: `${type}${mag}`.toUpperCase(),
+      sub: `${p.city || ''}, ${p.state || ''}`, lat: c[1], lon: c[0],
+      group: type.toUpperCase() + '|' + Math.round(c[1] / 0.2) + '|' + Math.round(c[0] / 0.2),
+      mag: parseFloat(p.magnitude) || 0, unit: p.unit || ''});
   }
-  // Notable wind gusts (stations in view, recent peak gust >= 30 mph)
   for(const s of stationData){
     if(!inView(s.lat, s.lon)) continue;
     const kt = recentPeakGustKt(s.p), mph = (kt != null) ? ktToMph(kt) : 0;
     if(mph < 30) continue;
-    ev.push({t: feedTimeMs(s.p.utc_max_gust_ts || s.p.utc_valid), color: windColor(kt), main: `${Math.round(mph)} mph gust`,
+    ev.push({cat: 'obs', rank: mph >= 58 ? 50 : 40, key: 'g' + s.p.station, t: feedTimeMs(s.p.utc_max_gust_ts || s.p.utc_valid),
+      color: windColor(kt), main: `${Math.round(mph)} mph gust`, pin: `${Math.round(mph)} MPH`,
       sub: s.p.name || s.p.station, lat: s.lat, lon: s.lon});
   }
-  // Gauge-measured rain / snow at stations in view. Each line carries the window
-  // its total covers, and only the wettest handful are listed so a rainy day
-  // doesn't bury the warnings.
   const rainObs = [], snowObs = [];
   for(const s of stationData){
     if(!inView(s.lat, s.lon)) continue;
@@ -2625,52 +2684,164 @@ function renderFeed(){
     if(p.pday > 0 || p.phour > 0){
       const day = (p.pday > 0) ? p.pday : null;
       const amt = (day != null) ? day : p.phour;
-      rainObs.push({amt, t, color: rainColor(amt) || '#00ECEC', lat: s.lat, lon: s.lon,
+      rainObs.push({cat: 'obs', rank: 25, key: 'r' + p.station, amt, t, color: rainColor(amt) || '#00ECEC', lat: s.lat, lon: s.lon,
         main: (day != null) ? `Rain ${inStr(day)} · since midnight` : `Rain ${inStr(p.phour)} · past 1 h`,
+        pin: `${inStr(amt)} RAIN`,
         sub: who + ((day != null && p.phour > 0) ? ` · ${inStr(p.phour)} in the past hour` : '') + obAt});
     }
     if(p.snow > 0 || p.snowd > 0){
       const sf = (p.snow > 0) ? p.snow : null;
       const amt = (sf != null) ? sf : p.snowd;
-      snowObs.push({amt, t, color: snowColor(amt) || '#EAF4FF', lat: s.lat, lon: s.lon,
+      snowObs.push({cat: 'obs', rank: 25, key: 's' + p.station, amt, t, color: snowColor(amt) || '#EAF4FF', lat: s.lat, lon: s.lon,
         main: (sf != null) ? `Snow ${inStr(sf)} · since midnight` : `Snow depth ${inStr(p.snowd)} · on ground now`,
+        pin: `${inStr(amt)} SNOW`,
         sub: who + ((sf != null && p.snowd > 0) ? ` · ${inStr(p.snowd)} on the ground` : '') + obAt});
     }
   }
   rainObs.sort((a, z) => z.amt - a.amt);
   snowObs.sort((a, z) => z.amt - a.amt);
-  for(const e of rainObs.slice(0, 8)) ev.push(e);
-  for(const e of snowObs.slice(0, 8)) ev.push(e);
+  ev.push(...rainObs.slice(0, 8), ...snowObs.slice(0, 8));
 
-  // Temperature swings (frontal passages)
   for(const e of tempEvents){
     if(!inView(e.lat, e.lon)) continue;
     const rising = e.to > e.from;
-    ev.push({t: e.time, color: rising ? '#FF7A00' : '#3AA0FF', main: `Temp ${rising ? '▲' : '▼'} ${Math.round(e.from)}° → ${Math.round(e.to)}°`,
+    ev.push({cat: 'obs', rank: 20, key: 't' + e.name + e.time, t: e.time,
+      color: rising ? '#FF7A00' : '#3AA0FF',
+      main: `Temp ${rising ? '▲' : '▼'} ${Math.round(e.from)}° → ${Math.round(e.to)}°`,
+      pin: `${Math.round(e.to)}°${rising ? '▲' : '▼'}`,
       sub: `${e.name} · likely front`, lat: e.lat, lon: e.lon});
   }
+  return ev;
+}
 
-  ev.sort((a, b) => b.t - a.t);
-  const top = ev.slice(0, 80);
-  // Header for the active precip layer: what it measures and over what window.
-  let html = (precipMode === 'off') ? '' :
-    `<div class="feed-note"><b>${precipSourceLabel()}</b>${precipSpanText()}</div>`;
-  if(!top.length) html += '<div class="feed-empty">No recent events in this view. Pan to an active area or zoom out.</div>';
-  feedLayerGroup.clearLayers();
-  for(let i = 0; i < top.length; i++){
-    const e = top[i];
-    html += `<div class="feed-item" onclick="flyTo(${e.lat},${e.lon})"><div class="bar" style="background:${e.color}"></div>` +
-            `<div><div class="fi-main">${e.main}</div><div class="fi-sub">${e.sub}</div><div class="fi-time">${agoStr(e.t)}</div></div></div>`;
-    // Drop a matching location pin on the map for each listed event.
-    if(e.lat != null && e.lon != null){
-      L.marker([e.lat, e.lon], {
-        icon: L.divIcon({className: '', html: `<div class="feed-pin" style="background:${e.color}"></div>`, iconSize: [14, 14], iconAnchor: [7, 7]}),
-        interactive: true, zIndexOffset: 800
-      }).bindPopup(`<b>${e.main}</b><br>${e.sub}<br><span style="opacity:.6">${agoStr(e.t)}</span>`).addTo(feedLayerGroup);
+// Several reports of one kind from one storm are one event, not five rows.
+function groupEvents(ev){
+  const byGroup = new Map(), out = [];
+  for(const e of ev){
+    if(!e.group){ out.push(e); continue; }
+    const g = byGroup.get(e.group);
+    if(!g){ byGroup.set(e.group, Object.assign({n: 1}, e)); continue; }
+    g.n++;
+    g.t = Math.max(g.t, e.t);
+    if(e.mag > (g.mag || 0)){ g.mag = e.mag; g.unit = e.unit; }
+  }
+  for(const g of byGroup.values()){
+    if(g.n > 1){
+      const type = g.main.replace(/\s+[\d.]+\s*\S*$/, '');
+      g.main = `${g.n} × ${type}`;
+      // Hail is quoted to hundredths by convention — 2.00 IN, not 2 IN.
+      if(g.mag){
+        const m = /^IN$/i.test(g.unit) ? g.mag.toFixed(2) : g.mag;
+        g.main += ` · up to ${m} ${g.unit}`.trimEnd();
+      }
+      g.pin = `${g.n}× ${type}`.toUpperCase();
+      g.sub = g.sub + ` and ${g.n - 1} more nearby`;
     }
+    out.push(g);
+  }
+  return out;
+}
+
+// Rank first, time second — the whole point of the change.
+function feedEvents(){
+  return groupEvents(collectEvents())
+    .filter(e => feedFilter[e.cat])
+    .sort((a, b) => (b.rank - a.rank) || (b.t - a.t))
+    .slice(0, 80);
+}
+
+/* ---- map pins ---- */
+
+// Labels would overlap into mush at 80 pins, so the highest-ranked event in each
+// screen cell wins the label and the rest stay dots — the same trick the station
+// layer uses to stay readable.
+function renderFeedPins(list){
+  if(!feedLayerGroup) return;
+  feedLayerGroup.clearLayers();
+  const claimed = new Set();
+  for(const e of list){
+    if(e.lat == null || e.lon == null) continue;
+    const pt = map.latLngToLayerPoint([e.lat, e.lon]);
+    const cell = Math.round(pt.x / 96) + ':' + Math.round(pt.y / 34);
+    const labelled = !claimed.has(cell) && e.rank >= 40;
+    if(labelled) claimed.add(cell);
+    const hot = feedHot === e.key ? ' hot' : '';
+    const pulse = e.rank >= 70 ? ' pulse' : '';
+    const html = `<div class="feed-mk${hot}"><span class="feed-pin${pulse}" style="background:${e.color}"></span>` +
+      (labelled ? `<span class="feed-plbl" style="color:${e.color}">${e.pin || e.main}</span>` : '') + `</div>`;
+    L.marker([e.lat, e.lon], {
+      icon: L.divIcon({className: '', html, iconSize: [0, 0], iconAnchor: [0, 0]}),
+      interactive: true, zIndexOffset: 800 + Math.round(e.rank)
+    }).on('click', () => focusFeedRow(e.key))
+      .bindPopup(`<div class="alert-popup"><b>${e.main}</b>${e.sub}<br><span style="opacity:.6">${agoStr(e.t)}</span></div>`)
+      .addTo(feedLayerGroup);
+  }
+}
+
+/* ---- panel ---- */
+
+function feedChipsHTML(){
+  return '<div class="feed-chips">' + Object.keys(FEED_CATS).map(k =>
+    `<span class="feed-chip${feedFilter[k] ? ' on' : ''}" onclick="toggleFeedCat('${k}')">${FEED_CATS[k]}</span>`).join('') + '</div>';
+}
+function toggleFeedCat(k){
+  feedFilter[k] = !feedFilter[k];
+  renderFeed();
+}
+
+function renderFeed(){
+  const list = feedEvents();
+  renderFeedPins(list);
+  updateFeedBadge(list);
+  if(!feedOpen) return;
+  const fb = document.getElementById('feedBody');
+  if(!fb) return;
+  const savedScroll = fb.scrollTop;
+  let html = feedChipsHTML();
+  if(precipMode !== 'off') html += `<div class="feed-note"><b>${precipSourceLabel()}</b>${precipSpanText()}</div>`;
+  if(!list.length) html += '<div class="feed-empty">No recent events in this view. Pan to an active area or zoom out.</div>';
+  for(const e of list){
+    html += `<div class="feed-item" id="fi-${feedId(e.key)}" onclick="flyTo(${e.lat},${e.lon})"` +
+            ` onmouseenter="setFeedHot('${feedId(e.key)}')" onmouseleave="setFeedHot(null)">` +
+            `<div class="bar" style="background:${e.color}"></div>` +
+            `<div><div class="fi-main">${e.main}</div><div class="fi-sub">${e.sub}</div>` +
+            `<div class="fi-time">${agoStr(e.t)}</div></div></div>`;
   }
   fb.innerHTML = html;
-  fb.scrollTop = savedScroll;   // keep the reader's place across refreshes
+  fb.scrollTop = savedScroll;
+}
+
+// Keys go into ids and inline handlers, so keep them to safe characters.
+const feedIdMap = new Map();
+function feedId(key){
+  if(!feedIdMap.has(key)) feedIdMap.set(key, 'k' + feedIdMap.size);
+  return feedIdMap.get(key);
+}
+function feedKeyOf(id){
+  for(const [k, v] of feedIdMap) if(v === id) return k;
+  return null;
+}
+function setFeedHot(id){
+  feedHot = id ? feedKeyOf(id) : null;
+  renderFeedPins(feedEvents());
+}
+// Clicking a pin walks the list to its row.
+function focusFeedRow(key){
+  if(!feedOpen) toggleFeed();
+  const el = document.getElementById('fi-' + feedId(key));
+  if(!el) return;
+  el.scrollIntoView({block: 'center', behavior: 'smooth'});
+  el.classList.add('flash');
+  setTimeout(() => el.classList.remove('flash'), 1600);
+}
+
+// Count of warning-tier events newer than the last time the panel was opened.
+function updateFeedBadge(list){
+  const tab = document.getElementById('feedTab');
+  if(!tab) return;
+  const n = list.filter(e => e.cat === 'warning' && e.t > feedSeenAt).length;
+  tab.textContent = n ? `EVENTS ${n}` : 'EVENTS';
+  tab.classList.toggle('alerting', n > 0);
 }
 
 async function boot(){
@@ -2697,7 +2868,7 @@ async function boot(){
   setInterval(fetchModel, 15 * 60 * 1000);
   setInterval(loadPrecip, 5 * 60 * 1000);   // MRMS QPE refreshes hourly; snow grid drifts slower
   setInterval(computeLightning, 3000);
-  setInterval(() => { if(feedOpen) renderFeed(); }, 30000);   // keep "Xm ago" fresh
+  setInterval(() => { renderFeed(); }, 30000);   // keep "Xm ago" fresh
   loadAfdAreas();
   loadSurfaceAnalysis();
   setInterval(loadAfdAreas, 20 * 60 * 1000);
