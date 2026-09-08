@@ -179,6 +179,25 @@
     font-family:monospace;font-size:11px;color:#F5F3EC;letter-spacing:0.03em;
   }
   #precipStatus.show{display:flex;}
+  /* Loop transport. Sits above the lightning badge, out of the map's way. */
+  #radarLoop{
+    position:absolute;bottom:24px;left:50%;transform:translateX(-50%);z-index:560;
+    width:min(430px, calc(100vw - 40px));display:none;align-items:center;gap:8px;
+    padding:8px 12px;background:var(--panel);border:1px solid var(--border);border-radius:12px;
+    backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+    font-family:monospace;font-size:11px;color:#F5F3EC;
+  }
+  #radarLoop.show{display:flex;}
+  #radarLoop button{
+    background:#0d1420;color:#F5F3EC;border:1px solid var(--border);border-radius:6px;
+    font-family:monospace;font-size:11px;padding:3px 8px;cursor:pointer;line-height:1.4;flex-shrink:0;
+  }
+  #radarLoop button:hover{border-color:var(--amber);color:var(--amber);}
+  #radarLoopRange{flex:1;accent-color:var(--amber);background:transparent;border:none;padding:0;min-width:60px;}
+  #radarLoopTime{color:var(--dim);white-space:nowrap;font-size:10px;}
+  /* Frames cross-fade rather than snap, which hides the tile pop-in. */
+  .radar-frame{transition:opacity 0.12s linear;}
+
   #afdStatus{
     position:absolute;top:112px;left:24px;z-index:500;max-width:calc(100vw - 48px);
     padding:7px 11px;display:none;align-items:center;gap:7px;
@@ -425,6 +444,14 @@
 
 <div id="radarStatus"><span class="dot"></span><span id="radarStatusText">NEXRAD N0Q</span></div>
 <div id="precipStatus"><span class="sw" id="precipSw"></span><span id="precipStatusText"></span></div>
+<div id="radarLoop">
+  <button onclick="stepRadarFrame(-1)" title="Previous frame">◀</button>
+  <button id="radarPlayBtn" onclick="toggleRadarPlay()" title="Play / pause">▶</button>
+  <button onclick="stepRadarFrame(1)" title="Next frame">▶|</button>
+  <input id="radarLoopRange" type="range" min="0" max="11" step="1" value="11"
+         oninput="stopRadarPlay(); showRadarFrame(+this.value)">
+  <span id="radarLoopTime"></span>
+</div>
 <div id="afdStatus"><span class="sw" style="background:#F2B705"></span><span id="afdStatusText"></span></div>
 
 <div id="feedTab" onclick="toggleFeed()">EVENTS</div>
@@ -472,6 +499,7 @@
           <option value="N0S">Storm-Relative Velocity</option>
           </select>
         </div>
+        <label class="set-row"><input type="checkbox" id="radarLoopChk" onchange="toggleRadarLoop(this)"><span class="sw-t"></span>Loop the past hour</label>
         <label class="set-cap" for="radarOpacity">Opacity</label>
         <input id="radarOpacity" class="set-range" type="range" min="0.2" max="1" step="0.05" value="0.6" oninput="setRadarOpacity(this.value)" />
       </div>
@@ -1245,6 +1273,122 @@ function lsrValue(p){
   return t ? t.toLowerCase() : '•';
 }
 
+/* ---------------- Radar loop ----------------
+   The Iowa Environmental Mesonet serves the NEXRAD mosaic at five-minute steps
+   back to 55 minutes as separate tile sets (nexrad-n0q-900913-m25m and so on),
+   so a loop needs no new data source — just one tile layer per step with only
+   the current one visible.
+
+   Adjacent frames are sometimes byte-identical because the mosaic genuinely did
+   not update in that interval. They are kept rather than de-duplicated: the
+   clock on the bar stays truthful, and a still frame is the honest picture of a
+   mosaic that did not move. */
+
+const RADAR_STEPS = [55, 50, 45, 40, 35, 30, 25, 20, 15, 10, 5, 0];   // minutes ago, oldest first
+let radarFrames = [];        // [{mins, layer}]
+let radarIdx = RADAR_STEPS.length - 1;
+let radarPlayTimer = null;
+let radarLoopOn = false;
+
+function radarFrameUrl(mins){
+  const set = mins === 0 ? 'nexrad-n0q-900913' : `nexrad-n0q-900913-m${String(mins).padStart(2, '0')}m`;
+  return `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/${set}/{z}/{x}/{y}.png`;
+}
+function radarOpacityNow(){
+  const el = document.getElementById('radarOpacity');
+  return el ? +el.value : 0.6;
+}
+
+// Every frame is a real tile layer kept at zero opacity, so stepping is a style
+// change rather than a refetch and replay is instant once they are warm.
+function buildRadarFrames(){
+  destroyRadarFrames();
+  radarFrames = RADAR_STEPS.map(mins => ({
+    mins,
+    layer: L.tileLayer(radarFrameUrl(mins), {
+      opacity: 0, maxZoom: 12, maxNativeZoom: 10, keepBuffer: 2,
+      updateWhenIdle: true, className: 'radar-frame',
+      attribution: 'NWS NEXRAD N0Q &copy; Iowa Environmental Mesonet',
+    }),
+  }));
+  for(const f of radarFrames) f.layer.addTo(map);
+  radarIdx = radarFrames.length - 1;
+  showRadarFrame(radarIdx);
+}
+function destroyRadarFrames(){
+  for(const f of radarFrames) map.removeLayer(f.layer);
+  radarFrames = [];
+}
+
+function showRadarFrame(i){
+  if(!radarFrames.length) return;
+  radarIdx = (i + radarFrames.length) % radarFrames.length;
+  const op = radarOpacityNow();
+  radarFrames.forEach((f, k) => f.layer.setOpacity(k === radarIdx ? op : 0));
+  renderRadarLoopBar();
+}
+
+function frameTimeLabel(mins){
+  const d = new Date(Date.now() - mins * 60000);
+  return d.toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'});
+}
+
+function toggleRadarLoop(cb){
+  radarLoopOn = cb.checked;
+  const bar = document.getElementById('radarLoop');
+  if(radarLoopOn){
+    if(radarMode !== 'national'){          // single-site has its own overlay
+      radarLoopOn = false; cb.checked = false;
+      if(bar) bar.classList.remove('show');
+      return;
+    }
+    if(radarLayer) radarLayer.setOpacity(0);
+    buildRadarFrames();
+    if(bar) bar.classList.add('show');
+  }else{
+    stopRadarPlay();
+    destroyRadarFrames();
+    if(radarLayer) radarLayer.setOpacity(radarOpacityNow());
+    if(bar) bar.classList.remove('show');
+  }
+}
+
+function stepRadarFrame(d){ stopRadarPlay(); showRadarFrame(radarIdx + d); }
+
+function stopRadarPlay(){
+  if(radarPlayTimer){ clearTimeout(radarPlayTimer); radarPlayTimer = null; }
+  const b = document.getElementById('radarPlayBtn');
+  if(b) b.textContent = '▶';
+}
+// setTimeout rather than setInterval so the newest frame can be held longer —
+// the loop should land on "and this is now" instead of snapping back to the
+// start of the hour.
+const RADAR_FRAME_MS = 380, RADAR_HOLD_MS = 1100;
+function scheduleRadarFrame(){
+  const atEnd = radarIdx === radarFrames.length - 1;
+  radarPlayTimer = setTimeout(() => {
+    showRadarFrame(radarIdx + 1);
+    scheduleRadarFrame();
+  }, atEnd ? RADAR_HOLD_MS : RADAR_FRAME_MS);
+}
+function toggleRadarPlay(){
+  if(radarPlayTimer){ stopRadarPlay(); return; }
+  if(!radarFrames.length) return;
+  scheduleRadarFrame();
+  const b = document.getElementById('radarPlayBtn');
+  if(b) b.textContent = '❚❚';
+}
+
+function renderRadarLoopBar(){
+  const s = document.getElementById('radarLoopRange');
+  const t = document.getElementById('radarLoopTime');
+  if(s){ s.max = Math.max(0, radarFrames.length - 1); s.value = radarIdx; }
+  if(t && radarFrames[radarIdx]){
+    const mins = radarFrames[radarIdx].mins;
+    t.textContent = `${frameTimeLabel(mins)}  ${mins === 0 ? '· now' : '· −' + mins + ' min'}`;
+  }
+}
+
 /* ---------------- Single-radar mode ----------------
    National reflectivity can't show velocity (that's a per-site product), so
    this mode focuses on one WSR-88D and lets you flip between its products:
@@ -1312,6 +1456,10 @@ async function updateSingleRadar(){
 }
 
 function setRadarMode(mode){
+  if(mode !== 'national' && radarLoopOn){
+    const cb = document.getElementById('radarLoopChk');
+    if(cb){ cb.checked = false; toggleRadarLoop(cb); }
+  }
   radarMode = mode;
   const sc = document.getElementById('singleControls');
   if(mode === 'single'){
@@ -2571,7 +2719,10 @@ function rebuildTiles(){
 }
 
 function setLabelScale(v){ document.documentElement.style.setProperty('--lblscale', v); }
-function setRadarOpacity(v){ if(radarLayer) radarLayer.setOpacity(+v); }
+function setRadarOpacity(v){
+  if(radarLoopOn && radarFrames.length) showRadarFrame(radarIdx);
+  else if(radarLayer) radarLayer.setOpacity(+v);
+}
 
 /* ---------------- Recent-events feed (side panel) ----------------
    A time-ordered list of the latest warnings, watches, mesoscale
