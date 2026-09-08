@@ -3120,8 +3120,15 @@ function updateFeedBadge(list){
 
 async function boot(){
   // Wait for layout to paint so the map container is full-size before Leaflet
-  // measures it — prevents the half-rendered (stale-tile) map on mobile.
-  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  // measures it — prevents the half-rendered (stale-tile) map on mobile. A
+  // background tab never paints and so never fires rAF, which left the whole app
+  // stuck on the loading screen until it was focused; race a timer against it.
+  await new Promise(r => {
+    let done = false;
+    const go = () => { if(!done){ done = true; r(); } };
+    requestAnimationFrame(() => requestAnimationFrame(go));
+    setTimeout(go, 1200);
+  });
   initMap();
   await Promise.all([loadRadar(), loadAlerts(), loadOutlook(), loadMCD(), loadLSR(), loadNexradSites()]);
   document.getElementById('loading').classList.add('hide');
