@@ -198,6 +198,19 @@
   /* Frames cross-fade rather than snap, which hides the tile pop-in. */
   .radar-frame{transition:opacity 0.12s linear;}
 
+  .trk-icon{ background:none; border:none; }
+  .trk-cell{
+    position:absolute; left:-5px; top:-5px; width:10px; height:10px;
+    border:2px solid; border-radius:2px; transform:rotate(45deg);
+    box-shadow:0 0 4px #000;
+  }
+  .trk-lbl, .trk-t{
+    position:absolute; white-space:nowrap; font-family:monospace; font-weight:700;
+    text-shadow:0 0 3px #000, 0 0 2px #000; pointer-events:none;
+  }
+  .trk-lbl{ left:9px; top:-6px; font-size:calc(9px * var(--lblscale, 1)); }
+  .trk-t{ left:5px; top:-5px; font-size:calc(8px * var(--lblscale, 1)); opacity:0.85; }
+
   #afdStatus{
     position:absolute;top:112px;left:24px;z-index:500;max-width:calc(100vw - 48px);
     padding:7px 11px;display:none;align-items:center;gap:7px;
@@ -500,6 +513,7 @@
           </select>
         </div>
         <label class="set-row"><input type="checkbox" id="radarLoopChk" onchange="toggleRadarLoop(this)"><span class="sw-t"></span>Loop the past hour</label>
+        <label class="set-row"><input type="checkbox" id="tracksChk" onchange="toggleStormTracks(this)"><span class="sw-t"></span>Storm cell tracks</label>
         <label class="set-cap" for="radarOpacity">Opacity</label>
         <input id="radarOpacity" class="set-range" type="range" min="0.2" max="1" step="0.05" value="0.6" oninput="setRadarOpacity(this.value)" />
       </div>
@@ -665,7 +679,7 @@
 <script>
 let lat = 42.907058, lon = -85.763014;
 let map, basemap, basemapLabels, radarLayer, marker, alertLayerGroup, lightningLayerGroup, feedLayerGroup;
-let spcOutlookLayer, mcdLayer, lsrLayer, stationLayer, modelLayer, modelMarkers, afdHazardLayer, sfcLayer;
+let spcOutlookLayer, mcdLayer, lsrLayer, stationLayer, modelLayer, modelMarkers, afdHazardLayer, sfcLayer, trackLayer;
 let precipGroup, precipMarkers;
 const ESRI_CANVAS = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/';
 
@@ -710,6 +724,7 @@ function initMap(){
   alertLayerGroup = L.layerGroup().addTo(map);
   afdHazardLayer = L.layerGroup().addTo(map);
   sfcLayer = L.layerGroup().addTo(map);
+  trackLayer = L.layerGroup().addTo(map);
   mcdLayer = L.layerGroup().addTo(map);
   lsrLayer = L.layerGroup().addTo(map);
   stationLayer = L.layerGroup().addTo(map);
@@ -720,6 +735,7 @@ function initMap(){
   map.on('moveend', scheduleModelRefresh);
   map.on('moveend', scheduleAfdRefresh);
   map.on('moveend', renderSurface);
+  map.on('moveend', renderStormTracks);
   map.on('moveend', schedulePrecipRefresh);
   map.on('click', precipPointPopup);   // tap anywhere for the estimate at that point
   map.on('moveend', renderFeed);
@@ -1387,6 +1403,125 @@ function renderRadarLoopBar(){
     const mins = radarFrames[radarIdx].mins;
     t.textContent = `${frameTimeLabel(mins)}  ${mins === 0 ? '· now' : '· −' + mins + ' min'}`;
   }
+}
+
+/* ---------------- Storm tracks (NEXRAD storm attributes) ----------------
+   The Iowa Environmental Mesonet publishes the radar-derived storm cell table —
+   position, motion, reflectivity, hail probabilities and the tornado-vortex and
+   mesocyclone flags — as one CORS-open GeoJSON. Each cell with motion gets a
+   projected track with tick marks at fifteen-minute steps, which is the thing a
+   loop still cannot tell you: where this is going to be.
+
+   `drct` follows the meteorological convention and is the direction the cell is
+   coming FROM, so the heading is the reciprocal. Verified against IEM's own data
+   by matching cells across two volume scans and comparing measured displacement
+   with the reported direction. */
+
+const ATTR_URL = 'https://mesonet.agron.iastate.edu/geojson/nexrad_attr.geojson';
+const ATTR_DRCT_IS_FROM = true;
+const TRACK_MINUTES = [15, 30, 45, 60];
+let tracksOn = false;
+let attrData = null;
+let attrFetchedAt = 0;
+
+function stormHeading(p){ return ATTR_DRCT_IS_FROM ? (p.drct + 180) % 360 : p.drct; }
+
+// Forward position along the motion vector. One nautical mile is a minute of
+// latitude, which keeps this to arithmetic at the scales involved.
+function projectPoint(lat, lon, headingDeg, nm){
+  const r = headingDeg * Math.PI / 180;
+  const dLat = (nm / 60) * Math.cos(r);
+  const dLon = (nm / 60) * Math.sin(r) / Math.cos(lat * Math.PI / 180);
+  return [lat + dLat, lon + dLon];
+}
+
+async function loadStormTracks(){
+  if(!tracksOn) return;
+  try{
+    const d = await (await fetch(ATTR_URL)).json();
+    attrData = d.features || [];
+    attrFetchedAt = Date.now();
+  }catch(e){ console.error('storm attributes', e); }
+  renderStormTracks();
+}
+
+// A cell is worth drawing if it is strong enough to matter or is flagged.
+function stormNotable(p){
+  if(p.tvs && p.tvs !== 'NONE') return true;
+  if(p.meso && p.meso !== 'NONE') return true;
+  return (p.max_dbz || 0) >= 45 || (p.posh || 0) >= 30 || (p.max_size || 0) >= 0.5;
+}
+function stormColor(p){
+  if(p.tvs && p.tvs !== 'NONE') return '#FF3AF5';      // tornado vortex signature
+  if(p.meso && p.meso !== 'NONE') return '#E10600';    // mesocyclone
+  if((p.posh || 0) >= 50 || (p.max_size || 0) >= 1) return '#FF7A00';
+  return '#FFD400';
+}
+function stormLabel(p){
+  const bits = [];
+  if(p.tvs && p.tvs !== 'NONE') bits.push('TVS');
+  else if(p.meso && p.meso !== 'NONE') bits.push('MESO');
+  if(p.max_size > 0) bits.push(p.max_size.toFixed(2) + '"');
+  else if(p.posh >= 30) bits.push('POSH ' + p.posh + '%');
+  if(p.sknt) bits.push(Math.round(p.sknt) + 'kt');
+  return bits.join(' · ');
+}
+
+function renderStormTracks(){
+  if(!trackLayer) return;
+  trackLayer.clearLayers();
+  if(!tracksOn || !attrData) return;
+  const b = map.getBounds().pad(0.1);
+  let drawn = 0;
+  for(const f of attrData){
+    const c = f.geometry && f.geometry.coordinates;
+    if(!c) continue;
+    const lat = c[1], lon = c[0];
+    if(!b.contains([lat, lon])) continue;
+    const p = f.properties;
+    if(!stormNotable(p)) continue;
+    if(++drawn > 60) break;                     // a busy day should not become a hairball
+    const color = stormColor(p);
+
+    if(p.sknt > 0){
+      const hd = stormHeading(p);
+      const pts = [[lat, lon]];
+      for(const m of TRACK_MINUTES) pts.push(projectPoint(lat, lon, hd, p.sknt * m / 60));
+      L.polyline(pts, {color, weight: 1.8, opacity: 0.85, dashArray: '5 4', interactive: false}).addTo(trackLayer);
+      // A tick per quarter hour, so the track reads as a timetable not an arrow.
+      TRACK_MINUTES.forEach((m, i) => {
+        const q = pts[i + 1];
+        L.circleMarker(q, {radius: i === TRACK_MINUTES.length - 1 ? 3.5 : 2.5, color,
+                           weight: 1.5, fillColor: '#0A0E1A', fillOpacity: 1, interactive: false}).addTo(trackLayer);
+        if(m === 30 || m === 60){
+          L.marker(q, {icon: L.divIcon({className: 'trk-icon',
+            html: `<span class="trk-t" style="color:${color}">+${m}</span>`, iconSize: [0, 0], iconAnchor: [0, 0]}),
+            interactive: false, keyboard: false}).addTo(trackLayer);
+        }
+      });
+    }
+
+    const lbl = stormLabel(p);
+    const icon = L.divIcon({className: 'trk-icon',
+      html: `<span class="trk-cell" style="border-color:${color}"></span>` +
+            (lbl ? `<span class="trk-lbl" style="color:${color}">${lbl}</span>` : ''),
+      iconSize: [0, 0], iconAnchor: [0, 0]});
+    L.marker([lat, lon], {icon, keyboard: false})
+      .bindPopup(`<div class="alert-popup"><b>Storm cell ${p.storm_id} · ${p.nexrad}</b>` +
+        `${Math.round(p.sknt)} kt from ${p.drct}° · max ${p.max_dbz} dBZ · top ${p.top} kft<br>` +
+        `hail: ${p.max_size > 0 ? p.max_size.toFixed(2) + '" est' : 'none est'} · POSH ${p.posh}% · POH ${p.poh}%<br>` +
+        `${p.tvs !== 'NONE' ? 'TVS ' + p.tvs + ' · ' : ''}${p.meso !== 'NONE' ? 'MESO ' + p.meso : ''}` +
+        `<span style="color:#8A93A6">${p.valid ? '<br>' + new Date(p.valid).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}) : ''}</span></div>`)
+      .addTo(trackLayer);
+  }
+}
+
+function toggleStormTracks(cb){
+  tracksOn = cb.checked;
+  if(tracksOn){
+    if(!attrData || Date.now() - attrFetchedAt > 5 * 60 * 1000) loadStormTracks();
+    else renderStormTracks();
+  }else renderStormTracks();
 }
 
 /* ---------------- Single-radar mode ----------------
@@ -3023,7 +3158,8 @@ async function boot(){
   loadAfdAreas();
   loadSurfaceAnalysis();
   setInterval(loadAfdAreas, 20 * 60 * 1000);
-  setInterval(loadSurfaceAnalysis, 20 * 60 * 1000);   // WPC reanalyses every 3 h
+  setInterval(loadSurfaceAnalysis, 20 * 60 * 1000);
+  setInterval(loadStormTracks, 5 * 60 * 1000);   // one volume scan   // WPC reanalyses every 3 h
 }
 
 // Remember which settings groups were left open.
