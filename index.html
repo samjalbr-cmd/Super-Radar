@@ -208,8 +208,8 @@
     position:absolute; white-space:nowrap; font-family:monospace; font-weight:700;
     text-shadow:0 0 3px #000, 0 0 2px #000; pointer-events:none;
   }
-  .trk-lbl{ left:9px; top:-6px; font-size:calc(9px * var(--lblscale, 1)); }
-  .trk-t{ left:5px; top:-5px; font-size:calc(8px * var(--lblscale, 1)); opacity:0.85; }
+  .trk-lbl{ left:10px; top:-7px; font-size:calc(11.5px * var(--lblscale, 1)); }
+  .trk-t{ left:6px; top:-6px; font-size:calc(10px * var(--lblscale, 1)); opacity:0.9; }
 
   #afdStatus{
     position:absolute;top:112px;left:24px;z-index:500;max-width:calc(100vw - 48px);
@@ -512,8 +512,8 @@
           <option value="N0S">Storm-Relative Velocity</option>
           </select>
         </div>
-        <label class="set-row"><input type="checkbox" id="radarLoopChk" onchange="toggleRadarLoop(this)"><span class="sw-t"></span>Loop the past hour</label>
-        <label class="set-row"><input type="checkbox" id="tracksChk" onchange="toggleStormTracks(this)"><span class="sw-t"></span>Storm cell tracks</label>
+        <label class="set-row"><input type="checkbox" id="radarLoopChk" checked onchange="toggleRadarLoop(this)"><span class="sw-t"></span>Loop the past hour</label>
+        <label class="set-row"><input type="checkbox" id="tracksChk" checked onchange="toggleStormTracks(this)"><span class="sw-t"></span>Storm cell tracks</label>
         <label class="set-cap" for="radarOpacity">Opacity</label>
         <input id="radarOpacity" class="set-range" type="range" min="0.2" max="1" step="0.05" value="0.6" oninput="setRadarOpacity(this.value)" />
       </div>
@@ -1419,7 +1419,7 @@ function renderRadarLoopBar(){
 
 const ATTR_URL = 'https://mesonet.agron.iastate.edu/geojson/nexrad_attr.geojson';
 const ATTR_DRCT_IS_FROM = true;
-const TRACK_MINUTES = [15, 30, 45, 60];
+const TRACK_MINUTES = [30, 60];
 let tracksOn = false;
 let attrData = null;
 let attrFetchedAt = 0;
@@ -1447,9 +1447,9 @@ async function loadStormTracks(){
 
 // A cell is worth drawing if it is strong enough to matter or is flagged.
 function stormNotable(p){
-  if(p.tvs && p.tvs !== 'NONE') return true;
+  if(p.tvs && p.tvs !== 'NONE') return true;      // always worth showing
   if(p.meso && p.meso !== 'NONE') return true;
-  return (p.max_dbz || 0) >= 45 || (p.posh || 0) >= 30 || (p.max_size || 0) >= 0.5;
+  return (p.max_dbz || 0) >= 50 || (p.posh || 0) >= 40 || (p.max_size || 0) >= 0.75;
 }
 function stormColor(p){
   if(p.tvs && p.tvs !== 'NONE') return '#FF3AF5';      // tornado vortex signature
@@ -1480,7 +1480,7 @@ function renderStormTracks(){
     if(!b.contains([lat, lon])) continue;
     const p = f.properties;
     if(!stormNotable(p)) continue;
-    if(++drawn > 60) break;                     // a busy day should not become a hairball
+    if(++drawn > 25) break;                     // a busy day should not become a hairball
     const color = stormColor(p);
 
     if(p.sknt > 0){
@@ -1493,11 +1493,9 @@ function renderStormTracks(){
         const q = pts[i + 1];
         L.circleMarker(q, {radius: i === TRACK_MINUTES.length - 1 ? 3.5 : 2.5, color,
                            weight: 1.5, fillColor: '#0A0E1A', fillOpacity: 1, interactive: false}).addTo(trackLayer);
-        if(m === 30 || m === 60){
-          L.marker(q, {icon: L.divIcon({className: 'trk-icon',
-            html: `<span class="trk-t" style="color:${color}">+${m}</span>`, iconSize: [0, 0], iconAnchor: [0, 0]}),
-            interactive: false, keyboard: false}).addTo(trackLayer);
-        }
+        L.marker(q, {icon: L.divIcon({className: 'trk-icon',
+          html: `<span class="trk-t" style="color:${color}">+${m}</span>`, iconSize: [0, 0], iconAnchor: [0, 0]}),
+          interactive: false, keyboard: false}).addTo(trackLayer);
       });
     }
 
@@ -3159,7 +3157,11 @@ async function boot(){
   loadSurfaceAnalysis();
   setInterval(loadAfdAreas, 20 * 60 * 1000);
   setInterval(loadSurfaceAnalysis, 20 * 60 * 1000);
-  setInterval(loadStormTracks, 5 * 60 * 1000);   // one volume scan   // WPC reanalyses every 3 h
+  setInterval(loadStormTracks, 5 * 60 * 1000);   // one volume scan
+  setTimeout(() => {
+    const t = document.getElementById('tracksChk');   if(t && t.checked) toggleStormTracks(t);
+    const l = document.getElementById('radarLoopChk'); if(l && l.checked) toggleRadarLoop(l);
+  }, 900);   // WPC reanalyses every 3 h
 }
 
 // Remember which settings groups were left open.
