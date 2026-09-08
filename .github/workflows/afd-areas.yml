@@ -14,14 +14,20 @@ name: Forecast discussion areas
 
 on:
   schedule:
-    - cron: '20 */3 * * *'      # every 3 hours; most runs skip most offices
+    # 09:00 and 21:00 UTC — 5am / 5pm Eastern Daylight Time. GitHub cron is
+    # always UTC and does not follow daylight saving, so from November these
+    # land at 4am / 4pm Eastern until the clocks go forward again.
+    - cron: '0 9,21 * * *'
   workflow_dispatch:
     inputs:
       only:
         description: 'Comma-separated offices to force (ignores the unchanged check), e.g. GRR,DTX'
         required: false
       model:
-        description: 'Model to use (default claude-opus-5; claude-haiku-4-5 is ~5x cheaper)'
+        description: 'Model to use (default claude-opus-5)'
+        required: false
+      effort:
+        description: 'Reasoning effort: low | medium | high (default medium)'
         required: false
       dry_run:
         description: 'Build the prompts and stop, without calling the model'
@@ -51,6 +57,7 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           AFD_MODEL: ${{ inputs.model }}
+          AFD_EFFORT: ${{ inputs.effort }}
         run: |
           node scripts/afd-areas.mjs \
             ${{ inputs.dry_run && '--dry-run' || '' }} \

@@ -16,6 +16,10 @@ const OUT = 'data/afd-areas.json';
 const OFFICES = 'data/offices.json';
 const UA = 'super-radar (github.com/samjalbr-cmd/Super-Radar)';
 const MODEL = process.env.AFD_MODEL || 'claude-opus-5';
+// Output is the larger half of the bill and most of it is thinking. This is
+// constrained extraction against a strict schema with a validator behind it,
+// which is where a lower effort holds up best.
+const EFFORT = process.env.AFD_EFFORT || 'medium';
 // Adaptive thinking and server-side refusal fallbacks exist on the 4.6-and-later
 // families; Haiku 4.5 rejects both. Keep the request shape model-appropriate so
 // a cheaper model can be compared without editing the script.
@@ -137,6 +141,14 @@ function validate(area, box, wfo) {
            quote: String(area.quote).slice(0, 300), polygon: pts };
 }
 
+// Opus 5 list price, so a run says what it spent instead of leaving it to a
+// billing page a week later.
+function costLine(inTok, outTok) {
+  if (!inTok && !outTok) return '';
+  const usd = inTok / 1e6 * 5 + outTok / 1e6 * 25;
+  return `, ${inTok.toLocaleString()} in / ${outTok.toLocaleString()} out ≈ $${usd.toFixed(2)}`;
+}
+
 async function main() {
   const offices = JSON.parse(readFileSync(OFFICES, 'utf8'));
   let out = { generated: null, offices: {} };
@@ -145,7 +157,8 @@ async function main() {
   const before = JSON.stringify(out.offices);
 
   const client = new Anthropic();
-  console.log(`model: ${MODEL}`);
+  let inTok = 0, outTok = 0;
+  console.log(`model: ${MODEL}  effort: ${EFFORT}`);
   const list = ONLY ? ONLY.split(',') : offices;
   let calls = 0, drawn = 0;
 
@@ -175,7 +188,7 @@ async function main() {
         model: MODEL,
         max_tokens: 16000,
         system: SYSTEM,
-        output_config: { format: { type: 'json_schema', schema: SCHEMA } },
+        output_config: { effort: EFFORT, format: { type: 'json_schema', schema: SCHEMA } },
         messages: [{ role: 'user', content: prompt }],
       };
       if (MODERN) {
@@ -200,6 +213,7 @@ async function main() {
         areas,
       };
       const u = res.usage;
+      inTok += u.input_tokens; outTok += u.output_tokens;
       console.log(`${wfo}: ${areas.length} area(s)  [in ${u.input_tokens} / out ${u.output_tokens}]  ${parsed.headline}`);
     } catch (e) {
       const msg = e.message || String(e);
@@ -217,13 +231,13 @@ async function main() {
   if (DRY) return;
   const body = JSON.stringify(out.offices);
   if (body === before) {
-    console.log(`\n${calls} model call(s), nothing changed — leaving ${OUT} alone`);
+    console.log(`\n${calls} model call(s)${costLine(inTok, outTok)}, nothing changed — leaving ${OUT} alone`);
     return;
   }
   out.generated = new Date().toISOString();
   mkdirSync('data', { recursive: true });
   writeFileSync(OUT, JSON.stringify(out, null, 1) + '\n');
-  console.log(`\n${calls} model call(s), ${drawn} area(s) drawn -> ${OUT}`);
+  console.log(`\n${calls} model call(s)${costLine(inTok, outTok)}, ${drawn} area(s) drawn -> ${OUT}`);
 }
 
 main().catch(e => { console.error(e); process.exit(1); });
