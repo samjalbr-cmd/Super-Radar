@@ -1327,8 +1327,21 @@ function buildRadarFrames(){
       attribution: 'NWS NEXRAD N0Q &copy; Iowa Environmental Mesonet',
     }),
   }));
-  for(const f of radarFrames) f.layer.addTo(map);
   radarIdx = radarFrames.length - 1;
+  const newest = radarFrames[radarIdx];
+  let handed = false;
+  // Hand over only once the newest frame can actually be seen, and let the
+  // history load behind it. Everything is on one host, so adding all twelve at
+  // once puts the visible frame last in a queue of about 480 tiles.
+  const handOver = () => {
+    if(handed) return;
+    handed = true;
+    if(radarLayer) radarLayer.setOpacity(0);
+    for(let i = 0; i < radarFrames.length - 1; i++) radarFrames[i].layer.addTo(map);
+  };
+  newest.layer.once('load', handOver);
+  setTimeout(handOver, 6000);          // a stalled tile must not strand the loop
+  newest.layer.addTo(map);
   showRadarFrame(radarIdx);
 }
 function destroyRadarFrames(){
@@ -1358,7 +1371,6 @@ function toggleRadarLoop(cb){
       if(bar) bar.classList.remove('show');
       return;
     }
-    if(radarLayer) radarLayer.setOpacity(0);
     buildRadarFrames();
     if(bar) bar.classList.add('show');
   }else{
@@ -2888,19 +2900,12 @@ function geomCenter(geom){ try{ const b = L.geoJSON(geom).getBounds(); return b.
    open). Ranking is by what a thing is before when it happened — sorting purely
    by time let a 0.01" rain gauge outrank a tornado warning. */
 
-const FEED_CATS = {warning: 'Warnings', report: 'Reports', obs: 'Observations'};
-let feedFilter = {warning: true, report: true, obs: true};
+const FEED_CATS = {discussion: 'Discussions', report: 'Reports', obs: 'Observations'};
+let feedFilter = {discussion: true, report: true, obs: true};
 let feedSeenAt = 0;
 let feedHot = null;          // key of the row/pin under the cursor
 try{ feedSeenAt = +localStorage.getItem('nightwatch.feedSeen') || 0; }catch(e){}
 
-function alertRank(f){
-  const ev = f.properties.event || '';
-  if(f._cls === 'watch') return 70;
-  if(/Tornado/i.test(ev)) return 100;
-  if(/Flash Flood/i.test(ev)) return 95;
-  return 90;
-}
 function lsrRank(t){
   t = (t || '').toUpperCase();
   if(t.includes('TORNADO') || t.includes('FUNNEL')) return 96;
@@ -2917,25 +2922,10 @@ function collectEvents(){
   const inView = (lat, lon) => lat != null && lon != null && b.contains([lat, lon]);
   const ev = [];
 
-  for(const f of lastAlertFeats){
-    if(f._cls === 'advisory') continue;
-    if(!f._geoms || !f._geoms.length) continue;
-    let lb = null;
-    for(const g of f._geoms){ const gc = geomCenter(g); if(gc){ lb = lb || L.latLngBounds(gc, gc); lb.extend(gc); } }
-    if(!lb) continue;
-    const c = lb.getCenter();
-    if(!inView(c.lat, c.lng)) continue;
-    const det = alertDetails(f.properties);
-    ev.push({cat: 'warning', rank: alertRank(f), key: 'a' + (f.properties.id || f.properties.event + c.lat.toFixed(2)),
-      t: feedTimeMs(f.properties.sent || f.properties.effective || f.properties.onset),
-      color: alertColor(f.properties.event, f._cls), main: f.properties.event,
-      sub: det || (f.properties.areaDesc || '').split(';')[0], lat: c.lat, lon: c.lng,
-      pin: f.properties.event.replace(/\s*(Warning|Watch)\s*$/i, m => m.trim() === 'Watch' ? ' WATCH' : '').toUpperCase()});
-  }
   for(const f of mcdData){
     const c = geomCenter(f.geometry); if(!c || !inView(c.lat, c.lng)) continue;
     const p = f.properties;
-    ev.push({cat: 'warning', rank: 60, key: 'm' + p.num, t: feedTimeMs(p.issue), color: '#F2B705',
+    ev.push({cat: 'discussion', rank: 60, key: 'm' + p.num, t: feedTimeMs(p.issue), color: '#F2B705',
       main: `Mesoscale Disc #${p.num}`, pin: `MD #${p.num}`,
       sub: (p.concerning || '').replace(/\.\.\./g, ' · ') + (p.watch_confidence != null ? ` (${p.watch_confidence}%)` : ''),
       lat: c.lat, lon: c.lng});
@@ -3123,7 +3113,7 @@ function focusFeedRow(key){
 function updateFeedBadge(list){
   const tab = document.getElementById('feedTab');
   if(!tab) return;
-  const n = list.filter(e => e.cat === 'warning' && e.t > feedSeenAt).length;
+  const n = list.filter(e => e.rank >= 55 && e.t > feedSeenAt).length;   // reports and discussions
   tab.textContent = n ? `EVENTS ${n}` : 'EVENTS';
   tab.classList.toggle('alerting', n > 0);
 }
