@@ -179,6 +179,14 @@
     font-family:monospace;font-size:11px;color:#F5F3EC;letter-spacing:0.03em;
   }
   #precipStatus.show{display:flex;}
+  #afdStatus{
+    position:absolute;top:112px;left:24px;z-index:500;max-width:calc(100vw - 48px);
+    padding:7px 11px;display:none;align-items:center;gap:7px;
+    background:var(--panel);border:1px solid var(--border);border-radius:10px;
+    backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+    font-family:monospace;font-size:11px;color:var(--dim);letter-spacing:0.03em;
+  }
+  #afdStatus.show{display:flex;}
   #precipStatus .sw{width:9px;height:9px;border-radius:2px;flex-shrink:0;}
   #radarStatus .dot{
     width:7px;height:7px;border-radius:50%;background:#2ECC71;
@@ -390,6 +398,7 @@
 
 <div id="radarStatus"><span class="dot"></span><span id="radarStatusText">NEXRAD N0Q</span></div>
 <div id="precipStatus"><span class="sw" id="precipSw"></span><span id="precipStatusText"></span></div>
+<div id="afdStatus"><span class="sw" style="background:#F2B705"></span><span id="afdStatusText"></span></div>
 
 <div id="feedTab" onclick="toggleFeed()">EVENTS</div>
 <div id="feedPanel">
@@ -1889,9 +1898,33 @@ function afdWhen(a, state){
   return state === 'live' ? `NOW – ${day(t1)}${hh(t1)}` : `${day(t0)}${hh(t0)} – ${day(t1)}${hh(t1)}`;
 }
 
+// How old the committed file is, and whether anything in it is still current.
+function afdFreshness(){
+  if(!afdAreas || !afdAreas.generated) return {state: 'none'};
+  const age = (Date.now() - Date.parse(afdAreas.generated)) / 3600e3;
+  let current = 0, total = 0;
+  for(const w in afdAreas.offices)
+    for(const a of (afdAreas.offices[w].areas || [])){ total++; if(afdWindowState(a)) current++; }
+  return {age, current, total, state: !isFinite(age) ? 'none' : age > 6 ? 'stale' : 'ok'};
+}
+function renderAfdStatus(){
+  const el = document.getElementById('afdStatus'), tx = document.getElementById('afdStatusText');
+  if(!el || !tx) return;
+  const f = afdFreshness();
+  let msg = '';
+  if(!afdAreasOn) msg = '';
+  else if(f.state === 'none') msg = 'Discussion areas unavailable';
+  else if(f.state === 'stale')
+    msg = `Discussion areas ${Math.round(f.age)} h old` + (f.current ? '' : ' · none still current');
+  else if(!f.current && f.total) msg = 'No discussion areas current right now';
+  tx.textContent = msg;
+  el.classList.toggle('show', !!msg);
+}
+
 function renderAfdAreas(){
   if(!afdHazardLayer) return;
   afdHazardLayer.clearLayers();
+  renderAfdStatus();
   if(!afdAreasOn || !afdAreas || !afdAreas.offices) return;
   const view = map.getBounds();
   const drawn = [];
