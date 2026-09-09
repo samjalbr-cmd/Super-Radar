@@ -1306,9 +1306,18 @@ let radarIdx = RADAR_STEPS.length - 1;
 let radarPlayTimer = null;
 let radarLoopOn = false;
 
+let radarFrameStamp = 0;
 function radarFrameUrl(mins){
   const set = mins === 0 ? 'nexrad-n0q-900913' : `nexrad-n0q-900913-m${String(mins).padStart(2, '0')}m`;
-  return `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/${set}/{z}/{x}/{y}.png`;
+  return `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/${set}/{z}/{x}/{y}.png?t=${radarFrameStamp}`;
+}
+// Re-point the existing layers rather than rebuilding: the frames keep their
+// place in the loop and only the tiles are refetched.
+function refreshRadarFrames(){
+  if(!radarLoopOn || !radarFrames.length) return;
+  radarFrameStamp = Math.floor(Date.now() / 1000);
+  for(const f of radarFrames) f.layer.setUrl(radarFrameUrl(f.mins));
+  renderRadarLoopBar();
 }
 function radarOpacityNow(){
   const el = document.getElementById('radarOpacity');
@@ -1319,11 +1328,12 @@ function radarOpacityNow(){
 // change rather than a refetch and replay is instant once they are warm.
 function buildRadarFrames(){
   destroyRadarFrames();
+  radarFrameStamp = Math.floor(Date.now() / 1000);
   radarFrames = RADAR_STEPS.map(mins => ({
     mins,
     layer: L.tileLayer(radarFrameUrl(mins), {
-      opacity: 0, maxZoom: 12, maxNativeZoom: 10, keepBuffer: 2,
-      updateWhenIdle: true, className: 'radar-frame',
+      opacity: 0, maxZoom: 12, maxNativeZoom: 10, keepBuffer: 6,
+      updateWhenIdle: false, className: 'radar-frame',
       attribution: 'NWS NEXRAD N0Q &copy; Iowa Environmental Mesonet',
     }),
   }));
@@ -1358,7 +1368,8 @@ function showRadarFrame(i){
 }
 
 function frameTimeLabel(mins){
-  const d = new Date(Date.now() - mins * 60000);
+  const base = radarFrameStamp ? radarFrameStamp * 1000 : Date.now();
+  const d = new Date(base - mins * 60000);
   return d.toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'});
 }
 
@@ -3139,7 +3150,7 @@ async function boot(){
   // lighter half-rendered startup block; a second pass catches slow connections.
   setTimeout(rebuildTiles, 1500);
   setTimeout(rebuildTiles, 4000);
-  setInterval(loadRadar, 5 * 60 * 1000);
+  setInterval(() => { loadRadar(); refreshRadarFrames(); }, 5 * 60 * 1000);
   setInterval(loadAlerts, 2 * 60 * 1000);
   setInterval(loadOutlook, 30 * 60 * 1000);
   setInterval(loadMCD, 5 * 60 * 1000);
@@ -3174,6 +3185,13 @@ const SET_KEY = 'nightwatch.settings.open';
     }catch(e){}
   }));
 })();
+
+// A backgrounded tab has its timers throttled, so catch up on the way back.
+document.addEventListener('visibilitychange', () => {
+  if(document.hidden) return;
+  if(tracksOn && Date.now() - attrFetchedAt > 5 * 60 * 1000) loadStormTracks();
+  if(radarLoopOn && Date.now() - radarFrameStamp * 1000 > 5 * 60 * 1000){ refreshRadarFrames(); loadRadar(); }
+});
 
 boot();
 </script>
