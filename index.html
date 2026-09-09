@@ -119,6 +119,7 @@
   .set-row input:checked + .sw-t{background:rgba(242,183,5,0.22);border-color:var(--amber);}
   .set-row input:checked + .sw-t::after{transform:translateX(13px);background:var(--amber);}
   .set-row input:focus-visible + .sw-t{outline:2px solid var(--amber);outline-offset:2px;}
+  .set-row.disabled{opacity:0.45;cursor:not-allowed;}
 
   .set-legend{display:flex;flex-direction:column;gap:5px;}
   .set-foot{
@@ -514,6 +515,11 @@
     <details class="set-sec" open>
       <summary>Radar</summary>
       <div class="set-body">
+        <label class="set-cap" for="radarSource">Source</label>
+        <select id="radarSource" class="set-field" onchange="setRadarSource(this.value)">
+          <option value="noaa">NOAA — smooth, higher colour depth</option>
+          <option value="iem">Iowa Mesonet — tiled, supports the loop</option>
+        </select>
         <label class="set-cap" for="radarMode">Mode</label>
         <select id="radarMode" class="set-field" onchange="setRadarMode(this.value)">
           <option value="national">National Mosaic</option>
@@ -528,7 +534,7 @@
           <option value="N0S">Storm-Relative Velocity</option>
           </select>
         </div>
-        <label class="set-row"><input type="checkbox" id="radarLoopChk" checked onchange="toggleRadarLoop(this)"><span class="sw-t"></span>Loop the past hour</label>
+        <label class="set-row"><input type="checkbox" id="radarLoopChk" onchange="toggleRadarLoop(this)"><span class="sw-t"></span>Loop the past hour</label>
         <label class="set-row"><input type="checkbox" id="tracksChk" checked onchange="toggleStormTracks(this)"><span class="sw-t"></span>Storm cell tracks</label>
         <label class="set-row"><input type="checkbox" id="arrivalChk" checked onchange="toggleArrival(this)"><span class="sw-t"></span>Arrival countdown for your location</label>
         <label class="set-cap" for="radarOpacity">Opacity</label>
@@ -756,6 +762,7 @@ function initMap(){
   map.on('moveend', scheduleAfdRefresh);
   map.on('moveend', renderSurface);
   map.on('moveend', renderStormTracks);
+  map.on('moveend', scheduleNoaaRadar);
   map.on('moveend', schedulePrecipRefresh);
   map.on('click', precipPointPopup);   // tap anywhere for the estimate at that point
   map.on('moveend', renderFeed);
@@ -791,7 +798,78 @@ function recenter(){
   marker = L.marker([lat, lon], {icon: L.divIcon({className:'', html:'<div style="width:12px;height:12px;border-radius:50%;background:#F2B705;box-shadow:0 0 10px 3px #F2B705;"></div>'})}).addTo(map);
 }
 
+/* Two national sources, because neither wins outright.
+
+   IEM serves pre-rendered tiles: they cache, they pan for free, and they are
+   the only source with an archive, so the loop can only be built on them. But
+   the palette is quantised to about 120 colours, which is what makes it look
+   banded and blocky.
+
+   NOAA's ImageServer renders on demand at 565 m with a continuous ramp — some
+   12,000 colours — so gradients are smooth. The cost is real: one image per
+   view, refetched on every pan, and no frame archive, so no loop. Measured
+   effective resolution is 867 m against IEM's 767 m, so this is a trade of
+   sharpness for smoothness, not a straight upgrade. */
+const NOAA_RADAR = 'https://mapservices.weather.noaa.gov/eventdriven/rest/services/' +
+                   'radar/radar_base_reflectivity_time/ImageServer';
+let radarSource = 'noaa';        // 'noaa' | 'iem'
+let noaaLayer = null;
+let noaaSeq = 0;
+let noaaTimer = null;
+
+async function loadNoaaRadar(){
+  if(radarMode !== 'national' || radarSource !== 'noaa' || !map) return;
+  const seq = ++noaaSeq;
+  const b = map.getBounds();
+  const sw = L.CRS.EPSG3857.project(b.getSouthWest());
+  const ne = L.CRS.EPSG3857.project(b.getNorthEast());
+  const size = map.getSize();
+  const W = Math.min(1600, Math.max(320, Math.round(size.x)));
+  const H = Math.min(1600, Math.max(240, Math.round(size.y)));
+  const url = `${NOAA_RADAR}/exportImage?bbox=${sw.x},${sw.y},${ne.x},${ne.y}` +
+              `&bboxSR=3857&imageSR=3857&size=${W},${H}&format=png32&transparent=true` +
+              `&interpolation=RSP_BilinearInterpolation&f=image&t=${Math.floor(Date.now() / 60000)}`;
+  // Swap only once the replacement has decoded, so panning never flashes empty.
+  const ov = L.imageOverlay(url, b, {opacity: radarOpacityNow(), pane: 'radarPane', interactive: false});
+  ov.on('load', () => {
+    if(seq !== noaaSeq || radarSource !== 'noaa'){ map.removeLayer(ov); return; }
+    if(noaaLayer) map.removeLayer(noaaLayer);
+    noaaLayer = ov;
+    radarLabel = 'NOAA base reflectivity';
+    updateRadarStatus();
+  });
+  ov.on('error', () => map.removeLayer(ov));
+  ov.addTo(map);
+}
+function clearNoaaRadar(){
+  if(noaaLayer){ map.removeLayer(noaaLayer); noaaLayer = null; }
+  noaaSeq++;
+}
+function scheduleNoaaRadar(){
+  if(radarSource !== 'noaa' || radarMode !== 'national') return;
+  clearTimeout(noaaTimer);
+  noaaTimer = setTimeout(loadNoaaRadar, 450);
+}
+
+// The loop only exists on IEM's archive, so choosing NOAA turns it off.
+function setRadarSource(v){
+  radarSource = v;
+  const loopChk = document.getElementById('radarLoopChk');
+  if(v === 'noaa'){
+    if(radarLoopOn && loopChk){ loopChk.checked = false; toggleRadarLoop(loopChk); }
+    if(loopChk){ loopChk.disabled = true; loopChk.closest('.set-row').classList.add('disabled'); }
+    if(radarLayer) radarLayer.setOpacity(0);
+    loadNoaaRadar();
+  }else{
+    if(loopChk){ loopChk.disabled = false; loopChk.closest('.set-row').classList.remove('disabled'); }
+    clearNoaaRadar();
+    if(radarLayer) radarLayer.setOpacity(radarOpacityNow());
+    loadRadar();
+  }
+}
+
 function loadRadar(){
+  if(radarSource === 'noaa'){ loadNoaaRadar(); return; }
   if(radarMode !== 'national') return;  // single-radar mode manages its own overlay
   // Raw NWS NEXRAD base reflectivity (N0Q) national mosaic, served as XYZ tiles by the
   // Iowa Environmental Mesonet. This is the actual NWS radar product rendered with the
@@ -2993,6 +3071,7 @@ function rebuildTiles(){
 
 function setLabelScale(v){ document.documentElement.style.setProperty('--lblscale', v); }
 function setRadarOpacity(v){
+  if(noaaLayer) noaaLayer.setOpacity(+v);
   if(radarLoopOn && radarFrames.length) showRadarFrame(radarIdx);
   else if(radarLayer) radarLayer.setOpacity(+v);
 }
@@ -3286,7 +3365,9 @@ async function boot(){
   setInterval(loadStormTracks, 5 * 60 * 1000);   // one volume scan
   setTimeout(() => {
     const t = document.getElementById('tracksChk');   if(t && t.checked) toggleStormTracks(t);
-    const l = document.getElementById('radarLoopChk'); if(l && l.checked) toggleRadarLoop(l);
+    const src = document.getElementById('radarSource');
+    if(src) setRadarSource(src.value);
+    else { const l = document.getElementById('radarLoopChk'); if(l && l.checked) toggleRadarLoop(l); }
   }, 900);   // WPC reanalyses every 3 h
 }
 
