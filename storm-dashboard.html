@@ -1693,29 +1693,33 @@ function populateSiteDropdown(){
   if(singleSite) sel.value = singleSite;
 }
 
-// Overlay the selected site + product, georeferenced from its world file.
+// IEM's per-site raster is about 1.25 km per pixel — coarser than the national
+// mosaic it sits under. It used to be drawn as one 1000px image stretched across
+// the whole domain, which magnified that coarseness into hard blocks and put
+// alignment on a hand-parsed world file. Using the tile pyramid instead lets the
+// server resample per zoom, and capping maxNativeZoom stops it emitting
+// 17-pixel blocks past the point where the data has anything more to give —
+// Leaflet's smooth upscale is honest about the same resolution and looks it.
+const SINGLE_NATIVE_ZOOM = 9;
 async function updateSingleRadar(){
   if(radarMode !== 'single' || !singleSite) return;
   const site = nexradSites.find(s => s.id === singleSite);
   if(!site) return;
   try{
-    const base = `https://mesonet.agron.iastate.edu/data/gis/images/4326/ridge/${singleSite}/${singleProduct}_0`;
-    const wldText = await (await fetch(`${base}.wld?t=${Date.now()}`)).text();
-    const w = wldText.trim().split(/\s+/).map(Number);      // A D B E C F
-    const A = w[0], E = w[3], C = w[4], F = w[5], N = 1000;  // images are 1000x1000
-    const west = C - A / 2, east = C + A * (N - 0.5);
-    const north = F - E / 2, south = F + E * (N - 0.5);
-    const bounds = [[south, west], [north, east]];
-    // The fetch above is async — if the user left single-radar mode while it was
-    // in flight, bail so we don't re-add a stuck overlay after cleanup ran.
-    if(radarMode !== 'single'){ if(singleLayer){ map.removeLayer(singleLayer); singleLayer = null; } return; }
     if(singleLayer){ map.removeLayer(singleLayer); singleLayer = null; }
-    singleLayer = L.imageOverlay(`${base}.png?t=${Date.now()}`, bounds, {opacity: 0.88, pane: 'velocityPane'}).addTo(map);
+    const url = `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/` +
+                `ridge::${singleSite}-${singleProduct}-0/{z}/{x}/{y}.png?t=${Math.floor(Date.now() / 60000)}`;
+    singleLayer = L.tileLayer(url, {
+      opacity: 0.85, maxZoom: 12, maxNativeZoom: SINGLE_NATIVE_ZOOM,
+      keepBuffer: 6, updateWhenIdle: false, pane: 'radarPane',
+      attribution: 'NWS NEXRAD &copy; Iowa Environmental Mesonet',
+    }).addTo(map);
     radarLabel = `${singleSite} · ${PRODUCT_NAME[singleProduct] || singleProduct}`;
-    // If the source ever goes stale again, say so instead of passing off an old
-    // scan as the current one.
+    // If a product goes quiet the way N0Q did, say so rather than presenting an
+    // old scan as current.
     try{
-      const head = await fetch(`${base}.png`, {method: 'HEAD'});
+      const flat = `https://mesonet.agron.iastate.edu/data/gis/images/4326/ridge/${singleSite}/${singleProduct}_0.png`;
+      const head = await fetch(flat, {method: 'HEAD'});
       const lm = Date.parse(head.headers.get('last-modified') || '');
       if(lm && Date.now() - lm > 60 * 60 * 1000)
         radarLabel += ` · ${Math.round((Date.now() - lm) / 3600000)} h old`;
