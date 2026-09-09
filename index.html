@@ -524,8 +524,7 @@
           <select id="radarSite" class="set-field" onchange="onSiteChange(this.value)"></select>
           <label class="set-cap" for="radarProduct">Product</label>
           <select id="radarProduct" class="set-field" onchange="onProductChange(this.value)">
-          <option value="N0Q">Reflectivity</option>
-          <option value="N0U">Base Velocity</option>
+          <option value="N0B">Reflectivity</option>
           <option value="N0S">Storm-Relative Velocity</option>
           </select>
         </div>
@@ -719,7 +718,10 @@ function initMap(){
   basemapLabels = L.tileLayer(ESRI_CANVAS + 'World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}', {
     maxZoom:12, keepBuffer:6, updateWhenIdle:false
   }).addTo(map);
-  radarLayer = L.tileLayer('', {opacity:0.6, maxZoom:12, maxNativeZoom:10, keepBuffer:6, attribution:'NWS NEXRAD N0Q &copy; Iowa Environmental Mesonet'}).addTo(map);
+  // Radar sits in its own pane so re-adding the basemap can never cover it.
+  map.createPane('radarPane');
+  map.getPane('radarPane').style.zIndex = 210;
+  radarLayer = L.tileLayer('', {opacity:0.6, maxZoom:12, maxNativeZoom:10, keepBuffer:6, pane:'radarPane', attribution:'NWS NEXRAD &copy; Iowa Environmental Mesonet'}).addTo(map);
   // Velocity overlay sits above the basemap but below the alert/SPC vectors.
   map.createPane('velocityPane');
   map.getPane('velocityPane').style.zIndex = 250;
@@ -1352,7 +1354,7 @@ function buildRadarFrames(){
     mins,
     layer: L.tileLayer(radarFrameUrl(mins), {
       opacity: 0, maxZoom: 12, maxNativeZoom: 10, keepBuffer: 6,
-      updateWhenIdle: false, className: 'radar-frame',
+      updateWhenIdle: false, className: 'radar-frame', pane: 'radarPane',
       attribution: 'NWS NEXRAD N0Q &copy; Iowa Environmental Mesonet',
     }),
   }));
@@ -1650,14 +1652,15 @@ function toggleArrival(cb){
 /* ---------------- Single-radar mode ----------------
    National reflectivity can't show velocity (that's a per-site product), so
    this mode focuses on one WSR-88D and lets you flip between its products:
-   reflectivity (N0Q), base velocity (N0U), storm-relative velocity (N0S).
+   super-resolution reflectivity (N0B) and storm-relative velocity (N0S). The
+   legacy N0Q/N0U per-site products stopped updating in 2023.
    Each is an IEM RIDGE image (1000x1000) georeferenced by its world file. */
 let radarMode = 'national';   // 'national' | 'single'
 let singleSite = null;        // selected radar id, e.g. 'GRR'
-let singleProduct = 'N0Q';    // N0Q | N0U | N0S
+let singleProduct = 'N0B';    // N0B (super-res reflectivity) | N0S (storm-relative velocity)
 let singleLayer = null;       // L.imageOverlay
 let nexradSites = [];
-const PRODUCT_NAME = {N0Q:'Reflectivity', N0U:'Base Velocity', N0S:'Storm-Rel Velocity'};
+const PRODUCT_NAME = {N0B:'Reflectivity', N0S:'Storm-Rel Velocity'};
 
 async function loadNexradSites(){
   try{
@@ -1708,7 +1711,15 @@ async function updateSingleRadar(){
     if(radarMode !== 'single'){ if(singleLayer){ map.removeLayer(singleLayer); singleLayer = null; } return; }
     if(singleLayer){ map.removeLayer(singleLayer); singleLayer = null; }
     singleLayer = L.imageOverlay(`${base}.png?t=${Date.now()}`, bounds, {opacity: 0.88, pane: 'velocityPane'}).addTo(map);
-    radarLabel = `${singleSite} · ${PRODUCT_NAME[singleProduct]}`;
+    radarLabel = `${singleSite} · ${PRODUCT_NAME[singleProduct] || singleProduct}`;
+    // If the source ever goes stale again, say so instead of passing off an old
+    // scan as the current one.
+    try{
+      const head = await fetch(`${base}.png`, {method: 'HEAD'});
+      const lm = Date.parse(head.headers.get('last-modified') || '');
+      if(lm && Date.now() - lm > 60 * 60 * 1000)
+        radarLabel += ` · ${Math.round((Date.now() - lm) / 3600000)} h old`;
+    }catch(e){}
     updateRadarStatus();
   }catch(e){ console.error('single radar error', e); }
 }
