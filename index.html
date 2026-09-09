@@ -179,6 +179,22 @@
     font-family:monospace;font-size:11px;color:#F5F3EC;letter-spacing:0.03em;
   }
   #precipStatus.show{display:flex;}
+  /* The headline answer: is something coming here, and when. */
+  #arrival{
+    position:absolute;top:112px;left:24px;z-index:520;max-width:min(300px, calc(100vw - 48px));
+    display:none;flex-direction:column;gap:2px;padding:10px 13px;
+    background:var(--panel);border:1px solid var(--border);border-left:3px solid var(--amber);
+    border-radius:10px;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  }
+  #arrival.show{display:flex;}
+  .arr-head{font-family:sans-serif;font-weight:800;font-size:12px;letter-spacing:0.04em;
+    display:flex;align-items:center;gap:7px;}
+  .arr-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;animation:pulse 2s ease-in-out infinite;}
+  .arr-sub{font-family:monospace;font-size:10.5px;color:var(--dim);}
+  .arr-eta{font-family:sans-serif;font-weight:700;font-size:15px;color:#F5F3EC;margin-top:2px;
+    display:flex;align-items:baseline;gap:8px;}
+  .arr-clock{font-family:monospace;font-size:11px;font-weight:400;color:var(--dim);}
+
   /* Loop transport. Sits above the lightning badge, out of the map's way. */
   #radarLoop{
     position:absolute;bottom:24px;left:50%;transform:translateX(-50%);z-index:560;
@@ -457,6 +473,7 @@
 
 <div id="radarStatus"><span class="dot"></span><span id="radarStatusText">NEXRAD N0Q</span></div>
 <div id="precipStatus"><span class="sw" id="precipSw"></span><span id="precipStatusText"></span></div>
+<div id="arrival"></div>
 <div id="radarLoop">
   <button onclick="stepRadarFrame(-1)" title="Previous frame">◀</button>
   <button id="radarPlayBtn" onclick="toggleRadarPlay()" title="Play / pause">▶</button>
@@ -514,6 +531,7 @@
         </div>
         <label class="set-row"><input type="checkbox" id="radarLoopChk" checked onchange="toggleRadarLoop(this)"><span class="sw-t"></span>Loop the past hour</label>
         <label class="set-row"><input type="checkbox" id="tracksChk" checked onchange="toggleStormTracks(this)"><span class="sw-t"></span>Storm cell tracks</label>
+        <label class="set-row"><input type="checkbox" id="arrivalChk" checked onchange="toggleArrival(this)"><span class="sw-t"></span>Arrival countdown for your location</label>
         <label class="set-cap" for="radarOpacity">Opacity</label>
         <input id="radarOpacity" class="set-range" type="range" min="0.2" max="1" step="0.05" value="0.6" oninput="setRadarOpacity(this.value)" />
       </div>
@@ -766,6 +784,7 @@ function initMap(){
 
 function recenter(){
   map.setView([lat, lon], 8);
+  renderArrival();
   if(marker) map.removeLayer(marker);
   marker = L.marker([lat, lon], {icon: L.divIcon({className:'', html:'<div style="width:12px;height:12px;border-radius:50%;background:#F2B705;box-shadow:0 0 10px 3px #F2B705;"></div>'})}).addTo(map);
 }
@@ -1459,13 +1478,14 @@ function projectPoint(lat, lon, headingDeg, nm){
 }
 
 async function loadStormTracks(){
-  if(!tracksOn) return;
+  if(!tracksOn && !arrivalOn) return;
   try{
     const d = await (await fetch(ATTR_URL)).json();
     attrData = d.features || [];
     attrFetchedAt = Date.now();
   }catch(e){ console.error('storm attributes', e); }
   renderStormTracks();
+  renderArrival();
 }
 
 // A cell is worth drawing if it is strong enough to matter or is flagged.
@@ -1484,7 +1504,7 @@ function stormLabel(p){
   const bits = [];
   if(p.tvs && p.tvs !== 'NONE') bits.push('TVS');
   else if(p.meso && p.meso !== 'NONE') bits.push('MESO');
-  if(p.max_size > 0) bits.push(p.max_size.toFixed(2) + '"');
+  if(p.max_size >= 0.25) bits.push(p.max_size.toFixed(2) + '"');
   else if(p.posh >= 30) bits.push('POSH ' + p.posh + '%');
   if(p.sknt) bits.push(Math.round(p.sknt) + 'kt');
   return bits.join(' · ');
@@ -1539,10 +1559,92 @@ function renderStormTracks(){
 
 function toggleStormTracks(cb){
   tracksOn = cb.checked;
+  renderArrival();
   if(tracksOn){
     if(!attrData || Date.now() - attrFetchedAt > 5 * 60 * 1000) loadStormTracks();
     else renderStormTracks();
   }else renderStormTracks();
+}
+
+/* ---- arrival countdown ----
+   The tracks show where every cell is going; this answers the only question
+   most people actually open a radar to ask — is one of them coming here, and
+   when. Closest-approach geometry against the pinned location, using the same
+   attribute table the tracks are drawn from. */
+
+const ARRIVE_CORRIDOR_NM = 12;    // how near a pass counts as "coming here"
+const ARRIVE_HORIZON_MIN = 90;    // beyond this a straight-line projection is fiction
+let arrivalOn = true;
+
+// Perpendicular offset and along-track distance from a cell to the pin, in
+// nautical miles. Flat-earth is fine over the ~100 nm that matters here.
+function cellApproach(cLat, cLon, headingDeg, pLat, pLon){
+  const mLat = Math.cos(((cLat + pLat) / 2) * Math.PI / 180);
+  const dx = (pLon - cLon) * 60 * mLat;      // east, nm
+  const dy = (pLat - cLat) * 60;             // north, nm
+  const r = headingDeg * Math.PI / 180;
+  const ux = Math.sin(r), uy = Math.cos(r);  // unit motion vector
+  const along = dx * ux + dy * uy;           // +ve = ahead of the cell
+  const off = Math.abs(dx * uy - dy * ux);   // perpendicular miss distance
+  return {along, off};
+}
+
+// The soonest credible arrival at the pin, or null.
+function computeArrival(){
+  if(!arrivalOn || !attrData || !attrData.length) return null;
+  let best = null;
+  for(const f of attrData){
+    const c = f.geometry && f.geometry.coordinates;
+    if(!c) continue;
+    const p = f.properties;
+    if(!p.sknt || p.sknt < 5) continue;                 // parked cells never arrive
+    if(!stormNotable(p)) continue;
+    const {along, off} = cellApproach(c[1], c[0], stormHeading(p), lat, lon);
+    if(along <= 0) continue;                            // already gone past
+    if(off > ARRIVE_CORRIDOR_NM) continue;              // will miss
+    // Count down from the observation time, so the clock ticks between fetches.
+    const obs = Date.parse(p.valid) || attrFetchedAt;
+    const elapsedMin = (Date.now() - obs) / 60000;
+    const mins = (along / p.sknt) * 60 - elapsedMin;
+    if(mins < -5 || mins > ARRIVE_HORIZON_MIN) continue;
+    if(!best || mins < best.mins) best = {mins, off, p, along};
+  }
+  return best;
+}
+
+function renderArrival(){
+  const el = document.getElementById('arrival');
+  if(!el) return;
+  const a = computeArrival();
+  if(!a){ el.classList.remove('show'); return; }
+  const p = a.p, color = stormColor(p);
+  const mins = Math.round(a.mins);
+  const eta = new Date(Date.now() + Math.max(0, a.mins) * 60000);
+  const bits = [];
+  // Sub-quarter-inch estimates are noise; "0.01\" hail" reads as a real number.
+  if(p.max_size >= 0.25) bits.push(p.max_size.toFixed(2) + '" hail');
+  else if(p.posh >= 30) bits.push(p.posh + '% hail chance');
+  if(p.max_dbz) bits.push(p.max_dbz + ' dBZ');
+  bits.push(Math.round(p.sknt * 1.15078) + ' mph');
+  const what = (p.tvs && p.tvs !== 'NONE') ? 'TORNADO SIGNATURE INBOUND'
+             : (p.meso && p.meso !== 'NONE') ? 'ROTATING CELL INBOUND'
+             : (p.max_size >= 1 || p.posh >= 50) ? 'SEVERE CELL INBOUND'
+             : 'STORM INBOUND';
+  const missMi = Math.round(a.off * 1.15078);
+  const side = missMi <= 3 ? 'tracking over you' : `passing about ${missMi} mi away`;
+  el.innerHTML =
+    `<div class="arr-head" style="color:${color}"><span class="arr-dot" style="background:${color}"></span>${what}</div>` +
+    `<div class="arr-sub">${bits.join(' · ')}</div>` +
+    `<div class="arr-eta">${mins <= 0 ? 'arriving now' : 'in ' + mins + ' min'}` +
+    `<span class="arr-clock">${eta.toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'})}</span></div>` +
+    `<div class="arr-sub">${side}</div>`;
+  el.classList.add('show');
+}
+
+function toggleArrival(cb){
+  arrivalOn = cb.checked;
+  renderArrival();
+  if(arrivalOn && (!attrData || Date.now() - attrFetchedAt > 5 * 60 * 1000)) loadStormTracks();
 }
 
 /* ---------------- Single-radar mode ----------------
@@ -3160,6 +3262,7 @@ async function boot(){
   setInterval(fetchModel, 15 * 60 * 1000);
   setInterval(loadPrecip, 5 * 60 * 1000);   // MRMS QPE refreshes hourly; snow grid drifts slower
   setInterval(computeLightning, 3000);
+  setInterval(renderArrival, 30 * 1000);   // let the countdown tick between fetches
   setInterval(() => { renderFeed(); }, 30000);   // keep "Xm ago" fresh
   loadAfdAreas();
   loadSurfaceAnalysis();
