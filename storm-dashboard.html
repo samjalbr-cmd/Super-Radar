@@ -3337,9 +3337,20 @@ async function boot(){
     setTimeout(go, 1200);
   });
   initMap();
-  await Promise.all([loadRadar(), loadAlerts(), loadOutlook(), loadMCD(), loadLSR(), loadNexradSites()]);
+  // Choose the radar source before anything draws. This used to happen in the
+  // deferred block below, which sat behind the national feeds — so for the
+  // twenty-odd seconds those took, both sources rendered on top of each other.
+  const srcSel = document.getElementById('radarSource');
+  if(srcSel) setRadarSource(srcSel.value);
+
+  // Only the radar gates the loading screen. Alerts resolve up to sixty zone
+  // geometries and were taking about half a minute; making the whole app wait
+  // on that meant staring at a splash while the map was ready to draw.
+  await loadRadar();
   document.getElementById('loading').classList.add('hide');
-  populateSiteDropdown();
+
+  loadNexradSites().then(populateSiteDropdown);
+  loadAlerts(); loadOutlook(); loadMCD(); loadLSR();
   loadStations();   // heavy national fetch — fire after the map is visible
   connectLightning();
   // Clean tile rebuild once the container is fully settled, to clear any
@@ -3364,10 +3375,7 @@ async function boot(){
   setInterval(loadSurfaceAnalysis, 20 * 60 * 1000);
   setInterval(loadStormTracks, 5 * 60 * 1000);   // one volume scan
   setTimeout(() => {
-    const t = document.getElementById('tracksChk');   if(t && t.checked) toggleStormTracks(t);
-    const src = document.getElementById('radarSource');
-    if(src) setRadarSource(src.value);
-    else { const l = document.getElementById('radarLoopChk'); if(l && l.checked) toggleRadarLoop(l); }
+    const t = document.getElementById('tracksChk'); if(t && t.checked) toggleStormTracks(t);
   }, 900);   // WPC reanalyses every 3 h
 }
 
