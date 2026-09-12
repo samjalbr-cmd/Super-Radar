@@ -186,8 +186,9 @@ enum RadarSnapshot {
         // In map points y increases southward, so maxY is the southern edge.
         let sw = MKMapPoint(x: mapRect.minX, y: mapRect.maxY).coordinate
         let ne = MKMapPoint(x: mapRect.maxX, y: mapRect.minY).coordinate
-        let px = Int(max(size.width, size.height) * 2)
-        let render = await StormFeed.radarImage(sw: sw, ne: ne, pixels: px)
+        // Height follows from the box's aspect, so the returned extent is the
+        // box asked for rather than one ArcGIS has reshaped.
+        let render = await StormFeed.radarImage(sw: sw, ne: ne, pixelsWide: Int(size.width * 2))
         let reports = showReports ? await StormFeed.recentReports(sw: sw, ne: ne) : []
         // Both temperatures and the alert query are scoped by the states in
         // view, so resolve the list once and share it.

@@ -94,14 +94,31 @@ enum StormFeed {
 
     /// Radar over an explicit corner box, so it can be registered against a map
     /// snapshot covering the same ground.
-    static func radarImageURL(sw: CLLocationCoordinate2D, ne: CLLocationCoordinate2D, pixels: Int) -> URL? {
+    /// The radar image for a box, and the pixel dimensions it was rendered at.
+    ///
+    /// The image size must carry the bounding box's own aspect ratio. ArcGIS
+    /// does not stretch a mismatched request, it *conforms the extent* to the
+    /// image's shape, expanding the deficient axis around the centre — asking
+    /// for a square image of a wide box came back covering 1.53x the latitude
+    /// requested and shifted 96 km south, which was then painted into the rect
+    /// for the box that was asked for. That is what put the radar out of
+    /// register with the fronts, pressure centres and everything else.
+    /// Matching the aspect brings it back to within a few metres.
+    static func radarImageURL(sw: CLLocationCoordinate2D, ne: CLLocationCoordinate2D,
+                              pixelsWide: Int) -> (url: URL, width: Int, height: Int)? {
         let (x0, y0) = mercator(sw.longitude, sw.latitude)
         let (x1, y1) = mercator(ne.longitude, ne.latitude)
+        let bw = x1 - x0, bh = y1 - y0
+        guard bw > 0, bh > 0 else { return nil }
+        let w = max(1, pixelsWide)
+        let h = max(1, Int((Double(w) * bh / bw).rounded()))
         // Cache-bust per minute; the mosaic updates far more slowly than that.
         let stamp = Int(Date().timeIntervalSince1970 / 60)
-        return URL(string: "\(radarService)/exportImage?bbox=\(Int(x0)),\(Int(y0)),\(Int(x1)),\(Int(y1))" +
-                   "&bboxSR=3857&imageSR=3857&size=\(pixels),\(pixels)&format=png32&transparent=true" +
-                   "&interpolation=RSP_BilinearInterpolation&f=image&t=\(stamp)")
+        guard let url = URL(string:
+            "\(radarService)/exportImage?bbox=\(Int(x0)),\(Int(y0)),\(Int(x1)),\(Int(y1))" +
+            "&bboxSR=3857&imageSR=3857&size=\(w),\(h)&format=png32&transparent=true" +
+            "&interpolation=RSP_BilinearInterpolation&f=image&t=\(stamp)") else { return nil }
+        return (url, w, h)
     }
 
     struct Report {
@@ -469,13 +486,13 @@ enum StormFeed {
         let hasEcho: Bool
     }
 
-    static func radarImage(sw: CLLocationCoordinate2D, ne: CLLocationCoordinate2D, pixels: Int) async -> RadarRender? {
-        guard let url = radarImageURL(sw: sw, ne: ne, pixels: pixels) else { return nil }
-        var req = URLRequest(url: url)
+    static func radarImage(sw: CLLocationCoordinate2D, ne: CLLocationCoordinate2D, pixelsWide: Int) async -> RadarRender? {
+        guard let r = radarImageURL(sw: sw, ne: ne, pixelsWide: pixelsWide) else { return nil }
+        var req = URLRequest(url: r.url)
         req.timeoutInterval = 20
         guard let data = try? await URLSession.shared.data(for: req).0, !data.isEmpty else { return nil }
-        // Scaled by area: a blank 800px render is bigger than a blank 400px one.
-        let blankCeiling = 12 * pixels
+        // Scaled by size: a blank 800px render is bigger than a blank 400px one.
+        let blankCeiling = 12 * max(r.width, r.height)
         return RadarRender(data: data, hasEcho: data.count > blankCeiling)
     }
 }
