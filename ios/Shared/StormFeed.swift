@@ -11,12 +11,16 @@ struct WatchLocation: Codable {
     /// Mirrored out of the dashboard's own settings so the widget draws what the
     /// app is set to draw, rather than keeping a second set of preferences.
     var showReports: Bool = true
+    var showTemps: Bool = true
     var zoom: RadarZoom = .county
+    /// Two-letter state, resolved by the app. The national station feed is
+    /// 3.4 MB; one state's network is about 100 KB, and the API accepts only one.
+    var state: String? = nil
 
     static let appGroup = "group.com.samjalbr.nightwatch"
     static let key = "watchLocation"
     static let fallback = WatchLocation(lat: 42.907058, lon: -85.763014, name: "Grand Rapids",
-                                        showReports: true, zoom: .county)
+                                        showReports: true, showTemps: true, zoom: .county, state: "MI")
 
     static func load() -> WatchLocation {
         guard let d = UserDefaults(suiteName: appGroup)?.data(forKey: key),
@@ -131,6 +135,58 @@ enum StormFeed {
             else { color = UIColor(red: 0.72, green: 0.44, blue: 1, alpha: 1) }
             return Report(lat: c[1], lon: c[0], color: color)
         }
+    }
+
+    struct Station {
+        let lat: Double
+        let lon: Double
+        let tempF: Double
+    }
+
+    /// Current temperatures from one state's ASOS network. The API takes a single
+    /// network — repeated or comma-joined values silently return one or none — so
+    /// the app resolves the state once and stores it.
+    static func stations(state: String?, sw: CLLocationCoordinate2D, ne: CLLocationCoordinate2D) async -> [Station] {
+        guard let st = state, st.count == 2,
+              let url = URL(string: "https://mesonet.agron.iastate.edu/api/1/currents.geojson?network=\(st.uppercased())_ASOS&minutes=120")
+        else { return [] }
+        struct FC: Decodable {
+            struct F: Decodable {
+                struct G: Decodable { let coordinates: [Double] }
+                struct P: Decodable { let tmpf: Double? }
+                let geometry: G?; let properties: P
+            }
+            let features: [F]
+        }
+        var req = URLRequest(url: url); req.timeoutInterval = 20
+        guard let data = try? await URLSession.shared.data(for: req).0,
+              let fc = try? JSONDecoder().decode(FC.self, from: data) else { return [] }
+        return fc.features.compactMap { f in
+            guard let c = f.geometry?.coordinates, c.count >= 2, let t = f.properties.tmpf,
+                  c[1] >= sw.latitude, c[1] <= ne.latitude,
+                  c[0] >= sw.longitude, c[0] <= ne.longitude else { return nil }
+            return Station(lat: c[1], lon: c[0], tempF: t)
+        }
+    }
+
+    /// Resolves the two-letter state for a point, so the station fetch can be
+    /// one state instead of the nation.
+    static func resolveState(lat: Double, lon: Double) async -> String? {
+        // The API caps coordinate precision and answers anything finer with a 301
+        // carrying a JSON error body, not a usable point. Four decimals is its limit.
+        let pt = String(format: "%.4f,%.4f", lat, lon)
+        guard let url = URL(string: "https://api.weather.gov/points/\(pt)") else { return nil }
+        struct P: Decodable {
+            struct Props: Decodable {
+                struct Loc: Decodable { struct L: Decodable { let state: String? }; let properties: L? }
+                let relativeLocation: Loc?
+            }
+            let properties: Props
+        }
+        var req = URLRequest(url: url); req.timeoutInterval = 15
+        guard let data = try? await URLSession.shared.data(for: req).0,
+              let p = try? JSONDecoder().decode(P.self, from: data) else { return nil }
+        return p.properties.relativeLocation?.properties?.state
     }
 
     /// A radar render, and whether it actually contains any echo.

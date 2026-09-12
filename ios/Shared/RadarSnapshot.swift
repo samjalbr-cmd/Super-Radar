@@ -7,24 +7,50 @@ import UIKit
 /// MapKit and the radar composited on top of it, aligned by projecting the
 /// region's own corners rather than trusting two services to agree.
 enum RadarZoom: String, CaseIterable, Codable, Sendable {
-    case metro, county, region, state
+    case metro, county, area, region, wide, state, multi
 
     /// Half-width in degrees of longitude.
     var halfDegrees: Double {
         switch self {
         case .metro:  return 0.35   // ~ 60 km across
         case .county: return 0.9    // ~150 km
+        case .area:   return 1.3    // ~215 km
         case .region: return 1.8    // ~300 km
+        case .wide:   return 2.5    // ~415 km
         case .state:  return 3.2    // ~530 km
+        case .multi:  return 5.5    // ~900 km
         }
     }
     var label: String {
         switch self {
         case .metro:  return "Metro"
         case .county: return "County"
+        case .area:   return "Area"
         case .region: return "Region"
+        case .wide:   return "Wide"
         case .state:  return "State"
+        case .multi:  return "Multi-state"
         }
+    }
+    /// Station temperatures are only legible while the view is reasonably tight;
+    /// past that they become a wall of overlapping numbers.
+    var showsTemperatures: Bool { self != .multi }
+}
+
+/// The dashboard's temperature ramp, so a number means the same thing in both.
+private func tempColor(_ f: Double) -> UIColor {
+    switch f {
+    case 105...: return UIColor(red: 1.00, green: 0.00, blue: 0.00, alpha: 1)
+    case 95..<105: return UIColor(red: 1.00, green: 0.40, blue: 0.00, alpha: 1)
+    case 85..<95:  return UIColor(red: 1.00, green: 0.60, blue: 0.00, alpha: 1)
+    case 75..<85:  return UIColor(red: 1.00, green: 0.90, blue: 0.00, alpha: 1)
+    case 65..<75:  return UIColor(red: 0.60, green: 1.00, blue: 0.20, alpha: 1)
+    case 55..<65:  return UIColor(red: 0.20, green: 0.90, blue: 0.20, alpha: 1)
+    case 45..<55:  return UIColor(red: 0.00, green: 0.80, blue: 0.80, alpha: 1)
+    case 35..<45:  return UIColor(red: 0.00, green: 0.60, blue: 1.00, alpha: 1)
+    case 25..<35:  return UIColor(red: 0.20, green: 0.40, blue: 1.00, alpha: 1)
+    case 15..<25:  return UIColor(red: 0.40, green: 0.20, blue: 0.60, alpha: 1)
+    default:       return UIColor(red: 0.50, green: 0.00, blue: 0.50, alpha: 1)
     }
 }
 
@@ -33,8 +59,8 @@ enum RadarSnapshot {
     /// the watched point. Returns nil only if the map itself fails; a clear sky
     /// still yields a usable map, with `hasEcho` false.
     @MainActor
-    static func compose(lat: Double, lon: Double, zoom: RadarZoom,
-                        size: CGSize, showReports: Bool) async -> (image: UIImage, hasEcho: Bool)? {
+    static func compose(lat: Double, lon: Double, zoom: RadarZoom, size: CGSize,
+                        showReports: Bool, showTemps: Bool, state: String?) async -> (image: UIImage, hasEcho: Bool)? {
         let half = zoom.halfDegrees
         let region = MKCoordinateRegion(
             center: CLLocationCoordinate2D(latitude: lat, longitude: lon),
@@ -61,6 +87,8 @@ enum RadarSnapshot {
         let px = Int(max(size.width, size.height) * 2)
         let render = await StormFeed.radarImage(sw: sw, ne: ne, pixels: px)
         let reports = showReports ? await StormFeed.recentReports(sw: sw, ne: ne) : []
+        let temps: [StormFeed.Station] = (showTemps && zoom.showsTemperatures)
+            ? await StormFeed.stations(state: state, sw: sw, ne: ne) : []
 
         let out = UIGraphicsImageRenderer(size: size).image { ctx in
             snap.image.draw(at: .zero)
@@ -81,6 +109,25 @@ enum RadarSnapshot {
                 ctx.cgContext.setLineWidth(1)
                 ctx.cgContext.addEllipse(in: dot)
                 ctx.cgContext.drawPath(using: .fillStroke)
+            }
+
+            // Temperatures, thinned in screen space so the labels stay readable —
+            // the same trick the dashboard uses for its station layer.
+            var claimed = Set<Int64>()
+            let cell: CGFloat = 34
+            for st in temps {
+                let p = snap.point(for: CLLocationCoordinate2D(latitude: st.lat, longitude: st.lon))
+                guard p.x > 4, p.y > 4, p.x < size.width - 4, p.y < size.height - 4 else { continue }
+                let key = Int64(p.x / cell) &* 1000 &+ Int64(p.y / cell)
+                if claimed.contains(key) { continue }
+                claimed.insert(key)
+                let text = "\(Int(st.tempF.rounded()))" as NSString
+                let attrs: [NSAttributedString.Key: Any] = [
+                    .font: UIFont.monospacedDigitSystemFont(ofSize: 10, weight: .bold),
+                    .foregroundColor: tempColor(st.tempF),
+                    .strokeColor: UIColor.black, .strokeWidth: -3.0,
+                ]
+                text.draw(at: CGPoint(x: p.x - 7, y: p.y - 6), withAttributes: attrs)
             }
 
             // The watched point, so the picture has an anchor.

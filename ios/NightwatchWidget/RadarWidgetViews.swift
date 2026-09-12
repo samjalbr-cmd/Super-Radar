@@ -10,18 +10,24 @@ enum RadarZoomOption: String, AppEnum {
         .followApp: "Match the app",
         .metro:  "Metro · ~60 km",
         .county: "County · ~150 km",
+        .area:   "Area · ~215 km",
         .region: "Region · ~300 km",
+        .wide:   "Wide · ~415 km",
         .state:  "State · ~530 km",
+        .multi:  "Multi-state · ~900 km",
     ]
-    case followApp, metro, county, region, state
+    case followApp, metro, county, area, region, wide, state, multi
 
     func resolve(_ appSetting: RadarZoom) -> RadarZoom {
         switch self {
         case .followApp: return appSetting
         case .metro:  return .metro
         case .county: return .county
+        case .area:   return .area
         case .region: return .region
+        case .wide:   return .wide
         case .state:  return .state
+        case .multi:  return .multi
         }
     }
 }
@@ -35,4 +41,7 @@ struct RadarConfig: WidgetConfigurationIntent {
 
     @Parameter(title: "Show storm reports", default: true)
     var showReports: Bool
+
+    @Parameter(title: "Show temperatures", default: true)
+    var showTemps: Bool
 }

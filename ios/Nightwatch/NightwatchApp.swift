@@ -47,7 +47,17 @@ struct NightwatchApp: App {
                     // stop the phone dimming while the radar is being watched.
                     location.save()
                     UIApplication.shared.isIdleTimerDisabled = true
-                    WidgetCenter.shared.reloadAllTimelines()
+                    Task {
+                        // The widget can only fetch one state's stations, so the
+                        // app resolves which one and stores it alongside.
+                        if location.state == nil,
+                           let st = await StormFeed.resolveState(lat: location.lat, lon: location.lon) {
+                            var updated = location
+                            updated.state = st
+                            updated.save()
+                        }
+                        WidgetCenter.shared.reloadAllTimelines()
+                    }
                 }
                 .onChange(of: phase) { _, new in
                     UIApplication.shared.isIdleTimerDisabled = (new == .active)

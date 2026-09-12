@@ -89,13 +89,22 @@ that region's own corners through the snapshot.
 ## Zoom and settings
 
 Zoom is a widget parameter — long-press the widget and choose Edit Widget:
-Metro (~60 km), County (~150 km), Region (~300 km), State (~530 km), or
-**Match the app**, which follows whatever the app is set to. Two radar widgets
-can therefore sit side by side at different scales.
 
-Storm reports likewise default to the app's setting and can be turned off per
-widget. The shared values live in `WatchLocation` in the app group, so the app
-remains the single place preferences are set.
+    Metro        ~60 km      Wide         ~415 km
+    County      ~150 km      State        ~530 km
+    Area        ~215 km      Multi-state  ~900 km
+    Region      ~300 km      Match the app
+
+Two radar widgets can therefore sit side by side at different scales.
+
+Storm reports and temperatures default to the app's settings and can be turned
+off per widget. The shared values live in `WatchLocation` in the app group, so
+the app remains the single place preferences are set.
+
+Temperatures are drawn from one state's ASOS network, because the API accepts a
+single network and the national feed is 3.4 MB against roughly 100 KB for a
+state. The app resolves which state once and stores it. They are suppressed at
+Multi-state zoom, where the labels would overlap into noise regardless.
 
 ## Clear weather vs. a broken widget
 
