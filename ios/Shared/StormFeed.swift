@@ -216,13 +216,43 @@ enum StormFeed {
         let tempF: Double
     }
 
-    /// Current temperatures from one state's ASOS network. The API takes a single
-    /// network — repeated or comma-joined values silently return one or none — so
-    /// the app resolves the state once and stores it.
-    static func stations(state: String?, sw: CLLocationCoordinate2D, ne: CLLocationCoordinate2D) async -> [Station] {
-        guard let st = state, st.count == 2,
-              let url = URL(string: "https://mesonet.agron.iastate.edu/api/1/currents.geojson?network=\(st.uppercased())_ASOS&minutes=120")
-        else { return [] }
+    /// Every state the view touches, so temperatures cover the radar rather than
+    /// stopping at the home state's border. Sampled at the centre, corners and
+    /// edge midpoints — the same trick the dashboard uses to find which forecast
+    /// offices a view spans. Cached, since the answer only changes when the view
+    /// does.
+    static func statesCovering(sw: CLLocationCoordinate2D, ne: CLLocationCoordinate2D,
+                               fallback: String?) async -> [String] {
+        let key = String(format: "states.%.1f.%.1f.%.1f.%.1f",
+                         sw.latitude, sw.longitude, ne.latitude, ne.longitude)
+        let store = UserDefaults(suiteName: WatchLocation.appGroup)
+        if let cached = store?.stringArray(forKey: key), !cached.isEmpty { return cached }
+
+        let midLat = (sw.latitude + ne.latitude) / 2, midLon = (sw.longitude + ne.longitude) / 2
+        let pts = [(midLat, midLon), (ne.latitude, sw.longitude), (ne.latitude, ne.longitude),
+                   (sw.latitude, sw.longitude), (sw.latitude, ne.longitude),
+                   (midLat, sw.longitude), (midLat, ne.longitude),
+                   (ne.latitude, midLon), (sw.latitude, midLon)]
+
+        var found = Set<String>()
+        await withTaskGroup(of: String?.self) { group in
+            for (la, lo) in pts {
+                group.addTask { await resolveState(lat: la, lon: lo) }
+            }
+            for await st in group { if let st { found.insert(st.uppercased()) } }
+        }
+        if found.isEmpty, let f = fallback { found.insert(f.uppercased()) }
+        // Bounded so a continental view cannot fan out into dozens of fetches.
+        let list = Array(found).sorted().prefix(6).map { $0 }
+        if !list.isEmpty { store?.set(list, forKey: key) }
+        return list
+    }
+
+    /// Current temperatures across the states a view covers. The API takes one
+    /// network per request — comma-joined and repeated values return one state or
+    /// none, tested — so the states are fetched concurrently and merged. Five
+    /// states is about 410 KB against 3.4 MB for the national feed.
+    static func stations(states: [String], sw: CLLocationCoordinate2D, ne: CLLocationCoordinate2D) async -> [Station] {
         struct FC: Decodable {
             struct F: Decodable {
                 struct G: Decodable { let coordinates: [Double] }
@@ -231,14 +261,25 @@ enum StormFeed {
             }
             let features: [F]
         }
-        var req = URLRequest(url: url); req.timeoutInterval = 20
-        guard let data = try? await URLSession.shared.data(for: req).0,
-              let fc = try? JSONDecoder().decode(FC.self, from: data) else { return [] }
-        return fc.features.compactMap { f in
-            guard let c = f.geometry?.coordinates, c.count >= 2, let t = f.properties.tmpf,
-                  c[1] >= sw.latitude, c[1] <= ne.latitude,
-                  c[0] >= sw.longitude, c[0] <= ne.longitude else { return nil }
-            return Station(lat: c[1], lon: c[0], tempF: t)
+        return await withTaskGroup(of: [Station].self) { group in
+            for st in states where st.count == 2 {
+                group.addTask {
+                    guard let url = URL(string: "https://mesonet.agron.iastate.edu/api/1/currents.geojson?network=\(st)_ASOS&minutes=120")
+                    else { return [] }
+                    var req = URLRequest(url: url); req.timeoutInterval = 20
+                    guard let data = try? await URLSession.shared.data(for: req).0,
+                          let fc = try? JSONDecoder().decode(FC.self, from: data) else { return [] }
+                    return fc.features.compactMap { f in
+                        guard let c = f.geometry?.coordinates, c.count >= 2, let t = f.properties.tmpf,
+                              c[1] >= sw.latitude, c[1] <= ne.latitude,
+                              c[0] >= sw.longitude, c[0] <= ne.longitude else { return nil }
+                        return Station(lat: c[1], lon: c[0], tempF: t)
+                    }
+                }
+            }
+            var all: [Station] = []
+            for await part in group { all.append(contentsOf: part) }
+            return all
         }
     }
 

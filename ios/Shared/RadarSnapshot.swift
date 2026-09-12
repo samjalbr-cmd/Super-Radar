@@ -88,8 +88,11 @@ enum RadarSnapshot {
         let px = Int(max(size.width, size.height) * 2)
         let render = await StormFeed.radarImage(sw: sw, ne: ne, pixels: px)
         let reports = showReports ? await StormFeed.recentReports(sw: sw, ne: ne) : []
-        let temps: [StormFeed.Station] = (showTemps && zoom.showsTemperatures)
-            ? await StormFeed.stations(state: state, sw: sw, ne: ne) : []
+        var temps: [StormFeed.Station] = []
+        if showTemps && zoom.showsTemperatures {
+            let states = await StormFeed.statesCovering(sw: sw, ne: ne, fallback: state)
+            temps = await StormFeed.stations(states: states, sw: sw, ne: ne)
+        }
         let alerts = showAlerts ? await StormFeed.alerts(sw: sw, ne: ne) : []
         let cells: [StormCell] = showTracks ? ((try? await StormFeed.cells()) ?? []) : []
 
@@ -166,7 +169,9 @@ enum RadarSnapshot {
             // Temperatures, thinned in screen space so the labels stay readable —
             // the same trick the dashboard uses for its station layer.
             var claimed = Set<Int64>()
-            let cell: CGFloat = 34
+            // Tighter than the dashboard's 40px, because a widget is read closer
+            // and a sparse scatter of numbers looks like missing data.
+            let cell: CGFloat = 26
             for st in temps {
                 let p = snap.point(for: CLLocationCoordinate2D(latitude: st.lat, longitude: st.lon))
                 guard p.x > 4, p.y > 4, p.x < size.width - 4, p.y < size.height - 4 else { continue }
