@@ -74,6 +74,18 @@ To follow the phone instead, add CoreLocation to the app, request
 `whenInUse`, and call `WatchLocation(...).save()` with the fix — the widget
 needs no changes, since it only ever reads the shared value.
 
+## Clear weather vs. a broken widget
+
+The radar service answers a clear sky with a fully transparent PNG, which on a
+widget looks exactly like a failed fetch: an empty rectangle either way. The
+radar widget therefore says which it is — **CLEAR / no echo nearby**, or
+**NO DATA / couldn't reach radar** — rather than leaving you to guess.
+
+Emptiness is judged by response size rather than by decoding and scanning
+pixels. A blank render compresses to a few hundred bytes where one carrying
+weather runs to tens or hundreds of kilobytes; measured across both widget sizes
+the two cases sit 4x to 27x either side of the threshold.
+
 ## What the widget shows
 
     SEVERE CELL          <- tornado signature / rotating cell / severe / storm

@@ -7,6 +7,8 @@ struct RadarEntry: TimelineEntry {
     let date: Date
     let place: String
     let imageData: Data?
+    /// False when the render came back blank — a clear sky, not a failure.
+    let hasEcho: Bool
     let approach: Approach?
     /// True when the fetch failed, so a widget can say so rather than look calm.
     let stale: Bool
@@ -18,7 +20,7 @@ struct Provider: TimelineProvider {
     let needsImage: Bool
 
     func placeholder(in context: Context) -> RadarEntry {
-        RadarEntry(date: Date(), place: "—", imageData: nil, approach: nil, stale: false)
+        RadarEntry(date: Date(), place: "—", imageData: nil, hasEcho: false, approach: nil, stale: false)
     }
     func getSnapshot(in context: Context, completion: @escaping (RadarEntry) -> Void) {
         Task { completion(await entry(for: context.family)) }
@@ -48,10 +50,11 @@ struct Provider: TimelineProvider {
             ? StormFeed.radarImage(lat: loc.lat, lon: loc.lon, halfDegrees: half, pixels: pixels)
             : nil
         async let list = try? await StormFeed.cells()
-        let (image, cells) = await (img, list)
+        let (render, cells) = await (img, list)
         let approach = cells.flatMap { StormArrival.soonest(cells: $0, lat: loc.lat, lon: loc.lon) }
-        return RadarEntry(date: Date(), place: loc.name, imageData: image,
-                          approach: approach, stale: cells == nil)
+        return RadarEntry(date: Date(), place: loc.name,
+                          imageData: render?.data, hasEcho: render?.hasEcho ?? false,
+                          approach: approach, stale: cells == nil && (!needsImage || render == nil))
     }
 }
 
@@ -72,13 +75,21 @@ struct RadarWidgetView: View {
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
-            if let d = entry.imageData, let ui = UIImage(data: d) {
+            if let d = entry.imageData, entry.hasEcho, let ui = UIImage(data: d) {
                 Image(uiImage: ui).resizable().scaledToFill()
             } else {
                 panel
-                Text(entry.stale ? "No data" : "…")
-                    .font(.system(size: 13, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.5))
+                // A blank rectangle reads as a broken widget, so say which it is.
+                VStack(spacing: 3) {
+                    Text(entry.stale ? "NO DATA" : "CLEAR")
+                        .font(.system(size: 15, weight: .heavy))
+                        .foregroundStyle(.white.opacity(entry.stale ? 0.55 : 0.8))
+                    Text(entry.stale ? "couldn't reach radar" : "no echo nearby")
+                        .font(.system(size: 9.5, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.45))
+                        .minimumScaleFactor(0.7).lineLimit(1)
+                }
+                .padding(.horizontal, 6)
             }
             // Your location, so the picture has an anchor.
             Circle()

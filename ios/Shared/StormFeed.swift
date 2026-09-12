@@ -81,14 +81,29 @@ enum StormFeed {
         // Cache-bust per minute; the mosaic updates far more slowly than that.
         let stamp = Int(Date().timeIntervalSince1970 / 60)
         return URL(string: "\(radarService)/exportImage?bbox=\(Int(x0)),\(Int(y0)),\(Int(x1)),\(Int(y1))" +
-                   "&bboxSR=3857&imageSR=3857&size=\(pixels),\(pixels)&format=png32&transparent=false" +
+                   "&bboxSR=3857&imageSR=3857&size=\(pixels),\(pixels)&format=png32&transparent=true" +
                    "&interpolation=RSP_BilinearInterpolation&f=image&t=\(stamp)")
     }
 
-    static func radarImage(lat: Double, lon: Double, halfDegrees: Double, pixels: Int) async -> Data? {
+    /// A radar render, and whether it actually contains any echo.
+    ///
+    /// The service answers a clear sky with a fully transparent PNG, which on a
+    /// widget is indistinguishable from a failed fetch — both are an empty
+    /// rectangle. An empty render compresses to a fraction of the size of one
+    /// carrying weather (hundreds of bytes against tens of kilobytes), so size
+    /// is a cheap and reliable stand-in for decoding and scanning the pixels.
+    struct RadarRender {
+        let data: Data
+        let hasEcho: Bool
+    }
+
+    static func radarImage(lat: Double, lon: Double, halfDegrees: Double, pixels: Int) async -> RadarRender? {
         guard let url = radarImageURL(lat: lat, lon: lon, halfDegrees: halfDegrees, pixels: pixels) else { return nil }
         var req = URLRequest(url: url)
         req.timeoutInterval = 20
-        return try? await URLSession.shared.data(for: req).0
+        guard let data = try? await URLSession.shared.data(for: req).0, !data.isEmpty else { return nil }
+        // Scaled by area: a blank 800px render is bigger than a blank 400px one.
+        let blankCeiling = 12 * pixels
+        return RadarRender(data: data, hasEcho: data.count > blankCeiling)
     }
 }
