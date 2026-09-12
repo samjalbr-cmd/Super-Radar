@@ -7,12 +7,54 @@ import WidgetKit
 /// chrome, and a screen that stays awake.
 private let dashboardURL = "https://samjalbr-cmd.github.io/Super-Radar/"
 
+/// Receives the dashboard's settings and stores them where the widget reads
+/// them, so the two cannot drift apart. Without this the widget kept its own
+/// preferences and quietly disagreed with the app.
+final class SettingsBridge: NSObject, WKScriptMessageHandler {
+    static let name = "nightwatch"
+
+    func userContentController(_ controller: WKUserContentController,
+                               didReceive message: WKScriptMessage) {
+        guard message.name == Self.name, let d = message.body as? [String: Any] else { return }
+        var loc = WatchLocation.load()
+        var moved = false
+
+        if let la = d["lat"] as? Double, let lo = d["lon"] as? Double,
+           la.isFinite, lo.isFinite, abs(la) <= 90, abs(lo) <= 180 {
+            // A move invalidates the cached state, which scopes the station fetch.
+            if abs(la - loc.lat) > 0.02 || abs(lo - loc.lon) > 0.02 { moved = true }
+            loc.lat = la; loc.lon = lo
+        }
+        if let n = (d["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !n.isEmpty {
+            loc.name = n
+        }
+        if let z = d["zoom"] as? String, let parsed = RadarZoom(rawValue: z) { loc.zoom = parsed }
+        if let t = d["showTemps"] as? Bool { loc.showTemps = t }
+        if let r = d["showReports"] as? Bool { loc.showReports = r }
+        if moved { loc.state = nil }
+        loc.save()
+
+        Task {
+            if loc.state == nil,
+               let st = await StormFeed.resolveState(lat: loc.lat, lon: loc.lon) {
+                var updated = WatchLocation.load()
+                updated.state = st
+                updated.save()
+            }
+            WidgetCenter.shared.reloadAllTimelines()
+        }
+    }
+}
+
 struct DashboardView: UIViewRepresentable {
     let location: WatchLocation
+
+    func makeCoordinator() -> SettingsBridge { SettingsBridge() }
 
     func makeUIView(context: Context) -> WKWebView {
         let cfg = WKWebViewConfiguration()
         cfg.allowsInlineMediaPlayback = true
+        cfg.userContentController.add(context.coordinator, name: SettingsBridge.name)
         let web = WKWebView(frame: .zero, configuration: cfg)
         web.isOpaque = false
         web.backgroundColor = UIColor(red: 0.04, green: 0.055, blue: 0.10, alpha: 1)

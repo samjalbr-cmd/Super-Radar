@@ -98,7 +98,11 @@ Zoom is a widget parameter — long-press the widget and choose Edit Widget:
 Two radar widgets can therefore sit side by side at different scales.
 
 Storm reports and temperatures default to the app's settings and can be turned
-off per widget. The shared values live in `WatchLocation` in the app group, so
+off per widget. The dashboard posts its own settings out to the app as you
+change them — location, map zoom, whether stations are showing a temperature,
+whether storm reports are on — and the app stores them where the widget reads
+them, so the two cannot drift apart. Outside the app `window.webkit` is absent
+and the bridge is inert, so the page behaves identically in a browser. The shared values live in `WatchLocation` in the app group, so
 the app remains the single place preferences are set.
 
 Temperatures are drawn from one state's ASOS network, because the API accepts a

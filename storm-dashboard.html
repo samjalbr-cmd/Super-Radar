@@ -807,6 +807,9 @@ function initMap(){
   map.on('moveend', renderSurface);
   map.on('moveend', renderStormTracks);
   map.on('moveend', scheduleNoaaRadar);
+  map.on('moveend', syncAppSettings);
+  const panel = document.getElementById('settingsPanel');
+  if(panel) panel.addEventListener('change', syncAppSettings);
   map.on('moveend', schedulePrecipRefresh);
   map.on('click', precipPointPopup);   // tap anywhere for the estimate at that point
   map.on('moveend', renderFeed);
@@ -1430,6 +1433,51 @@ function lsrValue(p){
   if(t.includes('FUNNEL')) return 'funnel';
   if(t.includes('FLOOD') || t.includes('WATER')) return 'flood';
   return t ? t.toLowerCase() : '•';
+}
+
+/* ---------------- Native bridge ----------------
+   When the dashboard is running inside the iOS app it posts its settings out,
+   and the app stores them where the widget can read them. Without this the
+   widget kept a second, separate set of preferences that quietly disagreed with
+   whatever the app was showing.
+
+   Outside the app `window.webkit` is absent and every call here is a no-op, so
+   the page behaves identically in a browser. */
+
+function appBridge(){
+  try{ return window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nightwatch; }
+  catch(e){ return null; }
+}
+
+// Map zoom is continuous; the widget's zoom is a handful of named steps.
+function widgetZoomFor(z){
+  if(z >= 11) return 'metro';
+  if(z >= 10) return 'county';
+  if(z >= 9)  return 'area';
+  if(z >= 8)  return 'region';
+  if(z >= 7)  return 'wide';
+  if(z >= 6)  return 'state';
+  return 'multi';
+}
+
+let bridgeTimer = null;
+function syncAppSettings(){
+  const bridge = appBridge();
+  if(!bridge || !map) return;
+  clearTimeout(bridgeTimer);
+  bridgeTimer = setTimeout(() => {
+    try{
+      bridge.postMessage({
+        lat, lon,
+        name: (document.getElementById('cityInput') || {}).value || '',
+        zoom: widgetZoomFor(map.getZoom()),
+        // The widget draws temperatures, so it cares whether stations are on
+        // AND whether the metric being shown is actually a temperature.
+        showTemps: !!stationsOn && (stationMetric === 'temp' || stationMetric === 'feel' || stationMetric === 'dwpf'),
+        showReports: !!spcVisible.lsr,
+      });
+    }catch(e){}
+  }, 400);
 }
 
 /* ---------------- URL options and TV display mode ----------------
@@ -3492,6 +3540,7 @@ async function boot(){
   setInterval(() => { renderFeed(); }, 30000);   // keep "Xm ago" fresh
   loadAfdAreas();
   loadSurfaceAnalysis();
+  syncAppSettings();   // hand the app its opening state
   setInterval(loadAfdAreas, 20 * 60 * 1000);
   setInterval(loadSurfaceAnalysis, 20 * 60 * 1000);
   setInterval(loadStormTracks, 5 * 60 * 1000);   // one volume scan
