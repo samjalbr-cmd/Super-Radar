@@ -340,7 +340,8 @@
      model — barb, circle and all four text slots — from one number. */
   .stn-model{ --sm:32px; position:relative; width:var(--sm); height:var(--sm);
               transform:translate(-50%,-50%); }
-  .stn-model svg{ position:absolute; top:0; left:0; }
+  .stn-model svg{ position:absolute; top:0; left:0;
+                  filter:drop-shadow(0 0 1.5px #000) drop-shadow(0 0 1px #000); }
   .stn-model span{
     position:absolute; font-family:monospace; font-weight:700;
     font-size:calc(9px * var(--lblscale, 1)); line-height:1; white-space:nowrap;
@@ -2057,9 +2058,28 @@ function skyGlyph(skyc){
   return ring + `<path d="M${cx} ${cy} L${cx} ${cy - r} A${r} ${r} 0 ${large} 1 ${(cx + r * Math.cos(a)).toFixed(2)} ${(cy + r * Math.sin(a)).toFixed(2)} Z" fill="#fff"/>`;
 }
 
-function windBarb(spd, dir, sky){
+// The temperature colour, lifted to stay legible as a thin line. The ramp's
+// cold end is a dark purple that reads fine as outlined text but vanishes as a
+// 2px stroke over a dark basemap, so anything below mid brightness is blended
+// towards white.
+function barbColor(f){
+  const hex = tempColor(f);
+  const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex || '');
+  if(!m) return hex || '#7f92a6';
+  let [r, g, b] = [1, 2, 3].map(i => parseInt(m[i], 16) / 255);
+  const luma = 0.299 * r + 0.587 * g + 0.114 * b;
+  if(luma >= 0.5) return hex;
+  const t = (0.5 - luma) / 0.5 * 0.55;
+  [r, g, b] = [r, g, b].map(v => Math.round((v + (1 - v) * t) * 255));
+  return `rgb(${r},${g},${b})`;
+}
+
+function windBarb(spd, dir, sky, tmpf){
   const cx = 20, cy = 20, top = 2, sw = 2.0;
-  const col = (spd != null && spd >= 3) ? windColor(spd) : '#7f92a6';
+  // The barbs already carry the speed, so the colour carries the temperature —
+  // the field reads from the barbs alone, without squinting at the digits.
+  const col = (tmpf != null) ? barbColor(tmpf)
+            : (spd != null && spd >= 3) ? windColor(spd) : '#7f92a6';
   if(spd == null || spd < 3 || dir == null){
     // Calm: the plot's own sky circle stands in for the barb, so draw nothing
     // when one is being drawn underneath (bare mode still gets a ring).
@@ -2247,7 +2267,7 @@ function renderStations(){
       const dp = (p.dwpf != null) ? Math.round(p.dwpf) : '';
       const pr = pressCode(p.mslp);
       const wx = wxShort(p.wxcodes);
-      html = `<div class="stn-model">${windBarb(p.sknt, p.drct, skyGlyph(p.skyc1))}` +
+      html = `<div class="stn-model">${windBarb(p.sknt, p.drct, skyGlyph(p.skyc1), p.tmpf)}` +
         `<span class="sm-t" style="color:${tempColor(p.tmpf)}">${t}</span>` +
         `<span class="sm-d">${dp}</span><span class="sm-p">${pr}</span>` +
         (wx ? `<span class="sm-w">${wx}</span>` : '') + `</div>`;

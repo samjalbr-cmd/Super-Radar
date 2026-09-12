@@ -76,6 +76,21 @@ private func tempColor(_ f: Double) -> UIColor {
     }
 }
 
+/// The temperature colour, lifted to stay legible as a thin line.
+///
+/// The ramp's cold end is a dark purple that reads fine as text with a black
+/// outline behind it, but vanishes as a one-point stroke over a dark basemap,
+/// so anything below mid brightness is blended towards white.
+private func barbColor(_ f: Double) -> UIColor {
+    let c = tempColor(f)
+    var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+    guard c.getRed(&r, green: &g, blue: &b, alpha: &a) else { return c }
+    let luma = 0.299 * r + 0.587 * g + 0.114 * b
+    guard luma < 0.5 else { return c }
+    let t = (0.5 - luma) / 0.5 * 0.55
+    return UIColor(red: r + (1 - r) * t, green: g + (1 - g) * t, blue: b + (1 - b) * t, alpha: a)
+}
+
 /// Which side of a front its symbols go on. WPC digitises fronts so that the
 /// left of the digitised direction is the leading edge.
 ///
@@ -232,13 +247,18 @@ private func drawStationModel(_ st: StormFeed.Station, at p: CGPoint) {
     // -x here, with the staff drawn up the -y axis before rotation.
     if let kt = st.windKt, let dir = st.windDir, kt >= 3 {
         ctx.saveGState()
+        // The barbs already carry the speed, so the colour is free to carry the
+        // temperature — which makes the field readable at a glance from the
+        // barbs alone, rather than from 6pt digits.
+        let wind = barbColor(st.tempF)
+        ctx.setShadow(offset: .zero, blur: 2.2, color: UIColor.black.withAlphaComponent(0.9).cgColor)
         ctx.translateBy(x: p.x, y: p.y)
         ctx.rotate(by: CGFloat(dir) * .pi / 180)
         let staff = UIBezierPath()
         staff.move(to: CGPoint(x: 0, y: -r))
         staff.addLine(to: CGPoint(x: 0, y: -r - 8))
         staff.lineWidth = 1.0
-        UIColor.white.setStroke()
+        wind.setStroke()
         staff.stroke()
 
         var speed = Int((kt / 5).rounded() * 5)
@@ -253,7 +273,7 @@ private func drawStationModel(_ st: StormFeed.Station, at p: CGPoint) {
             t.addLine(to: CGPoint(x: -len, y: y + step * 0.5))
             t.addLine(to: CGPoint(x: 0, y: y + step))
             t.close()
-            UIColor.white.setFill(); t.fill()
+            wind.setFill(); t.fill()
             y += step + 1.5
         }
         for _ in 0..<tens {
@@ -261,7 +281,7 @@ private func drawStationModel(_ st: StormFeed.Station, at p: CGPoint) {
             b.move(to: CGPoint(x: 0, y: y))
             b.addLine(to: CGPoint(x: -len, y: y + step * 0.7))
             b.lineWidth = 1.1
-            UIColor.white.setStroke(); b.stroke()
+            wind.setStroke(); b.stroke()
             y += step
         }
         for _ in 0..<fives {
@@ -271,7 +291,7 @@ private func drawStationModel(_ st: StormFeed.Station, at p: CGPoint) {
             b.move(to: CGPoint(x: 0, y: y + off))
             b.addLine(to: CGPoint(x: -len * 0.5, y: y + off + step * 0.35))
             b.lineWidth = 1.3
-            UIColor.white.setStroke(); b.stroke()
+            wind.setStroke(); b.stroke()
             y += step
         }
         ctx.restoreGState()
