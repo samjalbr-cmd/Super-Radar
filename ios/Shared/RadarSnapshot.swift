@@ -76,8 +76,13 @@ private func tempColor(_ f: Double) -> UIColor {
     }
 }
 
-/// Which side of a front its symbols go on. WPC digitises fronts so the left of
-/// the direction of travel is the leading edge, matching the dashboard.
+/// Which side of a front its symbols go on. WPC digitises fronts so that the
+/// left of the digitised direction is the leading edge.
+///
+/// Checked against a live bulletin: with the pips on the left, today's six North
+/// American cold fronts point SE/SW/S and its three warm fronts NE/N — the
+/// directions those fronts actually advance. On the right they point exactly
+/// backwards. Flip this only if a future bulletin disagrees.
 private let pipOnLeft = true
 
 private enum PipShape { case triangle, arc, alternating, both }
@@ -143,11 +148,16 @@ private func pipMarks(_ pts: [CGPoint], every gap: CGFloat) -> [(at: CGPoint, an
 
 /// A front symbol, rotated to the direction of travel so it always lands on the
 /// same side of the line.
-private func drawPip(at p: CGPoint, angle: CGFloat, shape: PipShape, color: UIColor) {
+private func drawPip(at p: CGPoint, angle: CGFloat, shape: PipShape,
+                     color: UIColor, flip: Bool = false) {
     guard let ctx = UIGraphicsGetCurrentContext() else { return }
     ctx.saveGState()
     ctx.translateBy(x: p.x, y: p.y)
-    ctx.rotate(by: angle + (pipOnLeft ? .pi : 0))
+    // The symbol is built pointing up the -y axis, which after rotating the
+    // frame to the direction of travel lands on its left. So the left side —
+    // the one we want — needs no further turn; half a turn is what puts it on
+    // the wrong side, and is only used to alternate a stationary front.
+    ctx.rotate(by: angle + ((pipOnLeft != flip) ? 0 : .pi))
     let w: CGFloat = 11, h: CGFloat = 7
     let path = UIBezierPath()
     if shape == .arc {
@@ -441,14 +451,18 @@ enum RadarSnapshot {
                     for (i, m) in pipMarks(pts, every: 30).enumerated() where inFrame(m.at, size) {
                         var shape = pip
                         var color = style.color
+                        var flip = false
                         if pip == .alternating {
+                            // Stationary: cold pips one side, warm the other.
                             shape = i % 2 == 1 ? .arc : .triangle
                             color = i % 2 == 1 ? UIColor(red: 0.88, green: 0.02, blue: 0, alpha: 1)
                                                : UIColor(red: 0.23, green: 0.63, blue: 1, alpha: 1)
+                            flip = i % 2 == 1
                         } else if pip == .both {
+                            // Occluded: both symbols, same side.
                             shape = i % 2 == 1 ? .arc : .triangle
                         }
-                        drawPip(at: m.at, angle: m.angle, shape: shape, color: color)
+                        drawPip(at: m.at, angle: m.angle, shape: shape, color: color, flip: flip)
                     }
                 }
                 for c in sfc.centers {
