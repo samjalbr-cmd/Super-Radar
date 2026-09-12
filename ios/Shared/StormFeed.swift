@@ -12,6 +12,8 @@ struct WatchLocation: Codable {
     /// app is set to draw, rather than keeping a second set of preferences.
     var showReports: Bool = true
     var showTemps: Bool = true
+    var showAlerts: Bool = true
+    var showTracks: Bool = true
     var zoom: RadarZoom = .county
     /// Two-letter state, resolved by the app. The national station feed is
     /// 3.4 MB; one state's network is about 100 KB, and the API accepts only one.
@@ -20,7 +22,8 @@ struct WatchLocation: Codable {
     static let appGroup = "group.com.samjalbr.nightwatch"
     static let key = "watchLocation"
     static let fallback = WatchLocation(lat: 42.907058, lon: -85.763014, name: "Grand Rapids",
-                                        showReports: true, showTemps: true, zoom: .county, state: "MI")
+                                        showReports: true, showTemps: true, showAlerts: true,
+                                        showTracks: true, zoom: .county, state: "MI")
 
     static func load() -> WatchLocation {
         guard let d = UserDefaults(suiteName: appGroup)?.data(forKey: key),
@@ -134,6 +137,76 @@ enum StormFeed {
             else if t.contains("FLOOD") || t.contains("RAIN") { color = UIColor(red: 0.18, green: 0.80, blue: 0.44, alpha: 1) }
             else { color = UIColor(red: 0.72, green: 0.44, blue: 1, alpha: 1) }
             return Report(lat: c[1], lon: c[0], color: color)
+        }
+    }
+
+    /// A warning or watch polygon, in the dashboard's colours.
+    struct AlertArea {
+        let rings: [[CLLocationCoordinate2D]]
+        let color: UIColor
+        let isWatch: Bool
+    }
+
+    static func alertColor(_ event: String) -> UIColor {
+        let e = event.lowercased()
+        if e.contains("tornado")      { return UIColor(red: 0.88, green: 0.02, blue: 0, alpha: 1) }
+        if e.contains("thunderstorm") { return UIColor(red: 1.00, green: 0.83, blue: 0, alpha: 1) }
+        if e.contains("flood")        { return UIColor(red: 0.18, green: 0.80, blue: 0.44, alpha: 1) }
+        if e.contains("winter") || e.contains("snow") || e.contains("ice") || e.contains("blizzard") {
+            return UIColor(red: 0.44, green: 0.72, blue: 1.00, alpha: 1) }
+        if e.contains("heat")         { return UIColor(red: 1.00, green: 0.48, blue: 0, alpha: 1) }
+        return UIColor(red: 0.72, green: 0.44, blue: 1.00, alpha: 1)
+    }
+
+    /// Active warnings and watches overlapping the box. The national feed is
+    /// filtered client-side; alerts without geometry are skipped rather than
+    /// approximated, since a wrong polygon is worse than a missing one.
+    static func alerts(sw: CLLocationCoordinate2D, ne: CLLocationCoordinate2D) async -> [AlertArea] {
+        guard let url = URL(string: "https://api.weather.gov/alerts/active?status=actual&message_type=alert")
+        else { return [] }
+        struct FC: Decodable {
+            struct F: Decodable {
+                struct P: Decodable { let event: String? }
+                let geometry: Geo?
+                let properties: P
+            }
+            struct Geo: Decodable {
+                let type: String
+                let coordinates: Coords
+            }
+            let features: [F]
+        }
+        // Polygon and MultiPolygon differ by one level of nesting.
+        struct Coords: Decodable {
+            var rings: [[[Double]]] = []
+            init(from decoder: Decoder) throws {
+                let c = try decoder.singleValueContainer()
+                if let poly = try? c.decode([[[Double]]].self) { rings = poly }
+                else if let multi = try? c.decode([[[[Double]]]].self) { rings = multi.flatMap { $0 } }
+            }
+        }
+        var req = URLRequest(url: url); req.timeoutInterval = 20
+        guard let data = try? await URLSession.shared.data(for: req).0,
+              let fc = try? JSONDecoder().decode(FC.self, from: data) else { return [] }
+
+        return fc.features.compactMap { f -> AlertArea? in
+            guard let g = f.geometry, g.type == "Polygon" || g.type == "MultiPolygon" else { return nil }
+            let rings: [[CLLocationCoordinate2D]] = g.coordinates.rings.map { ring in
+                ring.compactMap { p in
+                    p.count >= 2 ? CLLocationCoordinate2D(latitude: p[1], longitude: p[0]) : nil
+                }
+            }.filter { $0.count >= 3 }
+            guard !rings.isEmpty else { return nil }
+            let hits = rings.contains { ring in
+                ring.contains { c in
+                    c.latitude >= sw.latitude && c.latitude <= ne.latitude &&
+                    c.longitude >= sw.longitude && c.longitude <= ne.longitude
+                }
+            }
+            guard hits else { return nil }
+            let event = f.properties.event ?? ""
+            return AlertArea(rings: rings, color: alertColor(event),
+                             isWatch: event.lowercased().contains("watch"))
         }
     }
 

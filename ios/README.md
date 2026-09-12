@@ -110,6 +110,29 @@ single network and the national feed is 3.4 MB against roughly 100 KB for a
 state. The app resolves which state once and stores it. They are suppressed at
 Multi-state zoom, where the labels would overlap into noise regardless.
 
+## How close the widget gets to the app, and where it stops
+
+The widget draws the dashboard's map layers into one image: dark basemap, radar,
+warning and watch polygons, storm cell tracks, local storm reports, station
+temperatures and your location, in the app's own colours and stacking order.
+
+Four things it cannot do, and no amount of work changes them:
+
+- **It is not the dashboard.** WidgetKit forbids web views, so the page itself
+  can never render in a widget. Everything here is redrawn natively.
+- **It does not animate.** Widgets are static snapshots on a timeline, so the
+  radar loop has no equivalent.
+- **It is not interactive.** No panning, zooming, or tapping a cell for detail.
+  Tapping anywhere opens the app.
+- **It is not live.** iOS grants redraws on its own budget, realistically every
+  15 to 30 minutes.
+
+One narrower gap worth knowing: only storm-based alerts carry polygons. Of 144
+active alerts sampled, 17 had geometry; the rest are zone-based, and the
+dashboard resolves those with a second lookup per zone. The widget skips them
+rather than approximating, because a warning drawn in the wrong place is worse
+than one not drawn.
+
 ## Clear weather vs. a broken widget
 
 The radar service answers a clear sky with a fully transparent PNG, which on a

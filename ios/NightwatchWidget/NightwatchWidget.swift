@@ -129,7 +129,10 @@ struct RadarProvider: AppIntentTimelineProvider {
         let reports = config.showReports && loc.showReports
         let temps = config.showTemps && loc.showTemps
         let composed = await RadarSnapshot.compose(lat: loc.lat, lon: loc.lon, zoom: zoom, size: size,
-                                                   showReports: reports, showTemps: temps, state: loc.state)
+                                                   showReports: reports, showTemps: temps,
+                                                   showAlerts: config.showAlerts && loc.showAlerts,
+                                                   showTracks: config.showTracks && loc.showTracks,
+                                                   state: loc.state)
         let cells = try? await StormFeed.cells()
         let approach = cells.flatMap { StormArrival.soonest(cells: $0, lat: loc.lat, lon: loc.lon) }
         return RadarEntry(date: Date(), place: loc.name,

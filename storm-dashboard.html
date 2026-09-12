@@ -1475,6 +1475,8 @@ function syncAppSettings(){
         // AND whether the metric being shown is actually a temperature.
         showTemps: !!stationsOn && (stationMetric === 'temp' || stationMetric === 'feel' || stationMetric === 'dwpf'),
         showReports: !!spcVisible.lsr,
+        showAlerts: !!(hazardVisible.tornado || hazardVisible.thunderstorm || hazardVisible.flood),
+        showTracks: !!tracksOn,
       });
     }catch(e){}
   }, 400);
