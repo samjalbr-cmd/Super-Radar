@@ -346,6 +346,8 @@
   .stn-model .sm-t{ right:29px; top:5px; text-align:right; }        /* temp — upper left */
   .stn-model .sm-d{ right:29px; bottom:5px; color:#5FD98A; }        /* dewpoint — lower left */
   .stn-model .sm-p{ left:29px; top:5px; color:#b8c4d4; }            /* pressure — upper right */
+  .stn-model .sm-w{ right:29px; top:50%; transform:translateY(-50%);  /* present weather — left */
+                    color:#FFD84D; font-size:9px; text-align:right; }
   /* Gridded rain/snow accumulation numbers painted over the precip field. */
   .precip-icon{ background:none; border:none; }
   .precip-val{
@@ -2031,10 +2033,34 @@ function windColor(kt){
 }
 // Meteorological wind barb SVG (shaft points FROM-direction; half=5, full=10, pennant=50 kt).
 const BARB_PX = 46;   // rendered size of the wind-barb / station-plot SVG
-function windBarb(spd, dir){
+// Sky cover: the circle at the centre of the station plot, filled in proportion
+// to the reported coverage. An obscured sky (VV) is crossed out instead.
+const SKY_FRACTION = {CLR: 0, SKC: 0, NSC: 0, FEW: 0.25, SCT: 0.5, BKN: 0.75, OVC: 1};
+function skyGlyph(skyc){
+  const cx = 20, cy = 20, r = 4.6;
+  const key = String(skyc || '').trim().toUpperCase();
+  const frac = SKY_FRACTION[key];
+  const ring = `<circle cx="${cx}" cy="${cy}" r="${r}" fill="rgba(0,0,0,.55)" stroke="#fff" stroke-width="1.3"/>`;
+  if(frac === undefined){
+    if(!key) return ring;                       // nothing reported — bare circle
+    const d = r * 0.7;                          // VV / obscured
+    return ring + `<path d="M${cx - d} ${cy - d} L${cx + d} ${cy + d} M${cx + d} ${cy - d} L${cx - d} ${cy + d}" stroke="#fff" stroke-width="1.3"/>`;
+  }
+  if(frac === 0) return ring;
+  if(frac === 1) return ring + `<circle cx="${cx}" cy="${cy}" r="${r}" fill="#fff"/>`;
+  // Wedge from 12 o'clock, clockwise.
+  const a = -Math.PI / 2 + Math.PI * 2 * frac;
+  const large = frac > 0.5 ? 1 : 0;
+  return ring + `<path d="M${cx} ${cy} L${cx} ${cy - r} A${r} ${r} 0 ${large} 1 ${(cx + r * Math.cos(a)).toFixed(2)} ${(cy + r * Math.sin(a)).toFixed(2)} Z" fill="#fff"/>`;
+}
+
+function windBarb(spd, dir, sky){
   const cx = 20, cy = 20, top = 2, sw = 2.0;
   const col = (spd != null && spd >= 3) ? windColor(spd) : '#7f92a6';
   if(spd == null || spd < 3 || dir == null){
+    // Calm: the plot's own sky circle stands in for the barb, so draw nothing
+    // when one is being drawn underneath (bare mode still gets a ring).
+    if(sky) return `<svg viewBox="0 0 40 40" width="${BARB_PX}" height="${BARB_PX}">${sky}</svg>`;
     return `<svg viewBox="0 0 40 40" width="${BARB_PX}" height="${BARB_PX}"><circle cx="20" cy="20" r="3.5" fill="none" stroke="${col}" stroke-width="${sw}"/></svg>`;
   }
   let s = Math.round(spd / 5) * 5;
@@ -2047,9 +2073,20 @@ function windBarb(spd, dir){
   for(let i = 0; i < p50; i++){ parts.push(`<polygon points="${cx},${y} ${cx - len},${y + 3} ${cx},${y + gap}" fill="${col}"/>`); y += gap + 2; }
   for(let i = 0; i < p10; i++){ parts.push(`<line x1="${cx}" y1="${y}" x2="${cx - len}" y2="${y + 4}" stroke="${col}" stroke-width="${sw}"/>`); y += gap; }
   for(let i = 0; i < p5; i++){ const off = (p10 === 0 && p50 === 0) ? gap : 0; parts.push(`<line x1="${cx}" y1="${y + off}" x2="${cx - len / 2}" y2="${y + off + 2}" stroke="${col}" stroke-width="${sw}"/>`); y += gap; }
-  return `<svg viewBox="0 0 40 40" width="${BARB_PX}" height="${BARB_PX}"><g transform="rotate(${dir} ${cx} ${cy})">${parts.join('')}</g></svg>`;
+  // The sky circle sits over the staff root, so it is drawn after the barb.
+  return `<svg viewBox="0 0 40 40" width="${BARB_PX}" height="${BARB_PX}">` +
+         `<g transform="rotate(${dir} ${cx} ${cy})">${parts.join('')}</g>${sky || ''}</svg>`;
 }
 // Station-plot pressure code: last 3 digits of MSLP in tenths of mb (1013.2 -> "132").
+// Present weather, as reported. Only about one station in eleven has any — it
+// is only sent when there is weather to send — so an empty slot is the norm.
+function wxShort(codes){
+  let t = Array.isArray(codes) ? codes.join(' ') : String(codes || '');
+  t = t.trim();
+  if(!t) return '';
+  return t.length > 6 ? t.slice(0, 6) : t;
+}
+
 function pressCode(mb){
   if(mb == null) return '';
   return String(Math.round(mb * 10) % 1000).padStart(3, '0');
@@ -2204,9 +2241,11 @@ function renderStations(){
       const t = (p.tmpf != null) ? Math.round(p.tmpf) : '';
       const dp = (p.dwpf != null) ? Math.round(p.dwpf) : '';
       const pr = pressCode(p.mslp);
-      html = `<div class="stn-model">${windBarb(p.sknt, p.drct)}` +
+      const wx = wxShort(p.wxcodes);
+      html = `<div class="stn-model">${windBarb(p.sknt, p.drct, skyGlyph(p.skyc1))}` +
         `<span class="sm-t" style="color:${tempColor(p.tmpf)}">${t}</span>` +
-        `<span class="sm-d">${dp}</span><span class="sm-p">${pr}</span></div>`;
+        `<span class="sm-d">${dp}</span><span class="sm-p">${pr}</span>` +
+        (wx ? `<span class="sm-w">${wx}</span>` : '') + `</div>`;
     }else{
       html = `<span class="stn-label" style="color:${color}">${text}</span>`;
     }
