@@ -174,7 +174,7 @@ private func drawPip(at p: CGPoint, angle: CGFloat, shape: PipShape, color: UICo
 /// by this feed and is the one element omitted.
 private func drawStationModel(_ st: StormFeed.Station, at p: CGPoint) {
     guard let ctx = UIGraphicsGetCurrentContext() else { return }
-    let r: CGFloat = 4.5
+    let r: CGFloat = 3.4
 
     // Sky cover: the circle is filled in proportion to the reported coverage.
     let ring = UIBezierPath(arcCenter: p, radius: r, startAngle: 0, endAngle: .pi * 2, clockwise: true)
@@ -191,7 +191,7 @@ private func drawStationModel(_ st: StormFeed.Station, at p: CGPoint) {
     default:                  fraction = -1      // VV — obscured
     }
     UIColor.white.setStroke()
-    ring.lineWidth = 1.2
+    ring.lineWidth = 1.0
     ring.stroke()
     if fraction > 0 {
         let wedge = UIBezierPath()
@@ -222,14 +222,14 @@ private func drawStationModel(_ st: StormFeed.Station, at p: CGPoint) {
         ctx.rotate(by: CGFloat(dir) * .pi / 180)
         let staff = UIBezierPath()
         staff.move(to: CGPoint(x: 0, y: -r))
-        staff.addLine(to: CGPoint(x: 0, y: -r - 15))
-        staff.lineWidth = 1.3
+        staff.addLine(to: CGPoint(x: 0, y: -r - 11))
+        staff.lineWidth = 1.1
         UIColor.white.setStroke()
         staff.stroke()
 
         var speed = Int((kt / 5).rounded() * 5)
-        var y: CGFloat = -r - 15            // barbs start at the far end of the staff
-        let step: CGFloat = 3.4, len: CGFloat = 7.5
+        var y: CGFloat = -r - 11            // barbs start at the far end of the staff
+        let step: CGFloat = 2.6, len: CGFloat = 5.6
         let flags = speed / 50; speed -= flags * 50
         let tens  = speed / 10; speed -= tens * 10
         let fives = speed / 5
@@ -246,7 +246,7 @@ private func drawStationModel(_ st: StormFeed.Station, at p: CGPoint) {
             let b = UIBezierPath()
             b.move(to: CGPoint(x: 0, y: y))
             b.addLine(to: CGPoint(x: -len, y: y + step * 0.7))
-            b.lineWidth = 1.3
+            b.lineWidth = 1.1
             UIColor.white.setStroke(); b.stroke()
             y += step
         }
@@ -263,7 +263,7 @@ private func drawStationModel(_ st: StormFeed.Station, at p: CGPoint) {
         ctx.restoreGState()
     }
 
-    func label(_ text: String, _ color: UIColor, _ at: CGPoint, size: CGFloat = 8.5) {
+    func label(_ text: String, _ color: UIColor, _ at: CGPoint, size: CGFloat = 7) {
         let ns = text as NSString
         let attrs: [NSAttributedString.Key: Any] = [
             .font: UIFont.monospacedDigitSystemFont(ofSize: size, weight: .bold),
@@ -274,20 +274,20 @@ private func drawStationModel(_ st: StormFeed.Station, at p: CGPoint) {
         ns.draw(at: CGPoint(x: at.x - sz.width / 2, y: at.y - sz.height / 2), withAttributes: attrs)
     }
 
-    label("\(Int(st.tempF.rounded()))", tempColor(st.tempF), CGPoint(x: p.x - 12, y: p.y - 8))
+    label("\(Int(st.tempF.rounded()))", tempColor(st.tempF), CGPoint(x: p.x - 9, y: p.y - 6))
     if let d = st.dewF {
         label("\(Int(d.rounded()))", UIColor(red: 0.36, green: 0.86, blue: 0.55, alpha: 1),
-              CGPoint(x: p.x - 12, y: p.y + 8))
+              CGPoint(x: p.x - 9, y: p.y + 6))
     }
     if let mb = st.mslp {
         // The standard three-digit code: tenths of a millibar, hundreds dropped.
         let code = String(format: "%03d", Int((mb * 10).rounded()) % 1000)
-        label(code, UIColor.white.withAlphaComponent(0.9), CGPoint(x: p.x + 13, y: p.y - 8))
+        label(code, UIColor.white.withAlphaComponent(0.9), CGPoint(x: p.x + 10, y: p.y - 6))
     }
     if let wx = st.wx, !wx.isEmpty {
         let short = wx.count > 5 ? String(wx.prefix(5)) : wx
         label(short, UIColor(red: 1.0, green: 0.85, blue: 0.3, alpha: 1),
-              CGPoint(x: p.x - 15, y: p.y), size: 7)
+              CGPoint(x: p.x - 12, y: p.y), size: 6)
     }
 }
 
@@ -558,7 +558,7 @@ enum RadarSnapshot {
             // Tighter than the dashboard's 40px, because a widget is read closer
             // and a sparse scatter of numbers looks like missing data. Widens
             // with the view, where stations crowd together on screen.
-            let cell: CGFloat = stationModel ? zoom.labelSpacing * 2.2 : zoom.labelSpacing
+            let cell: CGFloat = stationModel ? zoom.labelSpacing * 1.5 : zoom.labelSpacing
             for st in temps {
                 let p = snap.point(for: CLLocationCoordinate2D(latitude: st.lat, longitude: st.lon))
                 guard p.x > 0, p.y > 0, p.x < size.width, p.y < size.height else { continue }
@@ -567,7 +567,7 @@ enum RadarSnapshot {
                 if stationModel {
                     // The plot needs room on every side, so keep it clear of the
                     // frame rather than nudging it inwards like a bare number.
-                    guard p.x > 20, p.y > 22, p.x < size.width - 20, p.y < size.height - 22
+                    guard p.x > 15, p.y > 17, p.x < size.width - 15, p.y < size.height - 17
                     else { continue }
                     claimed.insert(key)
                     drawStationModel(st, at: p)
