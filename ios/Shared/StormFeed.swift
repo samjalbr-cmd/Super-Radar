@@ -387,36 +387,89 @@ enum StormFeed {
         let tempF: Double
     }
 
-    /// Every state the view touches, so temperatures cover the radar rather than
-    /// stopping at the home state's border. Sampled at the centre, corners and
-    /// edge midpoints — the same trick the dashboard uses to find which forecast
-    /// offices a view spans. Cached, since the answer only changes when the view
-    /// does.
+    /// The ground each state's ASOS network covers, derived once from the
+    /// station positions themselves so a state is only fetched when it can
+    /// actually contribute a reading. State borders do not move, so this is a
+    /// table rather than a lookup: resolving the states in view used to cost
+    /// nine /points requests, and at the widest zoom that sample missed five of
+    /// the eleven states on screen — it only probes the centre, corners and
+    /// edges, so whole interior states fell through it.
+    ///
+    /// (DC has no ASOS network of its own; its stations sit in the VA and MD
+    /// networks, which the box picks up anyway.)
+    static let stateBounds: [String: (Double, Double, Double, Double)] = [
+        "AK": (52.22, -174.21, 71.28, 174.12),
+        "AL": (30.29, -88.25, 34.86, -85.13),
+        "AR": (33.22, -94.49, 36.40, -89.83),
+        "AZ": (31.42, -114.61, 36.96, -109.06),
+        "CA": (32.56, -124.24, 41.78, -114.62),
+        "CO": (37.15, -108.76, 40.75, -102.24),
+        "CT": (41.16, -73.48, 41.94, -72.05),
+        "DE": (38.69, -75.60, 39.67, -75.36),
+        "FL": (24.56, -87.32, 30.84, -80.08),
+        "GA": (30.78, -85.29, 34.85, -81.15),
+        "HI": (19.72, -177.38, 28.21, -155.05),
+        "IA": (40.63, -96.38, 43.40, -90.33),
+        "ID": (42.25, -117.02, 48.73, -111.10),
+        "IL": (37.06, -91.19, 42.43, -87.53),
+        "IN": (38.04, -87.52, 41.72, -84.84),
+        "KS": (37.00, -101.88, 39.90, -94.73),
+        "KY": (36.61, -88.77, 39.04, -82.57),
+        "LA": (26.93, -93.82, 32.76, -87.78),
+        "MA": (41.25, -73.29, 42.72, -69.99),
+        "MD": (38.15, -79.34, 39.71, -75.12),
+        "ME": (43.39, -70.95, 47.29, -67.79),
+        "MI": (41.74, -90.13, 47.47, -82.53),
+        "MN": (43.62, -96.94, 49.32, -90.35),
+        "MO": (36.23, -94.92, 40.35, -89.56),
+        "MS": (30.37, -91.30, 34.98, -88.17),
+        "MT": (44.69, -114.91, 48.81, -104.19),
+        "NC": (33.93, -83.86, 36.46, -75.62),
+        "ND": (46.01, -103.98, 48.94, -96.61),
+        "NE": (40.08, -104.00, 42.86, -95.59),
+        "NH": (42.78, -72.30, 44.58, -70.82),
+        "NJ": (39.01, -75.08, 41.01, -74.06),
+        "NM": (31.88, -108.93, 36.80, -103.08),
+        "NV": (35.95, -119.88, 41.95, -114.85),
+        "NY": (40.64, -79.27, 44.93, -71.92),
+        "OH": (38.84, -84.78, 41.78, -80.67),
+        "OK": (33.91, -101.51, 36.91, -94.62),
+        "OR": (42.07, -124.42, 46.16, -117.01),
+        "PA": (39.73, -80.41, 42.08, -75.01),
+        "RI": (41.17, -71.80, 41.92, -71.41),
+        "SC": (32.22, -82.89, 34.99, -78.72),
+        "SD": (42.77, -103.78, 45.82, -96.57),
+        "TN": (35.04, -90.05, 36.62, -82.17),
+        "TX": (25.91, -106.38, 36.22, -92.03),
+        "UT": (37.01, -114.03, 41.79, -109.34),
+        "VA": (36.57, -83.22, 39.14, -75.46),
+        "VT": (42.89, -73.25, 44.94, -72.02),
+        "WA": (45.62, -124.56, 48.79, -117.11),
+        "WI": (42.59, -92.69, 46.79, -86.92),
+        "WV": (37.30, -82.56, 40.17, -77.98),
+        "WY": (41.04, -111.04, 44.91, -104.13),
+    ]
+
+    /// Every state whose stations could fall inside the view.
     static func statesCovering(sw: CLLocationCoordinate2D, ne: CLLocationCoordinate2D,
-                               fallback: String?) async -> [String] {
-        let key = String(format: "states.%.1f.%.1f.%.1f.%.1f",
-                         sw.latitude, sw.longitude, ne.latitude, ne.longitude)
-        let store = UserDefaults(suiteName: WatchLocation.appGroup)
-        if let cached = store?.stringArray(forKey: key), !cached.isEmpty { return cached }
-
-        let midLat = (sw.latitude + ne.latitude) / 2, midLon = (sw.longitude + ne.longitude) / 2
-        let pts = [(midLat, midLon), (ne.latitude, sw.longitude), (ne.latitude, ne.longitude),
-                   (sw.latitude, sw.longitude), (sw.latitude, ne.longitude),
-                   (midLat, sw.longitude), (midLat, ne.longitude),
-                   (ne.latitude, midLon), (sw.latitude, midLon)]
-
-        var found = Set<String>()
-        await withTaskGroup(of: String?.self) { group in
-            for (la, lo) in pts {
-                group.addTask { await resolveState(lat: la, lon: lo) }
-            }
-            for await st in group { if let st { found.insert(st.uppercased()) } }
+                               fallback: String?) -> [String] {
+        var hits = stateBounds.filter { _, b in
+            b.2 >= sw.latitude && b.0 <= ne.latitude &&
+            b.3 >= sw.longitude && b.1 <= ne.longitude
+        }.keys.map { $0 }
+        if hits.isEmpty, let f = fallback { hits = [f.uppercased()] }
+        // Ordered by how much of the view each covers, so if the cap bites it
+        // drops the states contributing least.
+        return hits.sorted { a, b in
+            overlapArea(stateBounds[a]!, sw: sw, ne: ne) > overlapArea(stateBounds[b]!, sw: sw, ne: ne)
         }
-        if found.isEmpty, let f = fallback { found.insert(f.uppercased()) }
-        // Bounded so a continental view cannot fan out into dozens of fetches.
-        let list = Array(found).sorted().prefix(6).map { $0 }
-        if !list.isEmpty { store?.set(list, forKey: key) }
-        return list
+    }
+
+    private static func overlapArea(_ b: (Double, Double, Double, Double),
+                                    sw: CLLocationCoordinate2D, ne: CLLocationCoordinate2D) -> Double {
+        let dLat = min(b.2, ne.latitude) - max(b.0, sw.latitude)
+        let dLon = min(b.3, ne.longitude) - max(b.1, sw.longitude)
+        return max(0, dLat) * max(0, dLon)
     }
 
     /// Current temperatures across the states a view covers. The API takes one

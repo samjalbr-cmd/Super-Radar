@@ -32,9 +32,31 @@ enum RadarZoom: String, CaseIterable, Codable, Sendable {
         case .multi:  return "Multi-state"
         }
     }
-    /// Station temperatures are only legible while the view is reasonably tight;
-    /// past that they become a wall of overlapping numbers.
-    var showsTemperatures: Bool { self != .multi }
+    /// Temperatures are drawn at every zoom. The screen-space declutter is what
+    /// keeps them legible, so a wider view simply shows fewer, further apart,
+    /// rather than a wall of overlapping numbers.
+    var showsTemperatures: Bool { true }
+
+    /// Labels are spaced in screen points, so a wide view wants them further
+    /// apart — at multi-state scale adjacent stations are only a few points
+    /// apart on the map and a tight grid would read as noise.
+    var labelSpacing: CGFloat {
+        switch self {
+        case .metro, .county, .area: return 26
+        case .region, .wide:         return 30
+        case .state, .multi:         return 34
+        }
+    }
+
+    /// How many state networks to fetch. A wide view genuinely spans a dozen,
+    /// and each is around 80 KB — still far below the 3.4 MB national feed.
+    var maxStates: Int {
+        switch self {
+        case .metro, .county, .area: return 6
+        case .region, .wide:         return 9
+        case .state, .multi:         return 14
+        }
+    }
 }
 
 /// The dashboard's temperature ramp, so a number means the same thing in both.
@@ -195,7 +217,10 @@ enum RadarSnapshot {
         let wantTemps = showTemps && zoom.showsTemperatures
         var states: [String] = []
         if wantTemps || showAlerts {
-            states = await StormFeed.statesCovering(sw: sw, ne: ne, fallback: state)
+            // A table lookup now, so it costs nothing to ask for every state the
+            // view touches — capped only to bound the station fetches that follow.
+            states = Array(StormFeed.statesCovering(sw: sw, ne: ne, fallback: state)
+                .prefix(zoom.maxStates))
         }
         let temps: [StormFeed.Station] = wantTemps
             ? await StormFeed.stations(states: states, sw: sw, ne: ne) : []
@@ -406,8 +431,9 @@ enum RadarSnapshot {
             // the same trick the dashboard uses for its station layer.
             var claimed = Set<Int64>()
             // Tighter than the dashboard's 40px, because a widget is read closer
-            // and a sparse scatter of numbers looks like missing data.
-            let cell: CGFloat = 26
+            // and a sparse scatter of numbers looks like missing data. Widens
+            // with the view, where stations crowd together on screen.
+            let cell: CGFloat = zoom.labelSpacing
             for st in temps {
                 let p = snap.point(for: CLLocationCoordinate2D(latitude: st.lat, longitude: st.lon))
                 guard p.x > 0, p.y > 0, p.x < size.width, p.y < size.height else { continue }
