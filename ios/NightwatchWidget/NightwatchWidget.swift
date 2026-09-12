@@ -106,23 +106,21 @@ struct RadarProvider: AppIntentTimelineProvider {
         RadarEntry(date: Date(), place: "—", imageData: nil, hasEcho: false, approach: nil, stale: false)
     }
     func snapshot(for config: RadarConfig, in context: Context) async -> RadarEntry {
-        await entry(config, context.family)
+        await entry(config, context.displaySize)
     }
     func timeline(for config: RadarConfig, in context: Context) async -> Timeline<RadarEntry> {
-        let e = await entry(config, context.family)
+        let e = await entry(config, context.displaySize)
         let mins = (e.approach?.minutes ?? 60) < 30 ? 10 : 20
         let next = Calendar.current.date(byAdding: .minute, value: mins, to: Date()) ?? Date()
         return Timeline(entries: [e], policy: .after(next))
     }
 
-    private func entry(_ config: RadarConfig, _ family: WidgetFamily) async -> RadarEntry {
+    private func entry(_ config: RadarConfig, _ displaySize: CGSize) async -> RadarEntry {
         let loc = WatchLocation.load()
-        let size: CGSize
-        switch family {
-        case .systemSmall:  size = CGSize(width: 170, height: 170)
-        case .systemMedium: size = CGSize(width: 360, height: 170)
-        default:            size = CGSize(width: 360, height: 380)
-        }
+        // The real size of this widget on this device. The hardcoded guesses it
+        // replaced matched almost no device, and any mismatch is cropped away by
+        // scaledToFill — which is what was clipping the edge temperatures.
+        let size = displaySize
         let zoom = config.zoom.resolve(loc.zoom)
         // The app's own setting is the default; the widget parameter can override
         // it so two widgets can differ without changing the app.
@@ -150,6 +148,9 @@ struct RadarWidget: Widget {
         .configurationDisplayName("Radar")
         .description("Live radar on a map around your location.")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
+        // The map is the widget; without this iOS insets it by the default
+        // content margins and leaves a border of background around the edge.
+        .contentMarginsDisabled()
     }
 }
 

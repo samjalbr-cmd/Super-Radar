@@ -64,13 +64,24 @@ enum RadarSnapshot {
                         showTracks: Bool, showDiscussion: Bool,
                         state: String?) async -> (image: UIImage, hasEcho: Bool)? {
         let half = zoom.halfDegrees
-        let region = MKCoordinateRegion(
-            center: CLLocationCoordinate2D(latitude: lat, longitude: lon),
-            span: MKCoordinateSpan(latitudeDelta: half * 2 * (size.height / max(size.width, 1)),
-                                   longitudeDelta: half * 2))
+
+        // Framed as a projected rect, not a coordinate span. A degree of
+        // longitude covers less ground than a degree of latitude, by cos(lat),
+        // so a span whose deltas are in the widget's width:height ratio is not
+        // the widget's shape on screen — at 43°N it asks for something 1.37x
+        // too tall. MKMapSnapshotter answers by widening the region to fit,
+        // which left the radar covering only ~73% of the width with bare
+        // basemap either side. Map points are Mercator and linear in screen
+        // space, so a rect in the widget's exact proportions stays that shape.
+        let centre = MKMapPoint(CLLocationCoordinate2D(latitude: lat, longitude: lon))
+        let pointsPerDegreeLon = MKMapSize.world.width / 360
+        let rectW = half * 2 * pointsPerDegreeLon
+        let rectH = rectW * (size.height / max(size.width, 1))
+        let mapRect = MKMapRect(x: centre.x - rectW / 2, y: centre.y - rectH / 2,
+                                width: rectW, height: rectH)
 
         let opts = MKMapSnapshotter.Options()
-        opts.region = region
+        opts.mapRect = mapRect
         opts.size = size
         opts.mapType = .mutedStandard
         opts.pointOfInterestFilter = .excludingAll
@@ -79,13 +90,11 @@ enum RadarSnapshot {
 
         guard let snap = try? await MKMapSnapshotter(options: opts).start() else { return nil }
 
-        // Ask for radar over exactly the ground the snapshot ended up covering —
-        // MapKit adjusts the requested span to fit the aspect ratio, so using the
-        // requested region would misregister the overlay.
-        let sw = CLLocationCoordinate2D(latitude: region.center.latitude - region.span.latitudeDelta / 2,
-                                        longitude: region.center.longitude - region.span.longitudeDelta / 2)
-        let ne = CLLocationCoordinate2D(latitude: region.center.latitude + region.span.latitudeDelta / 2,
-                                        longitude: region.center.longitude + region.span.longitudeDelta / 2)
+        // The rect is already the snapshot's exact footprint, so radar is asked
+        // for precisely the ground under the image and fills it corner to corner.
+        // In map points y increases southward, so maxY is the southern edge.
+        let sw = MKMapPoint(x: mapRect.minX, y: mapRect.maxY).coordinate
+        let ne = MKMapPoint(x: mapRect.maxX, y: mapRect.minY).coordinate
         let px = Int(max(size.width, size.height) * 2)
         let render = await StormFeed.radarImage(sw: sw, ne: ne, pixels: px)
         let reports = showReports ? await StormFeed.recentReports(sw: sw, ne: ne) : []
@@ -216,17 +225,23 @@ enum RadarSnapshot {
             let cell: CGFloat = 26
             for st in temps {
                 let p = snap.point(for: CLLocationCoordinate2D(latitude: st.lat, longitude: st.lon))
-                guard p.x > 4, p.y > 4, p.x < size.width - 4, p.y < size.height - 4 else { continue }
+                guard p.x > 0, p.y > 0, p.x < size.width, p.y < size.height else { continue }
                 let key = Int64(p.x / cell) &* 1000 &+ Int64(p.y / cell)
                 if claimed.contains(key) { continue }
-                claimed.insert(key)
                 let text = "\(Int(st.tempF.rounded()))" as NSString
                 let attrs: [NSAttributedString.Key: Any] = [
                     .font: UIFont.monospacedDigitSystemFont(ofSize: 10, weight: .bold),
                     .foregroundColor: tempColor(st.tempF),
                     .strokeColor: UIColor.black, .strokeWidth: -3.0,
                 ]
-                text.draw(at: CGPoint(x: p.x - 7, y: p.y - 6), withAttributes: attrs)
+                // Nudged inside the frame rather than dropped, so a station near
+                // the edge still shows its value instead of half a digit. Sub-zero
+                // and three-digit readings are wider, so measure rather than guess.
+                let sz = text.size(withAttributes: attrs)
+                let x = min(max(p.x - sz.width / 2, 1), size.width - sz.width - 1)
+                let y = min(max(p.y - sz.height / 2, 1), size.height - sz.height - 1)
+                claimed.insert(key)
+                text.draw(at: CGPoint(x: x, y: y), withAttributes: attrs)
             }
 
             // The watched point, so the picture has an anchor.
