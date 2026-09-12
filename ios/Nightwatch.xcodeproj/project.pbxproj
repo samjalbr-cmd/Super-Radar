@@ -1,0 +1,363 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		4C41557668914DF1FAB55CF1 /* StormArrival.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77916E83D2402B94D33B6D55 /* StormArrival.swift */; };
+		8D918BB3CE61686FE43931CF /* StormFeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C1EED00B753D2D565882EAF /* StormFeed.swift */; };
+		579965398549D0C589040604 /* NightwatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B71028279A47770BA4B9806 /* NightwatchApp.swift */; };
+		CE5A847CA4EEE0D7E4788907 /* StormArrival.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77916E83D2402B94D33B6D55 /* StormArrival.swift */; };
+		CFD7AAADAACC0B90812572A4 /* StormFeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C1EED00B753D2D565882EAF /* StormFeed.swift */; };
+		72B1B7B5BA1E99E87F65CCF9 /* NightwatchWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFFBD07D58A5FF30082E0F57 /* NightwatchWidget.swift */; };
+		7743B4C28BF616A80E8B0510 /* NightwatchWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = CD3467D5EB2633B7921CECED /* NightwatchWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		77916E83D2402B94D33B6D55 /* StormArrival.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StormArrival.swift; sourceTree = "<group>"; };
+		1C1EED00B753D2D565882EAF /* StormFeed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StormFeed.swift; sourceTree = "<group>"; };
+		0B71028279A47770BA4B9806 /* NightwatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NightwatchApp.swift; sourceTree = "<group>"; };
+		1CC871D9F6BD8EBC11FF4CBA /* Nightwatch.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Nightwatch.entitlements; sourceTree = "<group>"; };
+		DFFBD07D58A5FF30082E0F57 /* NightwatchWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NightwatchWidget.swift; sourceTree = "<group>"; };
+		5FCC85C6635D4CB7C6F4AB7B /* NightwatchWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = NightwatchWidget.entitlements; sourceTree = "<group>"; };
+		D6E8B0E52327809E834C9746 /* Nightwatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Nightwatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		CD3467D5EB2633B7921CECED /* NightwatchWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = NightwatchWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		3423BD16FA4D42EB0492B9A3 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		E32024C951A38981436F471F /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				7743B4C28BF616A80E8B0510 /* NightwatchWidget.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		F6DBAD488FB8AFCCAFAFB932 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		4AB5D1D1BEA5D3252B3E94E1 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		BB45E94AC1C60D336A4C3392 = {
+			isa = PBXGroup;
+			children = (
+				E1834FD3097C80B31DC58CF5,
+				6F85E2A8897C642583F1BADC,
+				30A48B31F4C7D3B5B8398505,
+				B4E75866F7E90C6E53779A1F,
+			);
+			sourceTree = "<group>";
+		};
+		E1834FD3097C80B31DC58CF5 /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				77916E83D2402B94D33B6D55 /* StormArrival.swift */,
+				1C1EED00B753D2D565882EAF /* StormFeed.swift */,
+			);
+			path = Shared;
+			sourceTree = "<group>";
+		};
+		6F85E2A8897C642583F1BADC /* Nightwatch */ = {
+			isa = PBXGroup;
+			children = (
+				0B71028279A47770BA4B9806 /* NightwatchApp.swift */,
+				1CC871D9F6BD8EBC11FF4CBA /* Nightwatch.entitlements */,
+			);
+			path = Nightwatch;
+			sourceTree = "<group>";
+		};
+		30A48B31F4C7D3B5B8398505 /* NightwatchWidget */ = {
+			isa = PBXGroup;
+			children = (
+				DFFBD07D58A5FF30082E0F57 /* NightwatchWidget.swift */,
+				5FCC85C6635D4CB7C6F4AB7B /* NightwatchWidget.entitlements */,
+				3423BD16FA4D42EB0492B9A3 /* Info.plist */,
+			);
+			path = NightwatchWidget;
+			sourceTree = "<group>";
+		};
+		B4E75866F7E90C6E53779A1F /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				D6E8B0E52327809E834C9746,
+				CD3467D5EB2633B7921CECED,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		DB89FAAFA4C19C525E4F6871 /* Nightwatch */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E45C3E761822EC5096FDD4E2;
+			buildPhases = (
+				BD8DEB2AC57EDF8C7BB3BF3C,
+				F6DBAD488FB8AFCCAFAFB932,
+				E32024C951A38981436F471F,
+			);
+			buildRules = ();
+			dependencies = (
+				ACACE6770164DC7FBC149AA9,
+			);
+			name = Nightwatch;
+			productName = Nightwatch;
+			productReference = D6E8B0E52327809E834C9746;
+			productType = "com.apple.product-type.application";
+		};
+		F0226DE04DD8A22B87DECD56 /* NightwatchWidget */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 2B546EFE774B67B865584A2A;
+			buildPhases = (
+				8117C65CE9110474B472E0E2,
+				4AB5D1D1BEA5D3252B3E94E1,
+			);
+			buildRules = ();
+			dependencies = ();
+			name = NightwatchWidget;
+			productName = NightwatchWidget;
+			productReference = CD3467D5EB2633B7921CECED;
+			productType = "com.apple.product-type.app-extension";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		98F54143AB4E86B28C3AFEE0 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1600;
+				LastUpgradeCheck = 1600;
+				TargetAttributes = {
+					DB89FAAFA4C19C525E4F6871 = {CreatedOnToolsVersion = 16.0; };
+					F0226DE04DD8A22B87DECD56 = {CreatedOnToolsVersion = 16.0; };
+				};
+			};
+			buildConfigurationList = B57054FC4CA67028336A0450;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = BB45E94AC1C60D336A4C3392;
+			productRefGroup = B4E75866F7E90C6E53779A1F;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				DB89FAAFA4C19C525E4F6871,
+				F0226DE04DD8A22B87DECD56,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		BD8DEB2AC57EDF8C7BB3BF3C = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4C41557668914DF1FAB55CF1,
+				8D918BB3CE61686FE43931CF,
+				579965398549D0C589040604,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		8117C65CE9110474B472E0E2 = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CE5A847CA4EEE0D7E4788907,
+				CFD7AAADAACC0B90812572A4,
+				72B1B7B5BA1E99E87F65CCF9,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		ACACE6770164DC7FBC149AA9 = {
+			isa = PBXTargetDependency;
+			target = F0226DE04DD8A22B87DECD56;
+			targetProxy = 8DBCCD6D374109AE38AC226D;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin PBXContainerItemProxy section */
+		8DBCCD6D374109AE38AC226D = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 98F54143AB4E86B28C3AFEE0;
+			proxyType = 1;
+			remoteGlobalIDString = F0226DE04DD8A22B87DECD56;
+			remoteInfo = NightwatchWidget;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin XCBuildConfiguration section */
+		8B9E93E00F6A46CBC1A26C4B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = "DEBUG=1 $(inherited)";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		088365CD806B61EFAE691729 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		1D5C2FB762F375771A3A3372 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Nightwatch/Nightwatch.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = LHU5H8QVY5;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UIStatusBarHidden = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.samjalbr.nightwatch;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		88F166B571FDB93AFB5831EE /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Nightwatch/Nightwatch.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = LHU5H8QVY5;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UIStatusBarHidden = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.samjalbr.nightwatch;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		34E5AF9A2CF8AEFB017FE6C8 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = NightwatchWidget/NightwatchWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = LHU5H8QVY5;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Nightwatch;
+				INFOPLIST_FILE = NightwatchWidget/Info.plist;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.samjalbr.nightwatch.NightwatchWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		65B284D8553ED9FA9D3EFE99 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = NightwatchWidget/NightwatchWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = LHU5H8QVY5;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Nightwatch;
+				INFOPLIST_FILE = NightwatchWidget/Info.plist;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.samjalbr.nightwatch.NightwatchWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		B57054FC4CA67028336A0450 = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				8B9E93E00F6A46CBC1A26C4B,
+				088365CD806B61EFAE691729,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		E45C3E761822EC5096FDD4E2 = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1D5C2FB762F375771A3A3372,
+				88F166B571FDB93AFB5831EE,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		2B546EFE774B67B865584A2A = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				34E5AF9A2CF8AEFB017FE6C8,
+				65B284D8553ED9FA9D3EFE99,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 98F54143AB4E86B28C3AFEE0 /* Project object */;
+}

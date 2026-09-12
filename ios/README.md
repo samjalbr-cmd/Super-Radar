@@ -28,7 +28,17 @@ against it on the same seven cases — direct hit, near miss, clean miss, a cell
 already past, stationary, too weak, beyond the horizon — plus the observation-age
 tick. Both produce identical decisions and ETAs.
 
-## Setup (about ten minutes)
+## Setup
+
+Open `Nightwatch.xcodeproj`, select your team on both targets if Xcode asks,
+and run. The project is committed and builds as-is — verified with
+`xcodebuild -target Nightwatch -sdk iphonesimulator`.
+
+Then long-press the home screen → + → Nightwatch → small or medium widget.
+
+If you would rather rebuild the targets by hand, the original steps follow.
+
+## Setup by hand (about ten minutes)
 
 1. **New project** — Xcode → File → New → Project → iOS → App.
    Name `Nightwatch`, interface SwiftUI, language Swift.
