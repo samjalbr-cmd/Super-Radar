@@ -1,4 +1,6 @@
 import Foundation
+import CoreLocation
+import UIKit
 
 /// Where the widget is watching. The app writes this to the shared container so
 /// the extension and the app agree without either having to ask the other.
@@ -6,10 +8,15 @@ struct WatchLocation: Codable {
     var lat: Double
     var lon: Double
     var name: String
+    /// Mirrored out of the dashboard's own settings so the widget draws what the
+    /// app is set to draw, rather than keeping a second set of preferences.
+    var showReports: Bool = true
+    var zoom: RadarZoom = .county
 
     static let appGroup = "group.com.samjalbr.nightwatch"
     static let key = "watchLocation"
-    static let fallback = WatchLocation(lat: 42.907058, lon: -85.763014, name: "Grand Rapids")
+    static let fallback = WatchLocation(lat: 42.907058, lon: -85.763014, name: "Grand Rapids",
+                                        showReports: true, zoom: .county)
 
     static func load() -> WatchLocation {
         guard let d = UserDefaults(suiteName: appGroup)?.data(forKey: key),
@@ -67,22 +74,63 @@ enum StormFeed {
         }
     }
 
-    /// A square radar render centred on a point. `halfDegrees` sets how much
-    /// ground the tile covers — about 0.9 is a comfortable county-scale view.
-    static func radarImageURL(lat: Double, lon: Double, halfDegrees: Double, pixels: Int) -> URL? {
-        func mercator(_ lon: Double, _ lat: Double) -> (Double, Double) {
-            let x = lon * 20037508.34 / 180
-            let y = log(tan((90 + lat) * .pi / 360)) / (.pi / 180) * 20037508.34 / 180
-            return (x, y)
-        }
-        let halfLat = halfDegrees * 0.72
-        let (x0, y0) = mercator(lon - halfDegrees, lat - halfLat)
-        let (x1, y1) = mercator(lon + halfDegrees, lat + halfLat)
+    private static func mercator(_ lon: Double, _ lat: Double) -> (Double, Double) {
+        let x = lon * 20037508.34 / 180
+        let y = log(tan((90 + lat) * .pi / 360)) / (.pi / 180) * 20037508.34 / 180
+        return (x, y)
+    }
+
+    /// Radar over an explicit corner box, so it can be registered against a map
+    /// snapshot covering the same ground.
+    static func radarImageURL(sw: CLLocationCoordinate2D, ne: CLLocationCoordinate2D, pixels: Int) -> URL? {
+        let (x0, y0) = mercator(sw.longitude, sw.latitude)
+        let (x1, y1) = mercator(ne.longitude, ne.latitude)
         // Cache-bust per minute; the mosaic updates far more slowly than that.
         let stamp = Int(Date().timeIntervalSince1970 / 60)
         return URL(string: "\(radarService)/exportImage?bbox=\(Int(x0)),\(Int(y0)),\(Int(x1)),\(Int(y1))" +
                    "&bboxSR=3857&imageSR=3857&size=\(pixels),\(pixels)&format=png32&transparent=true" +
                    "&interpolation=RSP_BilinearInterpolation&f=image&t=\(stamp)")
+    }
+
+    struct Report {
+        let lat: Double
+        let lon: Double
+        let color: UIColor
+    }
+
+    /// Local storm reports in the last few hours, inside the given box. Same
+    /// feed and colours the dashboard uses.
+    static func recentReports(sw: CLLocationCoordinate2D, ne: CLLocationCoordinate2D) async -> [Report] {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd'T'HH:mm'Z'"
+        f.timeZone = TimeZone(identifier: "UTC")
+        let ets = f.string(from: Date()), sts = f.string(from: Date().addingTimeInterval(-6 * 3600))
+        guard let url = URL(string: "https://mesonet.agron.iastate.edu/geojson/lsr.geojson?sts=\(sts)&ets=\(ets)")
+        else { return [] }
+        struct FC: Decodable {
+            struct F: Decodable {
+                struct G: Decodable { let coordinates: [Double] }
+                struct P: Decodable { let typetext: String? }
+                let geometry: G?; let properties: P
+            }
+            let features: [F]
+        }
+        var req = URLRequest(url: url); req.timeoutInterval = 15
+        guard let data = try? await URLSession.shared.data(for: req).0,
+              let fc = try? JSONDecoder().decode(FC.self, from: data) else { return [] }
+        return fc.features.compactMap { f in
+            guard let c = f.geometry?.coordinates, c.count >= 2,
+                  c[1] >= sw.latitude, c[1] <= ne.latitude,
+                  c[0] >= sw.longitude, c[0] <= ne.longitude else { return nil }
+            let t = (f.properties.typetext ?? "").uppercased()
+            let color: UIColor
+            if t.contains("TORNADO") || t.contains("FUNNEL") { color = UIColor(red: 0.88, green: 0.02, blue: 0, alpha: 1) }
+            else if t.contains("HAIL") { color = UIColor(red: 0, green: 0.88, blue: 0.82, alpha: 1) }
+            else if t.contains("WIND") || t.contains("TSTM") { color = UIColor(red: 0.23, green: 0.63, blue: 1, alpha: 1) }
+            else if t.contains("FLOOD") || t.contains("RAIN") { color = UIColor(red: 0.18, green: 0.80, blue: 0.44, alpha: 1) }
+            else { color = UIColor(red: 0.72, green: 0.44, blue: 1, alpha: 1) }
+            return Report(lat: c[1], lon: c[0], color: color)
+        }
     }
 
     /// A radar render, and whether it actually contains any echo.
@@ -97,8 +145,8 @@ enum StormFeed {
         let hasEcho: Bool
     }
 
-    static func radarImage(lat: Double, lon: Double, halfDegrees: Double, pixels: Int) async -> RadarRender? {
-        guard let url = radarImageURL(lat: lat, lon: lon, halfDegrees: halfDegrees, pixels: pixels) else { return nil }
+    static func radarImage(sw: CLLocationCoordinate2D, ne: CLLocationCoordinate2D, pixels: Int) async -> RadarRender? {
+        guard let url = radarImageURL(sw: sw, ne: ne, pixels: pixels) else { return nil }
         var req = URLRequest(url: url)
         req.timeoutInterval = 20
         guard let data = try? await URLSession.shared.data(for: req).0, !data.isEmpty else { return nil }

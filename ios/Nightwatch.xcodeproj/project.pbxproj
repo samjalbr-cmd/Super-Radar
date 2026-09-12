@@ -7,24 +7,29 @@
 
 /* Begin PBXBuildFile section */
 		4C41557668914DF1FAB55CF1 /* StormArrival.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77916E83D2402B94D33B6D55 /* StormArrival.swift */; };
-		8D918BB3CE61686FE43931CF /* StormFeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C1EED00B753D2D565882EAF /* StormFeed.swift */; };
-		579965398549D0C589040604 /* NightwatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B71028279A47770BA4B9806 /* NightwatchApp.swift */; };
 		CE5A847CA4EEE0D7E4788907 /* StormArrival.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77916E83D2402B94D33B6D55 /* StormArrival.swift */; };
+		8D918BB3CE61686FE43931CF /* StormFeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C1EED00B753D2D565882EAF /* StormFeed.swift */; };
 		CFD7AAADAACC0B90812572A4 /* StormFeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C1EED00B753D2D565882EAF /* StormFeed.swift */; };
-		72B1B7B5BA1E99E87F65CCF9 /* NightwatchWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFFBD07D58A5FF30082E0F57 /* NightwatchWidget.swift */; };
-		7743B4C28BF616A80E8B0510 /* NightwatchWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = CD3467D5EB2633B7921CECED /* NightwatchWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		7F388D28228154167971DADE /* RadarSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18B7B84248E12EDD60AC67E /* RadarSnapshot.swift */; };
+		B52F183A0D297D5716BE344E /* RadarSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18B7B84248E12EDD60AC67E /* RadarSnapshot.swift */; };
+		55F30F12116D98E343D3B6E5 /* NightwatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B71028279A47770BA4B9806 /* NightwatchApp.swift */; };
+		A6CC8C1358D604E4CE07BCCD /* NightwatchWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFFBD07D58A5FF30082E0F57 /* NightwatchWidget.swift */; };
+		BCD50092462A1021E1C05849 /* RadarWidgetViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 223C86CF980A0B039BD51BFB /* RadarWidgetViews.swift */; };
+		7743B4C28BF616A80E8B0510 /* NightwatchWidget.appex */ = {isa = PBXBuildFile; fileRef = CD3467D5EB2633B7921CECED /* NightwatchWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		77916E83D2402B94D33B6D55 /* StormArrival.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StormArrival.swift; sourceTree = "<group>"; };
 		1C1EED00B753D2D565882EAF /* StormFeed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StormFeed.swift; sourceTree = "<group>"; };
+		A18B7B84248E12EDD60AC67E /* RadarSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RadarSnapshot.swift; sourceTree = "<group>"; };
 		0B71028279A47770BA4B9806 /* NightwatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NightwatchApp.swift; sourceTree = "<group>"; };
 		1CC871D9F6BD8EBC11FF4CBA /* Nightwatch.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Nightwatch.entitlements; sourceTree = "<group>"; };
 		DFFBD07D58A5FF30082E0F57 /* NightwatchWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NightwatchWidget.swift; sourceTree = "<group>"; };
+		223C86CF980A0B039BD51BFB /* RadarWidgetViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RadarWidgetViews.swift; sourceTree = "<group>"; };
+		3423BD16FA4D42EB0492B9A3 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		5FCC85C6635D4CB7C6F4AB7B /* NightwatchWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = NightwatchWidget.entitlements; sourceTree = "<group>"; };
 		D6E8B0E52327809E834C9746 /* Nightwatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Nightwatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		CD3467D5EB2633B7921CECED /* NightwatchWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = NightwatchWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
-		3423BD16FA4D42EB0492B9A3 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -34,7 +39,7 @@
 			dstPath = "";
 			dstSubfolderSpec = 13;
 			files = (
-				7743B4C28BF616A80E8B0510 /* NightwatchWidget.appex in Embed Foundation Extensions */,
+				7743B4C28BF616A80E8B0510,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -50,23 +55,24 @@
 		BB45E94AC1C60D336A4C3392 = {
 			isa = PBXGroup;
 			children = (
-				E1834FD3097C80B31DC58CF5,
-				6F85E2A8897C642583F1BADC,
-				30A48B31F4C7D3B5B8398505,
+				097471D2F9C1AA6D1AEBDD00,
+				99B9A49B3BC74C032309B25F,
+				8B19E6160E2E32AB87465B03,
 				B4E75866F7E90C6E53779A1F,
 			);
 			sourceTree = "<group>";
 		};
-		E1834FD3097C80B31DC58CF5 /* Shared */ = {
+		097471D2F9C1AA6D1AEBDD00 /* Shared */ = {
 			isa = PBXGroup;
 			children = (
 				77916E83D2402B94D33B6D55 /* StormArrival.swift */,
 				1C1EED00B753D2D565882EAF /* StormFeed.swift */,
+				A18B7B84248E12EDD60AC67E /* RadarSnapshot.swift */,
 			);
 			path = Shared;
 			sourceTree = "<group>";
 		};
-		6F85E2A8897C642583F1BADC /* Nightwatch */ = {
+		99B9A49B3BC74C032309B25F /* Nightwatch */ = {
 			isa = PBXGroup;
 			children = (
 				0B71028279A47770BA4B9806 /* NightwatchApp.swift */,
@@ -75,12 +81,13 @@
 			path = Nightwatch;
 			sourceTree = "<group>";
 		};
-		30A48B31F4C7D3B5B8398505 /* NightwatchWidget */ = {
+		8B19E6160E2E32AB87465B03 /* NightwatchWidget */ = {
 			isa = PBXGroup;
 			children = (
 				DFFBD07D58A5FF30082E0F57 /* NightwatchWidget.swift */,
-				5FCC85C6635D4CB7C6F4AB7B /* NightwatchWidget.entitlements */,
+				223C86CF980A0B039BD51BFB /* RadarWidgetViews.swift */,
 				3423BD16FA4D42EB0492B9A3 /* Info.plist */,
+				5FCC85C6635D4CB7C6F4AB7B /* NightwatchWidget.entitlements */,
 			);
 			path = NightwatchWidget;
 			sourceTree = "<group>";
@@ -166,9 +173,10 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				4C41557668914DF1FAB55CF1,
-				8D918BB3CE61686FE43931CF,
-				579965398549D0C589040604,
+				4C41557668914DF1FAB55CF1 /* StormArrival.swift */,
+				8D918BB3CE61686FE43931CF /* StormFeed.swift */,
+				7F388D28228154167971DADE /* RadarSnapshot.swift */,
+				55F30F12116D98E343D3B6E5 /* NightwatchApp.swift */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -176,9 +184,11 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				CE5A847CA4EEE0D7E4788907,
-				CFD7AAADAACC0B90812572A4,
-				72B1B7B5BA1E99E87F65CCF9,
+				CE5A847CA4EEE0D7E4788907 /* StormArrival.swift */,
+				CFD7AAADAACC0B90812572A4 /* StormFeed.swift */,
+				B52F183A0D297D5716BE344E /* RadarSnapshot.swift */,
+				A6CC8C1358D604E4CE07BCCD /* NightwatchWidget.swift */,
+				BCD50092462A1021E1C05849 /* RadarWidgetViews.swift */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -220,7 +230,6 @@
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
-				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
 			};
@@ -240,7 +249,6 @@
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				SDKROOT = iphoneos;
 				SWIFT_COMPILATION_MODE = wholemodule;
-				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 5.0;
 				VALIDATE_PRODUCT = YES;
@@ -262,7 +270,6 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.samjalbr.nightwatch;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_EMIT_LOC_STRINGS = YES;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
@@ -282,7 +289,6 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.samjalbr.nightwatch;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_EMIT_LOC_STRINGS = YES;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
@@ -295,14 +301,12 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = LHU5H8QVY5;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = Nightwatch;
 				INFOPLIST_FILE = NightwatchWidget/Info.plist;
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_CFBundleDisplayName = Nightwatch;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.samjalbr.nightwatch.NightwatchWidget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
-				SWIFT_EMIT_LOC_STRINGS = YES;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
@@ -315,14 +319,12 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = LHU5H8QVY5;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = Nightwatch;
 				INFOPLIST_FILE = NightwatchWidget/Info.plist;
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_CFBundleDisplayName = Nightwatch;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.samjalbr.nightwatch.NightwatchWidget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
-				SWIFT_EMIT_LOC_STRINGS = YES;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;

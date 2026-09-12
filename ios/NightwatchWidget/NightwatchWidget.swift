@@ -1,5 +1,6 @@
 import WidgetKit
 import SwiftUI
+import AppIntents
 
 // MARK: - Shared timeline
 
@@ -17,7 +18,6 @@ struct RadarEntry: TimelineEntry {
 /// One provider feeds both widgets; `needsImage` keeps the text-only widget from
 /// paying for a radar render it will never draw.
 struct Provider: TimelineProvider {
-    let needsImage: Bool
 
     func placeholder(in context: Context) -> RadarEntry {
         RadarEntry(date: Date(), place: "—", imageData: nil, hasEcho: false, approach: nil, stale: false)
@@ -37,24 +37,12 @@ struct Provider: TimelineProvider {
     }
 
     private func entry(for family: WidgetFamily) async -> RadarEntry {
+        _ = family
         let loc = WatchLocation.load()
-        let pixels: Int
-        switch family {
-        case .systemSmall:  pixels = 400
-        case .systemMedium: pixels = 700
-        default:            pixels = 800
-        }
-        // A large widget covers more ground than a small one usefully can.
-        let half: Double = family == .systemLarge ? 1.4 : 0.9
-        async let img = needsImage
-            ? StormFeed.radarImage(lat: loc.lat, lon: loc.lon, halfDegrees: half, pixels: pixels)
-            : nil
-        async let list = try? await StormFeed.cells()
-        let (render, cells) = await (img, list)
+        let cells = try? await StormFeed.cells()
         let approach = cells.flatMap { StormArrival.soonest(cells: $0, lat: loc.lat, lon: loc.lon) }
-        return RadarEntry(date: Date(), place: loc.name,
-                          imageData: render?.data, hasEcho: render?.hasEcho ?? false,
-                          approach: approach, stale: cells == nil && (!needsImage || render == nil))
+        return RadarEntry(date: Date(), place: loc.name, imageData: nil, hasEcho: false,
+                          approach: approach, stale: cells == nil)
     }
 }
 
@@ -75,28 +63,32 @@ struct RadarWidgetView: View {
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
-            if let d = entry.imageData, entry.hasEcho, let ui = UIImage(data: d) {
+            if let d = entry.imageData, let ui = UIImage(data: d) {
+                // The map is drawn whether or not there is weather on it; only
+                // the caption changes, so a quiet sky still looks like a map and
+                // not like a failure.
                 Image(uiImage: ui).resizable().scaledToFill()
+                if !entry.hasEcho {
+                    Text("CLEAR")
+                        .font(.system(size: 11, weight: .heavy))
+                        .foregroundStyle(.white.opacity(0.85))
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(.black.opacity(0.5), in: Capsule())
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                        .padding(.top, 6)
+                }
             } else {
                 panel
-                // A blank rectangle reads as a broken widget, so say which it is.
                 VStack(spacing: 3) {
-                    Text(entry.stale ? "NO DATA" : "CLEAR")
-                        .font(.system(size: 15, weight: .heavy))
-                        .foregroundStyle(.white.opacity(entry.stale ? 0.55 : 0.8))
-                    Text(entry.stale ? "couldn't reach radar" : "no echo nearby")
+                    Text("NO DATA").font(.system(size: 15, weight: .heavy))
+                        .foregroundStyle(.white.opacity(0.55))
+                    Text("couldn't reach the map")
                         .font(.system(size: 9.5, design: .monospaced))
                         .foregroundStyle(.white.opacity(0.45))
                         .minimumScaleFactor(0.7).lineLimit(1)
                 }
                 .padding(.horizontal, 6)
             }
-            // Your location, so the picture has an anchor.
-            Circle()
-                .fill(Color(red: 0.95, green: 0.72, blue: 0.02))
-                .frame(width: 7, height: 7)
-                .shadow(color: .black, radius: 2)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             Text(entry.date, style: .time)
                 .font(.system(size: 9, design: .monospaced))
                 .foregroundStyle(.white.opacity(0.75))
@@ -108,13 +100,50 @@ struct RadarWidgetView: View {
     }
 }
 
+/// Renders the map itself, so the radar has ground under it.
+struct RadarProvider: AppIntentTimelineProvider {
+    func placeholder(in context: Context) -> RadarEntry {
+        RadarEntry(date: Date(), place: "—", imageData: nil, hasEcho: false, approach: nil, stale: false)
+    }
+    func snapshot(for config: RadarConfig, in context: Context) async -> RadarEntry {
+        await entry(config, context.family)
+    }
+    func timeline(for config: RadarConfig, in context: Context) async -> Timeline<RadarEntry> {
+        let e = await entry(config, context.family)
+        let mins = (e.approach?.minutes ?? 60) < 30 ? 10 : 20
+        let next = Calendar.current.date(byAdding: .minute, value: mins, to: Date()) ?? Date()
+        return Timeline(entries: [e], policy: .after(next))
+    }
+
+    private func entry(_ config: RadarConfig, _ family: WidgetFamily) async -> RadarEntry {
+        let loc = WatchLocation.load()
+        let size: CGSize
+        switch family {
+        case .systemSmall:  size = CGSize(width: 170, height: 170)
+        case .systemMedium: size = CGSize(width: 360, height: 170)
+        default:            size = CGSize(width: 360, height: 380)
+        }
+        let zoom = config.zoom.resolve(loc.zoom)
+        // The app's own setting is the default; the widget parameter can override
+        // it so two widgets can differ without changing the app.
+        let reports = config.showReports && loc.showReports
+        let composed = await RadarSnapshot.compose(lat: loc.lat, lon: loc.lon, zoom: zoom,
+                                                   size: size, showReports: reports)
+        let cells = try? await StormFeed.cells()
+        let approach = cells.flatMap { StormArrival.soonest(cells: $0, lat: loc.lat, lon: loc.lon) }
+        return RadarEntry(date: Date(), place: loc.name,
+                          imageData: composed?.image.pngData(), hasEcho: composed?.hasEcho ?? false,
+                          approach: approach, stale: composed == nil)
+    }
+}
+
 struct RadarWidget: Widget {
     var body: some WidgetConfiguration {
-        StaticConfiguration(kind: "NightwatchRadar", provider: Provider(needsImage: true)) { entry in
+        AppIntentConfiguration(kind: "NightwatchRadar", intent: RadarConfig.self, provider: RadarProvider()) { entry in
             RadarWidgetView(entry: entry)
         }
         .configurationDisplayName("Radar")
-        .description("Live radar around your location.")
+        .description("Live radar on a map around your location.")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
     }
 }
@@ -181,7 +210,7 @@ struct ArrivalWidgetView: View {
 
 struct ArrivalWidget: Widget {
     var body: some WidgetConfiguration {
-        StaticConfiguration(kind: "NightwatchArrival", provider: Provider(needsImage: false)) { entry in
+        StaticConfiguration(kind: "NightwatchArrival", provider: Provider()) { entry in
             ArrivalWidgetView(entry: entry)
         }
         .configurationDisplayName("Storm Arrival")

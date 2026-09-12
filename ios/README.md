@@ -74,6 +74,29 @@ To follow the phone instead, add CoreLocation to the app, request
 `whenInUse`, and call `WatchLocation(...).save()` with the fix — the widget
 needs no changes, since it only ever reads the shared value.
 
+## The map
+
+Radar echo on its own has no geographic context, which is most of why an empty
+render read as a broken widget. The radar widget now draws a real map: MapKit
+renders a dark basemap for the region, the radar is composited over it, and
+storm reports and your location are drawn on top.
+
+Registration does not rely on two services agreeing about a bounding box.
+MapKit adjusts a requested span to fit the widget's aspect ratio, so the radar
+is requested for the region MapKit actually produced, and placed by projecting
+that region's own corners through the snapshot.
+
+## Zoom and settings
+
+Zoom is a widget parameter — long-press the widget and choose Edit Widget:
+Metro (~60 km), County (~150 km), Region (~300 km), State (~530 km), or
+**Match the app**, which follows whatever the app is set to. Two radar widgets
+can therefore sit side by side at different scales.
+
+Storm reports likewise default to the app's setting and can be turned off per
+widget. The shared values live in `WatchLocation` in the app group, so the app
+remains the single place preferences are set.
+
 ## Clear weather vs. a broken widget
 
 The radar service answers a clear sky with a fully transparent PNG, which on a
