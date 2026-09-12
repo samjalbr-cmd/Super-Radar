@@ -145,6 +145,24 @@
   }
   #topControls button:hover{color:#F5F3EC;}
 
+  /* TV display mode: the set is across the room and nobody is holding it, so
+     the controls go and everything that carries information gets bigger. */
+  body.tv #gear, body.tv #feedTab, body.tv #topControls, body.tv #feedPanel{ display:none !important; }
+  body.tv #radarStatus, body.tv #precipStatus, body.tv #afdStatus{
+    font-size:15px; padding:10px 16px; border-radius:13px;
+  }
+  body.tv #radarStatus{ top:28px; left:28px; }
+  body.tv #precipStatus{ top:80px; left:28px; }
+  body.tv #afdStatus{ top:132px; left:28px; }
+  body.tv #arrival{
+    top:auto; bottom:28px; left:28px; max-width:440px; padding:16px 20px; border-left-width:5px;
+  }
+  body.tv .arr-head{ font-size:19px; }
+  body.tv .arr-eta{ font-size:26px; }
+  body.tv .arr-sub{ font-size:14px; }
+  body.tv #radarLoop{ bottom:28px; font-size:14px; padding:11px 16px; }
+  body.tv #lightningBadge{ font-size:14px; padding:9px 14px; }
+
   #loading{
     position:absolute;inset:0;background:var(--void);z-index:900;
     display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;
@@ -1386,6 +1404,81 @@ function lsrValue(p){
   if(t.includes('FUNNEL')) return 'funnel';
   if(t.includes('FLOOD') || t.includes('WATER')) return 'flood';
   return t ? t.toLowerCase() : '•';
+}
+
+/* ---------------- URL options and TV display mode ----------------
+   Everything the page can be told to do is a query parameter, so a phone
+   shortcut or a TV bookmark is just a link — no pairing, no second device
+   talking to the first, nothing to stay connected.
+
+     ?tv=1              display mode: chrome hidden, text scaled for a room
+     ?lat=&lon=         where to centre (and what the arrival countdown watches)
+     ?zoom=             initial zoom
+     ?source=noaa|iem   radar source
+     ?loop=1            start the loop (implies the IEM source)
+     ?tracks=0          turn storm tracks off
+     ?scale=1.6         label scale, if the default TV scale is wrong for the room
+*/
+const URLQ = new URLSearchParams(location.search);
+const qFlag = (k, dflt) => {
+  const v = URLQ.get(k);
+  if(v === null) return dflt;
+  return !(v === '0' || v === 'false' || v === 'no');
+};
+let tvMode = qFlag('tv', false);
+
+// Applied before initMap so the first view is already the requested one.
+function applyUrlView(){
+  const qLat = parseFloat(URLQ.get('lat')), qLon = parseFloat(URLQ.get('lon'));
+  if(isFinite(qLat) && isFinite(qLon)){ lat = qLat; lon = qLon; }
+  if(tvMode) document.body.classList.add('tv');
+}
+
+// Applied after the map and controls exist.
+function applyUrlOptions(){
+  const zoom = parseInt(URLQ.get('zoom'), 10);
+  if(isFinite(zoom)) map.setView([lat, lon], Math.max(4, Math.min(12, zoom)));
+
+  const scale = parseFloat(URLQ.get('scale'));
+  const lblScale = isFinite(scale) ? scale : (tvMode ? 1.5 : null);
+  if(lblScale != null){
+    document.documentElement.style.setProperty('--lblscale', String(lblScale));
+    const sl = document.getElementById('lblScale'); if(sl) sl.value = lblScale;
+  }
+
+  // ?loop=1 needs the tiled source, since NOAA has no frame archive.
+  const wantLoop = qFlag('loop', false);
+  const src = URLQ.get('source') || (wantLoop ? 'iem' : null);
+  if(src === 'iem' || src === 'noaa'){
+    const sel = document.getElementById('radarSource');
+    if(sel){ sel.value = src; setRadarSource(src); }
+  }
+  if(wantLoop){
+    const l = document.getElementById('radarLoopChk');
+    if(l && !l.disabled && !l.checked){ l.checked = true; toggleRadarLoop(l); }
+  }
+  if(!qFlag('tracks', true)){
+    const t = document.getElementById('tracksChk');
+    if(t && t.checked){ t.checked = false; toggleStormTracks(t); }
+  }
+  if(tvMode) startTvMode();
+}
+
+// A TV is a display, not a device someone is holding: keep the panel awake and
+// reload on a long cycle so a set left on for days doesn't drift or leak.
+let wakeLock = null;
+async function startTvMode(){
+  try{
+    if('wakeLock' in navigator){
+      wakeLock = await navigator.wakeLock.request('screen');
+      document.addEventListener('visibilitychange', async () => {
+        if(!document.hidden && wakeLock === null && 'wakeLock' in navigator){
+          try{ wakeLock = await navigator.wakeLock.request('screen'); }catch(e){}
+        }
+      });
+    }
+  }catch(e){}
+  setTimeout(() => location.reload(), 6 * 60 * 60 * 1000);
 }
 
 /* ---------------- Radar loop ----------------
@@ -3336,6 +3429,7 @@ async function boot(){
     requestAnimationFrame(() => requestAnimationFrame(go));
     setTimeout(go, 1200);
   });
+  applyUrlView();
   initMap();
   // Choose the radar source before anything draws. This used to happen in the
   // deferred block below, which sat behind the national feeds — so for the
@@ -3348,6 +3442,7 @@ async function boot(){
   // on that meant staring at a splash while the map was ready to draw.
   await loadRadar();
   document.getElementById('loading').classList.add('hide');
+  applyUrlOptions();
 
   loadNexradSites().then(populateSiteDropdown);
   loadAlerts(); loadOutlook(); loadMCD(); loadLSR();
