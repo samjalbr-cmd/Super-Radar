@@ -166,6 +166,131 @@ private func drawPip(at p: CGPoint, angle: CGFloat, shape: PipShape, color: UICo
     ctx.restoreGState()
 }
 
+/// The classic surface station model, laid out around the sky-cover circle:
+/// temperature upper left, dew point lower left, coded sea-level pressure upper
+/// right, present weather to the left, and the wind barb pointing into the wind.
+///
+/// Pressure tendency, the lower-right arm of the textbook plot, is not carried
+/// by this feed and is the one element omitted.
+private func drawStationModel(_ st: StormFeed.Station, at p: CGPoint) {
+    guard let ctx = UIGraphicsGetCurrentContext() else { return }
+    let r: CGFloat = 4.5
+
+    // Sky cover: the circle is filled in proportion to the reported coverage.
+    let ring = UIBezierPath(arcCenter: p, radius: r, startAngle: 0, endAngle: .pi * 2, clockwise: true)
+    UIColor.black.withAlphaComponent(0.55).setFill()
+    ring.fill()
+    let sky = (st.sky ?? "").uppercased()
+    let fraction: CGFloat
+    switch sky {
+    case "CLR", "SKC", "NSC": fraction = 0
+    case "FEW":               fraction = 0.25
+    case "SCT":               fraction = 0.5
+    case "BKN":               fraction = 0.75
+    case "OVC":               fraction = 1
+    default:                  fraction = -1      // VV — obscured
+    }
+    UIColor.white.setStroke()
+    ring.lineWidth = 1.2
+    ring.stroke()
+    if fraction > 0 {
+        let wedge = UIBezierPath()
+        wedge.move(to: p)
+        wedge.addArc(withCenter: p, radius: r,
+                     startAngle: -.pi / 2, endAngle: -.pi / 2 + .pi * 2 * fraction, clockwise: true)
+        wedge.close()
+        UIColor.white.setFill()
+        wedge.fill()
+    } else if fraction < 0 {
+        let x = UIBezierPath()
+        x.move(to: CGPoint(x: p.x - r * 0.7, y: p.y - r * 0.7))
+        x.addLine(to: CGPoint(x: p.x + r * 0.7, y: p.y + r * 0.7))
+        x.move(to: CGPoint(x: p.x + r * 0.7, y: p.y - r * 0.7))
+        x.addLine(to: CGPoint(x: p.x - r * 0.7, y: p.y + r * 0.7))
+        x.lineWidth = 1.2
+        UIColor.white.setStroke()
+        x.stroke()
+    }
+
+    // Wind barb. Meteorological convention: the staff points towards the
+    // direction the wind is coming from, and in the northern hemisphere the
+    // barbs sit on its left when sighted from the station outward — which is
+    // -x here, with the staff drawn up the -y axis before rotation.
+    if let kt = st.windKt, let dir = st.windDir, kt >= 3 {
+        ctx.saveGState()
+        ctx.translateBy(x: p.x, y: p.y)
+        ctx.rotate(by: CGFloat(dir) * .pi / 180)
+        let staff = UIBezierPath()
+        staff.move(to: CGPoint(x: 0, y: -r))
+        staff.addLine(to: CGPoint(x: 0, y: -r - 15))
+        staff.lineWidth = 1.3
+        UIColor.white.setStroke()
+        staff.stroke()
+
+        var speed = Int((kt / 5).rounded() * 5)
+        var y: CGFloat = -r - 15            // barbs start at the far end of the staff
+        let step: CGFloat = 3.4, len: CGFloat = 7.5
+        let flags = speed / 50; speed -= flags * 50
+        let tens  = speed / 10; speed -= tens * 10
+        let fives = speed / 5
+        for _ in 0..<flags {
+            let t = UIBezierPath()
+            t.move(to: CGPoint(x: 0, y: y))
+            t.addLine(to: CGPoint(x: -len, y: y + step * 0.5))
+            t.addLine(to: CGPoint(x: 0, y: y + step))
+            t.close()
+            UIColor.white.setFill(); t.fill()
+            y += step + 1.5
+        }
+        for _ in 0..<tens {
+            let b = UIBezierPath()
+            b.move(to: CGPoint(x: 0, y: y))
+            b.addLine(to: CGPoint(x: -len, y: y + step * 0.7))
+            b.lineWidth = 1.3
+            UIColor.white.setStroke(); b.stroke()
+            y += step
+        }
+        for _ in 0..<fives {
+            // A lone half-barb sits in from the end, not on it.
+            let off: CGFloat = (tens == 0 && flags == 0) ? step : 0
+            let b = UIBezierPath()
+            b.move(to: CGPoint(x: 0, y: y + off))
+            b.addLine(to: CGPoint(x: -len * 0.5, y: y + off + step * 0.35))
+            b.lineWidth = 1.3
+            UIColor.white.setStroke(); b.stroke()
+            y += step
+        }
+        ctx.restoreGState()
+    }
+
+    func label(_ text: String, _ color: UIColor, _ at: CGPoint, size: CGFloat = 8.5) {
+        let ns = text as NSString
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: UIFont.monospacedDigitSystemFont(ofSize: size, weight: .bold),
+            .foregroundColor: color,
+            .strokeColor: UIColor.black, .strokeWidth: -3.0,
+        ]
+        let sz = ns.size(withAttributes: attrs)
+        ns.draw(at: CGPoint(x: at.x - sz.width / 2, y: at.y - sz.height / 2), withAttributes: attrs)
+    }
+
+    label("\(Int(st.tempF.rounded()))", tempColor(st.tempF), CGPoint(x: p.x - 12, y: p.y - 8))
+    if let d = st.dewF {
+        label("\(Int(d.rounded()))", UIColor(red: 0.36, green: 0.86, blue: 0.55, alpha: 1),
+              CGPoint(x: p.x - 12, y: p.y + 8))
+    }
+    if let mb = st.mslp {
+        // The standard three-digit code: tenths of a millibar, hundreds dropped.
+        let code = String(format: "%03d", Int((mb * 10).rounded()) % 1000)
+        label(code, UIColor.white.withAlphaComponent(0.9), CGPoint(x: p.x + 13, y: p.y - 8))
+    }
+    if let wx = st.wx, !wx.isEmpty {
+        let short = wx.count > 5 ? String(wx.prefix(5)) : wx
+        label(short, UIColor(red: 1.0, green: 0.85, blue: 0.3, alpha: 1),
+              CGPoint(x: p.x - 15, y: p.y), size: 7)
+    }
+}
+
 enum RadarSnapshot {
     /// A dark basemap for the region, with radar drawn over it and a marker at
     /// the watched point. Returns nil only if the map itself fails; a clear sky
@@ -174,7 +299,7 @@ enum RadarSnapshot {
     static func compose(lat: Double, lon: Double, zoom: RadarZoom, size: CGSize,
                         showReports: Bool, showTemps: Bool, showAlerts: Bool,
                         showTracks: Bool, showDiscussion: Bool,
-                        showOutlook: Bool, showFronts: Bool,
+                        showOutlook: Bool, showFronts: Bool, stationModel: Bool,
                         state: String?) async -> (image: UIImage, hasEcho: Bool)? {
         let half = zoom.halfDegrees
 
@@ -433,12 +558,21 @@ enum RadarSnapshot {
             // Tighter than the dashboard's 40px, because a widget is read closer
             // and a sparse scatter of numbers looks like missing data. Widens
             // with the view, where stations crowd together on screen.
-            let cell: CGFloat = zoom.labelSpacing
+            let cell: CGFloat = stationModel ? zoom.labelSpacing * 2.2 : zoom.labelSpacing
             for st in temps {
                 let p = snap.point(for: CLLocationCoordinate2D(latitude: st.lat, longitude: st.lon))
                 guard p.x > 0, p.y > 0, p.x < size.width, p.y < size.height else { continue }
                 let key = Int64(p.x / cell) &* 1000 &+ Int64(p.y / cell)
                 if claimed.contains(key) { continue }
+                if stationModel {
+                    // The plot needs room on every side, so keep it clear of the
+                    // frame rather than nudging it inwards like a bare number.
+                    guard p.x > 20, p.y > 22, p.x < size.width - 20, p.y < size.height - 22
+                    else { continue }
+                    claimed.insert(key)
+                    drawStationModel(st, at: p)
+                    continue
+                }
                 let text = "\(Int(st.tempF.rounded()))" as NSString
                 let attrs: [NSAttributedString.Key: Any] = [
                     .font: UIFont.monospacedDigitSystemFont(ofSize: 10, weight: .bold),

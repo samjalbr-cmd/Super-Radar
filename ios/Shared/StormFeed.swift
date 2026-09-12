@@ -17,6 +17,7 @@ struct WatchLocation: Codable {
     var showDiscussion: Bool = true
     var showOutlook: Bool = true
     var showFronts: Bool = true
+    var stationModel: Bool = false
     var zoom: RadarZoom = .county
     /// Two-letter state, resolved by the app. The national station feed is
     /// 3.4 MB; one state's network is about 100 KB, and the API accepts only one.
@@ -27,7 +28,7 @@ struct WatchLocation: Codable {
     static let fallback = WatchLocation(lat: 42.907058, lon: -85.763014, name: "Grand Rapids",
                                         showReports: true, showTemps: true, showAlerts: true,
                                         showTracks: true, showDiscussion: true,
-                                        showOutlook: true, showFronts: true,
+                                        showOutlook: true, showFronts: true, stationModel: false,
                                         zoom: .county, state: "MI")
 
     static func load() -> WatchLocation {
@@ -381,10 +382,23 @@ enum StormFeed {
         return out.sorted { ($0.live ? 1 : 0, $0.rank) < ($1.live ? 1 : 0, $1.rank) }
     }
 
+    /// A surface observation, carrying enough for the full station model.
+    ///
+    /// Coverage across a national sample: temperature, dew point, wind and sky
+    /// cover are on ~96% of ASOS sites, sea-level pressure on 40%, present
+    /// weather on 9% (it is only reported when there is weather to report).
+    /// Pressure tendency is not in this feed at all, so the trend arm of the
+    /// classic plot is the one element that cannot be drawn.
     struct Station {
         let lat: Double
         let lon: Double
         let tempF: Double
+        var dewF: Double? = nil
+        var mslp: Double? = nil
+        var windKt: Double? = nil
+        var windDir: Double? = nil
+        var sky: String? = nil      // CLR, FEW, SCT, BKN, OVC, VV
+        var wx: String? = nil       // METAR present-weather codes
     }
 
     /// The ground each state's ASOS network covers, derived once from the
@@ -480,10 +494,25 @@ enum StormFeed {
         struct FC: Decodable {
             struct F: Decodable {
                 struct G: Decodable { let coordinates: [Double] }
-                struct P: Decodable { let tmpf: Double? }
+                struct P: Decodable {
+                    let tmpf: Double?; let dwpf: Double?; let mslp: Double?
+                    let sknt: Double?; let drct: Double?
+                    let skyc1: String?; let wxcodes: WxCodes?
+                }
                 let geometry: G?; let properties: P
             }
             let features: [F]
+        }
+        // wxcodes comes back as a list of METAR groups on some sites and a
+        // single string on others.
+        struct WxCodes: Decodable {
+            let joined: String?
+            init(from decoder: Decoder) throws {
+                let c = try decoder.singleValueContainer()
+                if let s = try? c.decode(String.self) { joined = s }
+                else if let a = try? c.decode([String].self) { joined = a.joined(separator: " ") }
+                else { joined = nil }
+            }
         }
         return await withTaskGroup(of: [Station].self) { group in
             for st in states where st.count == 2 {
@@ -493,11 +522,18 @@ enum StormFeed {
                     var req = URLRequest(url: url); req.timeoutInterval = 20
                     guard let data = try? await URLSession.shared.data(for: req).0,
                           let fc = try? JSONDecoder().decode(FC.self, from: data) else { return [] }
-                    return fc.features.compactMap { f in
-                        guard let c = f.geometry?.coordinates, c.count >= 2, let t = f.properties.tmpf,
+                    return fc.features.compactMap { f -> Station? in
+                        let p = f.properties
+                        guard let c = f.geometry?.coordinates, c.count >= 2, let t = p.tmpf,
                               c[1] >= sw.latitude, c[1] <= ne.latitude,
                               c[0] >= sw.longitude, c[0] <= ne.longitude else { return nil }
-                        return Station(lat: c[1], lon: c[0], tempF: t)
+                        let sky = p.skyc1?.trimmingCharacters(in: .whitespaces)
+                        let wx = p.wxcodes?.joined?.trimmingCharacters(in: .whitespaces)
+                        return Station(lat: c[1], lon: c[0], tempF: t,
+                                       dewF: p.dwpf, mslp: p.mslp,
+                                       windKt: p.sknt, windDir: p.drct,
+                                       sky: (sky?.isEmpty ?? true) ? nil : sky,
+                                       wx: (wx?.isEmpty ?? true) ? nil : wx)
                     }
                 }
             }

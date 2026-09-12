@@ -59,4 +59,7 @@ struct RadarConfig: WidgetConfigurationIntent {
 
     @Parameter(title: "Show fronts & pressure", default: true)
     var showFronts: Bool
+
+    @Parameter(title: "Full station model", default: false)
+    var stationModel: Bool
 }
