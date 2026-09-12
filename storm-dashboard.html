@@ -151,17 +151,31 @@
   body.tv #radarStatus, body.tv #precipStatus, body.tv #afdStatus{
     font-size:15px; padding:10px 16px; border-radius:13px;
   }
-  body.tv #radarStatus{ top:28px; left:28px; }
-  body.tv #precipStatus{ top:80px; left:28px; }
-  body.tv #afdStatus{ top:132px; left:28px; }
+  body.tv #statusStack{ top:28px; left:28px; max-width:min(520px, calc(100vw - 56px)); }
   body.tv #arrival{
-    top:auto; bottom:28px; left:28px; max-width:440px; padding:16px 20px; border-left-width:5px;
+    position:absolute; top:auto; bottom:28px; left:28px;
+    max-width:440px; padding:16px 20px; border-left-width:5px;
   }
   body.tv .arr-head{ font-size:19px; }
   body.tv .arr-eta{ font-size:26px; }
   body.tv .arr-sub{ font-size:14px; }
   body.tv #radarLoop{ bottom:28px; font-size:14px; padding:11px 16px; }
   body.tv #lightningBadge{ font-size:14px; padding:9px 14px; }
+
+  @media (max-width: 560px){
+    #statusStack{ top:20px; left:12px; gap:6px; max-width:calc(100vw - 76px); }
+    #radarStatus, #precipStatus, #afdStatus{ font-size:10px; padding:6px 9px; }
+    #arrival{ padding:8px 11px; }
+    .arr-head{ font-size:11px; }
+    .arr-eta{ font-size:14px; }
+    .arr-sub{ font-size:9.5px; }
+    #radarLoop{ bottom:16px; width:calc(100vw - 24px); }
+  }
+  /* Too narrow for a centred control cluster and a left-aligned stack to share
+     the top row, so the stack drops below it. */
+  @media (max-width: 420px){
+    #statusStack{ top:66px; max-width:calc(100vw - 24px); }
+  }
 
   #loading{
     position:absolute;inset:0;background:var(--void);z-index:900;
@@ -180,19 +194,31 @@
   #settingsPanel .sw{width:11px;height:11px;border-radius:2px;flex-shrink:0;}
   #settingsPanel .dotsw{width:11px;height:11px;border-radius:50%;flex-shrink:0;}
 
+  /* The status pills stack rather than each carrying a hand-set top offset,
+     which is what let two of them land on the same pixel: afdStatus and the
+     arrival card were both pinned at top:112px, so one always covered the
+     other. The stack also caps its own width, so long lines wrap instead of
+     running off a phone. */
+  #statusStack{
+    position:absolute;top:24px;left:24px;z-index:520;
+    display:flex;flex-direction:column;align-items:flex-start;gap:8px;
+    max-width:min(340px, calc(100vw - 92px));
+    pointer-events:none;
+  }
+  #statusStack > *{ pointer-events:auto; }
+
   #radarStatus{
-    position:absolute;top:28px;left:24px;z-index:500;
-    padding:8px 12px;display:none;align-items:center;gap:8px;
+    padding:8px 12px;display:none;align-items:center;gap:8px;align-self:flex-start;max-width:100%;
     background:var(--panel);border:1px solid var(--border);border-radius:10px;
     backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
     font-family:monospace;font-size:11px;color:#F5F3EC;letter-spacing:0.03em;
   }
   #radarStatus.show{display:flex;}
+  #radarStatus, #precipStatus, #afdStatus{ flex-wrap:wrap; row-gap:2px; }
   /* Second pill under the radar status: which precipitation-accumulation layer
      is live and the exact window it measures. */
   #precipStatus{
-    position:absolute;top:70px;left:24px;z-index:500;max-width:calc(100vw - 48px);
-    padding:7px 11px;display:none;align-items:center;gap:7px;
+    padding:7px 11px;display:none;align-items:center;gap:7px;align-self:flex-start;max-width:100%;
     background:var(--panel);border:1px solid var(--border);border-radius:10px;
     backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
     font-family:monospace;font-size:11px;color:#F5F3EC;letter-spacing:0.03em;
@@ -200,8 +226,7 @@
   #precipStatus.show{display:flex;}
   /* The headline answer: is something coming here, and when. */
   #arrival{
-    position:absolute;top:112px;left:24px;z-index:520;max-width:min(300px, calc(100vw - 48px));
-    display:none;flex-direction:column;gap:2px;padding:10px 13px;
+    display:none;flex-direction:column;gap:2px;padding:10px 13px;align-self:flex-start;max-width:100%;
     background:var(--panel);border:1px solid var(--border);border-left:3px solid var(--amber);
     border-radius:10px;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
   }
@@ -247,8 +272,7 @@
   .trk-t{ left:6px; top:-6px; font-size:calc(10px * var(--lblscale, 1)); opacity:0.9; }
 
   #afdStatus{
-    position:absolute;top:112px;left:24px;z-index:500;max-width:calc(100vw - 48px);
-    padding:7px 11px;display:none;align-items:center;gap:7px;
+    padding:7px 11px;display:none;align-items:center;gap:7px;align-self:flex-start;max-width:100%;
     background:var(--panel);border:1px solid var(--border);border-radius:10px;
     backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
     font-family:monospace;font-size:11px;color:var(--dim);letter-spacing:0.03em;
@@ -490,9 +514,12 @@
   <button onclick="toggleFullscreen()" title="Toggle fullscreen">⛶</button>
 </div>
 
-<div id="radarStatus"><span class="dot"></span><span id="radarStatusText">NEXRAD N0Q</span></div>
-<div id="precipStatus"><span class="sw" id="precipSw"></span><span id="precipStatusText"></span></div>
-<div id="arrival"></div>
+<div id="statusStack">
+  <div id="radarStatus"><span class="dot"></span><span id="radarStatusText">NEXRAD N0Q</span></div>
+  <div id="precipStatus"><span class="sw" id="precipSw"></span><span id="precipStatusText"></span></div>
+  <div id="afdStatus"><span class="sw" style="background:#F2B705"></span><span id="afdStatusText"></span></div>
+  <div id="arrival"></div>
+</div>
 <div id="radarLoop">
   <button onclick="stepRadarFrame(-1)" title="Previous frame">◀</button>
   <button id="radarPlayBtn" onclick="toggleRadarPlay()" title="Play / pause">▶</button>
@@ -501,7 +528,6 @@
          oninput="stopRadarPlay(); showRadarFrame(+this.value)">
   <span id="radarLoopTime"></span>
 </div>
-<div id="afdStatus"><span class="sw" style="background:#F2B705"></span><span id="afdStatusText"></span></div>
 
 <div id="feedTab" onclick="toggleFeed()">EVENTS</div>
 <div id="feedPanel">

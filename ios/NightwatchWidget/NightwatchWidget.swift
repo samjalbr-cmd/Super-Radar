@@ -1,45 +1,61 @@
 import WidgetKit
 import SwiftUI
 
+// MARK: - Shared timeline
+
 struct RadarEntry: TimelineEntry {
     let date: Date
     let place: String
     let imageData: Data?
     let approach: Approach?
-    /// Set when the fetch failed, so the widget can say so rather than look calm.
+    /// True when the fetch failed, so a widget can say so rather than look calm.
     let stale: Bool
 }
 
+/// One provider feeds both widgets; `needsImage` keeps the text-only widget from
+/// paying for a radar render it will never draw.
 struct Provider: TimelineProvider {
+    let needsImage: Bool
+
     func placeholder(in context: Context) -> RadarEntry {
         RadarEntry(date: Date(), place: "—", imageData: nil, approach: nil, stale: false)
     }
-
     func getSnapshot(in context: Context, completion: @escaping (RadarEntry) -> Void) {
-        Task { completion(await entry(pixels: context.family == .systemSmall ? 320 : 600)) }
+        Task { completion(await entry(for: context.family)) }
     }
-
     func getTimeline(in context: Context, completion: @escaping (Timeline<RadarEntry>) -> Void) {
         Task {
-            let e = await entry(pixels: context.family == .systemSmall ? 320 : 600)
-            // Ask for 10 minutes; iOS will grant what its budget allows. When a
-            // storm is inbound the number on screen is worth refreshing sooner.
-            let minutes = (e.approach?.minutes ?? 60) < 30 ? 10 : 20
-            let next = Calendar.current.date(byAdding: .minute, value: minutes, to: Date()) ?? Date()
+            let e = await entry(for: context.family)
+            // Ask for sooner when something is close. iOS grants what its budget
+            // allows, so this is a request rather than a promise.
+            let mins = (e.approach?.minutes ?? 60) < 30 ? 10 : 20
+            let next = Calendar.current.date(byAdding: .minute, value: mins, to: Date()) ?? Date()
             completion(Timeline(entries: [e], policy: .after(next)))
         }
     }
 
-    private func entry(pixels: Int) async -> RadarEntry {
+    private func entry(for family: WidgetFamily) async -> RadarEntry {
         let loc = WatchLocation.load()
-        async let image = StormFeed.radarImage(lat: loc.lat, lon: loc.lon, halfDegrees: 0.9, pixels: pixels)
-        async let cells = try? await StormFeed.cells()
-        let (img, list) = await (image, cells)
-        let approach = list.flatMap { StormArrival.soonest(cells: $0, lat: loc.lat, lon: loc.lon) }
-        return RadarEntry(date: Date(), place: loc.name, imageData: img,
-                          approach: approach, stale: img == nil && list == nil)
+        let pixels: Int
+        switch family {
+        case .systemSmall:  pixels = 400
+        case .systemMedium: pixels = 700
+        default:            pixels = 800
+        }
+        // A large widget covers more ground than a small one usefully can.
+        let half: Double = family == .systemLarge ? 1.4 : 0.9
+        async let img = needsImage
+            ? StormFeed.radarImage(lat: loc.lat, lon: loc.lon, halfDegrees: half, pixels: pixels)
+            : nil
+        async let list = try? await StormFeed.cells()
+        let (image, cells) = await (img, list)
+        let approach = cells.flatMap { StormArrival.soonest(cells: $0, lat: loc.lat, lon: loc.lon) }
+        return RadarEntry(date: Date(), place: loc.name, imageData: image,
+                          approach: approach, stale: cells == nil)
     }
 }
+
+private let panel = Color(red: 0.04, green: 0.055, blue: 0.10)
 
 /// Named for the hazard, not `tint`, which collides with SwiftUI's View modifier.
 private func hazardColor(_ a: Approach) -> Color {
@@ -49,67 +65,124 @@ private func hazardColor(_ a: Approach) -> Color {
     return Color(red: 0.95, green: 0.72, blue: 0.02)
 }
 
-struct NightwatchWidgetView: View {
+// MARK: - Radar widget (picture only)
+
+struct RadarWidgetView: View {
+    let entry: RadarEntry
+
+    var body: some View {
+        ZStack(alignment: .bottomTrailing) {
+            if let d = entry.imageData, let ui = UIImage(data: d) {
+                Image(uiImage: ui).resizable().scaledToFill()
+            } else {
+                panel
+                Text(entry.stale ? "No data" : "…")
+                    .font(.system(size: 13, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.5))
+            }
+            // Your location, so the picture has an anchor.
+            Circle()
+                .fill(Color(red: 0.95, green: 0.72, blue: 0.02))
+                .frame(width: 7, height: 7)
+                .shadow(color: .black, radius: 2)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            Text(entry.date, style: .time)
+                .font(.system(size: 9, design: .monospaced))
+                .foregroundStyle(.white.opacity(0.75))
+                .padding(.horizontal, 5).padding(.vertical, 2)
+                .background(.black.opacity(0.45), in: Capsule())
+                .padding(6)
+        }
+        .containerBackground(panel, for: .widget)
+    }
+}
+
+struct RadarWidget: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "NightwatchRadar", provider: Provider(needsImage: true)) { entry in
+            RadarWidgetView(entry: entry)
+        }
+        .configurationDisplayName("Radar")
+        .description("Live radar around your location.")
+        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
+    }
+}
+
+// MARK: - Arrival widget (text only)
+
+struct ArrivalWidgetView: View {
     @Environment(\.widgetFamily) private var family
     let entry: RadarEntry
 
     var body: some View {
-        ZStack(alignment: .bottomLeading) {
-            if let d = entry.imageData, let ui = UIImage(data: d) {
-                Image(uiImage: ui).resizable().scaledToFill()
-            } else {
-                Color(red: 0.04, green: 0.055, blue: 0.10)
-            }
-            LinearGradient(colors: [.black.opacity(0.85), .clear],
-                           startPoint: .bottom, endPoint: .center)
-            content
-                .padding(.horizontal, 12)
-                .padding(.bottom, 10)
-        }
-        .containerBackground(Color(red: 0.04, green: 0.055, blue: 0.10), for: .widget)
-    }
-
-    @ViewBuilder private var content: some View {
-        if let a = entry.approach {
-            VStack(alignment: .leading, spacing: 1) {
+        VStack(alignment: .leading, spacing: 2) {
+            if let a = entry.approach {
                 Text(a.headline)
-                    .font(.system(size: family == .systemSmall ? 10 : 12, weight: .heavy))
+                    .font(.system(size: family == .systemSmall ? 11 : 13, weight: .heavy))
                     .foregroundStyle(hazardColor(a))
-                Text(a.minutes <= 0 ? "now" : "\(Int(a.minutes.rounded())) min")
-                    .font(.system(size: family == .systemSmall ? 22 : 28, weight: .bold))
-                    .foregroundStyle(.white)
-                if family != .systemSmall {
-                    Text(a.detail).font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.7))
+                    .minimumScaleFactor(0.7)
+                    .lineLimit(1)
+                HStack(alignment: .firstTextBaseline, spacing: 5) {
+                    Text(a.minutes <= 0 ? "now" : "\(Int(a.minutes.rounded()))")
+                        .font(.system(size: family == .systemSmall ? 40 : 52, weight: .bold))
+                        .foregroundStyle(.white)
+                    if a.minutes > 0 {
+                        Text("min").font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.6))
+                    }
                 }
+                .minimumScaleFactor(0.6)
+                .lineLimit(1)
+                Text(a.detail)
+                    .font(.system(size: family == .systemSmall ? 9.5 : 11, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.72))
+                    .minimumScaleFactor(0.7)
+                    .lineLimit(family == .systemSmall ? 2 : 1)
+                Spacer(minLength: 0)
                 Text(a.missMiles <= 3 ? "tracking over you" : "~\(a.missMiles) mi away")
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.55))
-            }
-        } else {
-            VStack(alignment: .leading, spacing: 1) {
+                    .font(.system(size: 9.5, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.5))
+                    .lineLimit(1)
+            } else {
                 Text(entry.place.uppercased())
                     .font(.system(size: 10, weight: .heavy))
-                    .foregroundStyle(.white.opacity(0.55))
-                Text(entry.stale ? "No data" : "Nothing inbound")
-                    .font(.system(size: family == .systemSmall ? 15 : 19, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.5))
+                    .minimumScaleFactor(0.7).lineLimit(1)
+                Spacer(minLength: 0)
+                Text(entry.stale ? "No data" : "All clear")
+                    .font(.system(size: family == .systemSmall ? 26 : 32, weight: .bold))
                     .foregroundStyle(.white)
-                Text(entry.date, style: .time)
+                    .minimumScaleFactor(0.6).lineLimit(1)
+                Text(entry.stale ? "couldn't reach the feed" : "nothing inbound")
                     .font(.system(size: 10, design: .monospaced))
                     .foregroundStyle(.white.opacity(0.5))
+                    .minimumScaleFactor(0.7).lineLimit(1)
+                Spacer(minLength: 0)
+                Text(entry.date, style: .time)
+                    .font(.system(size: 9.5, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.4))
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .containerBackground(panel, for: .widget)
+    }
+}
+
+struct ArrivalWidget: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "NightwatchArrival", provider: Provider(needsImage: false)) { entry in
+            ArrivalWidgetView(entry: entry)
+        }
+        .configurationDisplayName("Storm Arrival")
+        .description("How long until the next storm reaches you.")
+        .supportedFamilies([.systemSmall, .systemMedium])
     }
 }
 
 @main
-struct NightwatchWidget: Widget {
-    var body: some WidgetConfiguration {
-        StaticConfiguration(kind: "NightwatchRadar", provider: Provider()) { entry in
-            NightwatchWidgetView(entry: entry)
-        }
-        .configurationDisplayName("Storm Arrival")
-        .description("Radar near you, and the next storm heading your way.")
-        .supportedFamilies([.systemSmall, .systemMedium])
+struct NightwatchWidgets: WidgetBundle {
+    var body: some Widget {
+        RadarWidget()
+        ArrivalWidget()
     }
 }
