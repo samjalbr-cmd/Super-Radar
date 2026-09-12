@@ -53,4 +53,10 @@ struct RadarConfig: WidgetConfigurationIntent {
 
     @Parameter(title: "Show discussion areas", default: true)
     var showDiscussion: Bool
+
+    @Parameter(title: "Show SPC outlook", default: true)
+    var showOutlook: Bool
+
+    @Parameter(title: "Show fronts & pressure", default: true)
+    var showFronts: Bool
 }

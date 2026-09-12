@@ -1478,6 +1478,8 @@ function syncAppSettings(){
         showAlerts: !!(hazardVisible.tornado || hazardVisible.thunderstorm || hazardVisible.flood),
         showTracks: !!tracksOn,
         showDiscussion: !!afdAreasOn,
+        showOutlook: !!(spcVisible.outlook || spcVisible.mcd),
+        showFronts: !!sfcOn,
       });
     }catch(e){}
   }, 400);

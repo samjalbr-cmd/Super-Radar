@@ -54,6 +54,96 @@ private func tempColor(_ f: Double) -> UIColor {
     }
 }
 
+/// Which side of a front its symbols go on. WPC digitises fronts so the left of
+/// the direction of travel is the leading edge, matching the dashboard.
+private let pipOnLeft = true
+
+private enum PipShape { case triangle, arc, alternating, both }
+
+private struct FrontStyle {
+    let color: UIColor
+    let weight: CGFloat
+    let pip: PipShape?
+    let dash: [CGFloat]?
+}
+
+private func frontStyle(_ k: MapLayers.FrontKind) -> FrontStyle {
+    switch k {
+    case .COLD:  return FrontStyle(color: UIColor(red: 0.23, green: 0.63, blue: 1.00, alpha: 1),
+                                   weight: 2.4, pip: .triangle, dash: nil)
+    case .WARM:  return FrontStyle(color: UIColor(red: 0.88, green: 0.02, blue: 0.00, alpha: 1),
+                                   weight: 2.4, pip: .arc, dash: nil)
+    case .STNRY: return FrontStyle(color: UIColor(red: 0.23, green: 0.63, blue: 1.00, alpha: 1),
+                                   weight: 2.4, pip: .alternating, dash: nil)
+    case .OCFNT: return FrontStyle(color: UIColor(red: 0.69, green: 0.31, blue: 1.00, alpha: 1),
+                                   weight: 2.4, pip: .both, dash: nil)
+    case .TROF:  return FrontStyle(color: UIColor(red: 0.85, green: 0.60, blue: 0.25, alpha: 1),
+                                   weight: 1.6, pip: nil, dash: [7, 5])
+    }
+}
+
+private func inFrame(_ p: CGPoint, _ size: CGSize) -> Bool {
+    p.x > -20 && p.y > -20 && p.x < size.width + 20 && p.y < size.height + 20
+}
+
+private func ringPath(_ ring: [CLLocationCoordinate2D], _ snap: MKMapSnapshotter.Snapshot) -> UIBezierPath {
+    let path = UIBezierPath()
+    for (i, c) in ring.enumerated() {
+        let p = snap.point(for: c)
+        i == 0 ? path.move(to: p) : path.addLine(to: p)
+    }
+    path.close()
+    return path
+}
+
+/// Walk a polyline in screen space and drop a mark every `gap` points, so the
+/// symbols stay evenly spaced regardless of how the front is digitised.
+private func pipMarks(_ pts: [CGPoint], every gap: CGFloat) -> [(at: CGPoint, angle: CGFloat)] {
+    var out: [(CGPoint, CGFloat)] = []
+    var carry = gap * 0.55          // start part-way in, not on the end
+    for i in 0..<(pts.count - 1) {
+        let a = pts[i], b = pts[i + 1]
+        let dx = b.x - a.x, dy = b.y - a.y
+        let len = (dx * dx + dy * dy).squareRoot()
+        if len < 0.5 { continue }
+        let ang = atan2(dy, dx)
+        var d = carry
+        while d < len {
+            let t = d / len
+            out.append((CGPoint(x: a.x + dx * t, y: a.y + dy * t), ang))
+            d += gap
+        }
+        carry = max(0, carry - len)
+        if carry == 0 { carry = gap - (len - carry).truncatingRemainder(dividingBy: gap) }
+    }
+    return out
+}
+
+/// A front symbol, rotated to the direction of travel so it always lands on the
+/// same side of the line.
+private func drawPip(at p: CGPoint, angle: CGFloat, shape: PipShape, color: UIColor) {
+    guard let ctx = UIGraphicsGetCurrentContext() else { return }
+    ctx.saveGState()
+    ctx.translateBy(x: p.x, y: p.y)
+    ctx.rotate(by: angle + (pipOnLeft ? .pi : 0))
+    let w: CGFloat = 11, h: CGFloat = 7
+    let path = UIBezierPath()
+    if shape == .arc {
+        path.move(to: CGPoint(x: -w / 2, y: 0))
+        path.addArc(withCenter: .zero, radius: w / 2,
+                    startAngle: .pi, endAngle: 0, clockwise: true)
+        path.close()
+    } else {
+        path.move(to: CGPoint(x: -w / 2, y: 0))
+        path.addLine(to: CGPoint(x: 0, y: -h))
+        path.addLine(to: CGPoint(x: w / 2, y: 0))
+        path.close()
+    }
+    color.setFill()
+    path.fill()
+    ctx.restoreGState()
+}
+
 enum RadarSnapshot {
     /// A dark basemap for the region, with radar drawn over it and a marker at
     /// the watched point. Returns nil only if the map itself fails; a clear sky
@@ -62,6 +152,7 @@ enum RadarSnapshot {
     static func compose(lat: Double, lon: Double, zoom: RadarZoom, size: CGSize,
                         showReports: Bool, showTemps: Bool, showAlerts: Bool,
                         showTracks: Bool, showDiscussion: Bool,
+                        showOutlook: Bool, showFronts: Bool,
                         state: String?) async -> (image: UIImage, hasEcho: Bool)? {
         let half = zoom.halfDegrees
 
@@ -109,10 +200,40 @@ enum RadarSnapshot {
             ? await StormFeed.stations(states: states, sw: sw, ne: ne) : []
         let alerts = showAlerts ? await StormFeed.alerts(states: states, sw: sw, ne: ne) : []
         let afd = showDiscussion ? await StormFeed.afdAreas(sw: sw, ne: ne) : []
+        let outlook = showOutlook ? await MapLayers.outlook(sw: sw, ne: ne) : []
+        let mcds = showOutlook ? await MapLayers.mesoscaleDiscussions(sw: sw, ne: ne) : []
+        let sfc = showFronts ? await MapLayers.surface() : nil
         let cells: [StormCell] = showTracks ? ((try? await StormFeed.cells()) ?? []) : []
 
         let out = UIGraphicsImageRenderer(size: size).image { ctx in
             snap.image.draw(at: .zero)
+
+            // The SPC outlook is the broadest context on the map, so it sits
+            // furthest back. Fill stays very light because the risk areas nest
+            // and their opacity would otherwise compound.
+            for o in outlook {
+                for ring in o.rings {
+                    let path = ringPath(ring, snap)
+                    o.fill.withAlphaComponent(0.16).setFill()
+                    path.fill()
+                    o.stroke.setStroke()
+                    path.lineWidth = 2
+                    path.stroke()
+                }
+            }
+
+            // Mesoscale discussions: short-fuse "something is developing here".
+            for m in mcds {
+                for ring in m.rings {
+                    let path = ringPath(ring, snap)
+                    UIColor(red: 0.95, green: 0.72, blue: 0.02, alpha: 0.07).setFill()
+                    path.fill()
+                    UIColor(red: 0.95, green: 0.72, blue: 0.02, alpha: 1).setStroke()
+                    path.lineWidth = 2
+                    path.setLineDash([4, 3], count: 2, phase: 0)
+                    path.stroke()
+                }
+            }
 
             // Warnings sit under the radar, as they do on the dashboard.
             for a in alerts {
@@ -137,6 +258,69 @@ enum RadarSnapshot {
                 let rect = CGRect(x: min(p0.x, p1.x), y: min(p0.y, p1.y),
                                   width: abs(p1.x - p0.x), height: abs(p1.y - p0.y))
                 radar.draw(in: rect, blendMode: .normal, alpha: 0.75)
+            }
+
+            // Surface analysis: fronts with their pips, and pressure centres.
+            if let sfc {
+                for f in sfc.fronts {
+                    let pts = f.points.map { snap.point(for: $0) }
+                    guard pts.count >= 2, pts.contains(where: { inFrame($0, size) }) else { continue }
+                    let style = frontStyle(f.kind)
+                    let line = UIBezierPath()
+                    line.move(to: pts[0])
+                    for p in pts.dropFirst() { line.addLine(to: p) }
+                    line.lineWidth = style.weight
+                    line.lineJoinStyle = .round
+                    style.color.setStroke()
+                    if let dash = style.dash { line.setLineDash(dash, count: dash.count, phase: 0) }
+                    line.stroke()
+                    // A stationary front is blue one way and red the other;
+                    // a red dash laid over the blue line gives that in one pass.
+                    if f.kind == .STNRY {
+                        let over = line.copy() as! UIBezierPath
+                        UIColor(red: 0.88, green: 0.02, blue: 0, alpha: 1).setStroke()
+                        over.setLineDash([10, 10], count: 2, phase: 0)
+                        over.stroke()
+                    }
+                    guard let pip = style.pip else { continue }
+                    for (i, m) in pipMarks(pts, every: 30).enumerated() where inFrame(m.at, size) {
+                        var shape = pip
+                        var color = style.color
+                        if pip == .alternating {
+                            shape = i % 2 == 1 ? .arc : .triangle
+                            color = i % 2 == 1 ? UIColor(red: 0.88, green: 0.02, blue: 0, alpha: 1)
+                                               : UIColor(red: 0.23, green: 0.63, blue: 1, alpha: 1)
+                        } else if pip == .both {
+                            shape = i % 2 == 1 ? .arc : .triangle
+                        }
+                        drawPip(at: m.at, angle: m.angle, shape: shape, color: color)
+                    }
+                }
+                for c in sfc.centers {
+                    let p = snap.point(for: c.point)
+                    guard inFrame(p, size) else { continue }
+                    let isH = c.isHigh
+                    let color = isH ? UIColor(red: 0.23, green: 0.44, blue: 0.88, alpha: 1)
+                                    : UIColor(red: 0.88, green: 0.02, blue: 0, alpha: 1)
+                    let letter = (isH ? "H" : "L") as NSString
+                    let lAttrs: [NSAttributedString.Key: Any] = [
+                        .font: UIFont.systemFont(ofSize: 19, weight: .heavy),
+                        .foregroundColor: color,
+                        .strokeColor: UIColor.black, .strokeWidth: -3.0,
+                    ]
+                    let lz = letter.size(withAttributes: lAttrs)
+                    letter.draw(at: CGPoint(x: p.x - lz.width / 2, y: p.y - lz.height / 2),
+                                withAttributes: lAttrs)
+                    let mb = "\(c.millibars)" as NSString
+                    let mAttrs: [NSAttributedString.Key: Any] = [
+                        .font: UIFont.monospacedDigitSystemFont(ofSize: 8, weight: .bold),
+                        .foregroundColor: UIColor.white.withAlphaComponent(0.85),
+                        .strokeColor: UIColor.black, .strokeWidth: -3.0,
+                    ]
+                    let mz = mb.size(withAttributes: mAttrs)
+                    mb.draw(at: CGPoint(x: p.x - mz.width / 2, y: p.y + lz.height / 2 - 2),
+                            withAttributes: mAttrs)
+                }
             }
 
             // Forecast-discussion areas sit above the radar, since the point is

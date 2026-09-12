@@ -15,6 +15,8 @@ struct WatchLocation: Codable {
     var showAlerts: Bool = true
     var showTracks: Bool = true
     var showDiscussion: Bool = true
+    var showOutlook: Bool = true
+    var showFronts: Bool = true
     var zoom: RadarZoom = .county
     /// Two-letter state, resolved by the app. The national station feed is
     /// 3.4 MB; one state's network is about 100 KB, and the API accepts only one.
@@ -25,6 +27,7 @@ struct WatchLocation: Codable {
     static let fallback = WatchLocation(lat: 42.907058, lon: -85.763014, name: "Grand Rapids",
                                         showReports: true, showTemps: true, showAlerts: true,
                                         showTracks: true, showDiscussion: true,
+                                        showOutlook: true, showFronts: true,
                                         zoom: .county, state: "MI")
 
     static func load() -> WatchLocation {
@@ -255,7 +258,7 @@ enum StormFeed {
                     if let r = zones[z] { rings.append(contentsOf: r) }
                 }
             }
-            rings = rings.filter { overlaps($0, sw: sw, ne: ne) }
+            rings = rings.filter { boxOverlaps($0, sw: sw, ne: ne) }
             guard !rings.isEmpty else { return nil }
             return AlertArea(rings: rings, color: alertColor(event),
                              isWatch: event.lowercased().contains("watch"))
@@ -264,7 +267,7 @@ enum StormFeed {
 
     /// Bounding-box overlap rather than a vertex-in-box test, so a zone larger
     /// than the view still counts as visible.
-    private static func overlaps(_ ring: [CLLocationCoordinate2D],
+    static func boxOverlaps(_ ring: [CLLocationCoordinate2D],
                                  sw: CLLocationCoordinate2D, ne: CLLocationCoordinate2D) -> Bool {
         guard let first = ring.first else { return false }
         var minLat = first.latitude, maxLat = first.latitude
@@ -350,7 +353,7 @@ enum StormFeed {
                 let ring = pts.compactMap { p in
                     p.count >= 2 ? CLLocationCoordinate2D(latitude: p[0], longitude: p[1]) : nil
                 }
-                guard ring.count >= 3, overlaps(ring, sw: sw, ne: ne) else { continue }
+                guard ring.count >= 3, boxOverlaps(ring, sw: sw, ne: ne) else { continue }
                 let (color, rank) = afdHazards[(a.hazard ?? "").lowercased()]
                     ?? (UIColor(red: 0.54, green: 0.58, blue: 0.65, alpha: 1), 1)
                 out.append(AfdArea(ring: ring, label: a.label ?? a.hazard ?? "",

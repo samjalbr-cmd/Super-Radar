@@ -7,7 +7,9 @@
 
 /* Begin PBXBuildFile section */
 		4C41557668914DF1FAB55CF1 /* StormArrival.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77916E83D2402B94D33B6D55 /* StormArrival.swift */; };
+		5C2130AEFCBCD23467D171CB /* MapLayers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30CD3E342E1A5F5A38B0A2AF /* MapLayers.swift */; };
 		CE5A847CA4EEE0D7E4788907 /* StormArrival.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77916E83D2402B94D33B6D55 /* StormArrival.swift */; };
+		9BC865300AD0199732828DC7 /* MapLayers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30CD3E342E1A5F5A38B0A2AF /* MapLayers.swift */; };
 		8D918BB3CE61686FE43931CF /* StormFeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C1EED00B753D2D565882EAF /* StormFeed.swift */; };
 		CFD7AAADAACC0B90812572A4 /* StormFeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C1EED00B753D2D565882EAF /* StormFeed.swift */; };
 		7F388D28228154167971DADE /* RadarSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18B7B84248E12EDD60AC67E /* RadarSnapshot.swift */; };
@@ -20,6 +22,7 @@
 
 /* Begin PBXFileReference section */
 		77916E83D2402B94D33B6D55 /* StormArrival.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StormArrival.swift; sourceTree = "<group>"; };
+		30CD3E342E1A5F5A38B0A2AF /* MapLayers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapLayers.swift; sourceTree = "<group>"; };
 		1C1EED00B753D2D565882EAF /* StormFeed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StormFeed.swift; sourceTree = "<group>"; };
 		A18B7B84248E12EDD60AC67E /* RadarSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RadarSnapshot.swift; sourceTree = "<group>"; };
 		0B71028279A47770BA4B9806 /* NightwatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NightwatchApp.swift; sourceTree = "<group>"; };
@@ -66,6 +69,7 @@
 			isa = PBXGroup;
 			children = (
 				77916E83D2402B94D33B6D55 /* StormArrival.swift */,
+				30CD3E342E1A5F5A38B0A2AF /* MapLayers.swift */,
 				1C1EED00B753D2D565882EAF /* StormFeed.swift */,
 				A18B7B84248E12EDD60AC67E /* RadarSnapshot.swift */,
 			);
@@ -174,6 +178,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				4C41557668914DF1FAB55CF1 /* StormArrival.swift */,
+				5C2130AEFCBCD23467D171CB /* MapLayers.swift */,
 				8D918BB3CE61686FE43931CF /* StormFeed.swift */,
 				7F388D28228154167971DADE /* RadarSnapshot.swift */,
 				55F30F12116D98E343D3B6E5 /* NightwatchApp.swift */,
@@ -185,6 +190,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				CE5A847CA4EEE0D7E4788907 /* StormArrival.swift */,
+				9BC865300AD0199732828DC7 /* MapLayers.swift */,
 				CFD7AAADAACC0B90812572A4 /* StormFeed.swift */,
 				B52F183A0D297D5716BE344E /* RadarSnapshot.swift */,
 				A6CC8C1358D604E4CE07BCCD /* NightwatchWidget.swift */,
