@@ -172,9 +172,13 @@ private func drawPip(at p: CGPoint, angle: CGFloat, shape: PipShape, color: UICo
 ///
 /// Pressure tendency, the lower-right arm of the textbook plot, is not carried
 /// by this feed and is the one element omitted.
+/// The plot's drawn extent, measured from the offsets above: text reaches
+/// ±9.6pt horizontally and the staff ~11pt above the centre.
+private let stationPlotSize = CGSize(width: 19, height: 20)
+
 private func drawStationModel(_ st: StormFeed.Station, at p: CGPoint) {
     guard let ctx = UIGraphicsGetCurrentContext() else { return }
-    let r: CGFloat = 3.4
+    let r: CGFloat = 2.8
 
     // Sky cover: the circle is filled in proportion to the reported coverage.
     let ring = UIBezierPath(arcCenter: p, radius: r, startAngle: 0, endAngle: .pi * 2, clockwise: true)
@@ -191,7 +195,7 @@ private func drawStationModel(_ st: StormFeed.Station, at p: CGPoint) {
     default:                  fraction = -1      // VV — obscured
     }
     UIColor.white.setStroke()
-    ring.lineWidth = 1.0
+    ring.lineWidth = 0.9
     ring.stroke()
     if fraction > 0 {
         let wedge = UIBezierPath()
@@ -222,14 +226,14 @@ private func drawStationModel(_ st: StormFeed.Station, at p: CGPoint) {
         ctx.rotate(by: CGFloat(dir) * .pi / 180)
         let staff = UIBezierPath()
         staff.move(to: CGPoint(x: 0, y: -r))
-        staff.addLine(to: CGPoint(x: 0, y: -r - 11))
-        staff.lineWidth = 1.1
+        staff.addLine(to: CGPoint(x: 0, y: -r - 8))
+        staff.lineWidth = 1.0
         UIColor.white.setStroke()
         staff.stroke()
 
         var speed = Int((kt / 5).rounded() * 5)
-        var y: CGFloat = -r - 11            // barbs start at the far end of the staff
-        let step: CGFloat = 2.6, len: CGFloat = 5.6
+        var y: CGFloat = -r - 8             // barbs start at the far end of the staff
+        let step: CGFloat = 2.2, len: CGFloat = 4.6
         let flags = speed / 50; speed -= flags * 50
         let tens  = speed / 10; speed -= tens * 10
         let fives = speed / 5
@@ -263,7 +267,7 @@ private func drawStationModel(_ st: StormFeed.Station, at p: CGPoint) {
         ctx.restoreGState()
     }
 
-    func label(_ text: String, _ color: UIColor, _ at: CGPoint, size: CGFloat = 7) {
+    func label(_ text: String, _ color: UIColor, _ at: CGPoint, size: CGFloat = 6) {
         let ns = text as NSString
         let attrs: [NSAttributedString.Key: Any] = [
             .font: UIFont.monospacedDigitSystemFont(ofSize: size, weight: .bold),
@@ -274,20 +278,20 @@ private func drawStationModel(_ st: StormFeed.Station, at p: CGPoint) {
         ns.draw(at: CGPoint(x: at.x - sz.width / 2, y: at.y - sz.height / 2), withAttributes: attrs)
     }
 
-    label("\(Int(st.tempF.rounded()))", tempColor(st.tempF), CGPoint(x: p.x - 9, y: p.y - 6))
+    label("\(Int(st.tempF.rounded()))", tempColor(st.tempF), CGPoint(x: p.x - 6.5, y: p.y - 5))
     if let d = st.dewF {
         label("\(Int(d.rounded()))", UIColor(red: 0.36, green: 0.86, blue: 0.55, alpha: 1),
-              CGPoint(x: p.x - 9, y: p.y + 6))
+              CGPoint(x: p.x - 6.5, y: p.y + 5))
     }
     if let mb = st.mslp {
         // The standard three-digit code: tenths of a millibar, hundreds dropped.
         let code = String(format: "%03d", Int((mb * 10).rounded()) % 1000)
-        label(code, UIColor.white.withAlphaComponent(0.9), CGPoint(x: p.x + 10, y: p.y - 6))
+        label(code, UIColor.white.withAlphaComponent(0.9), CGPoint(x: p.x + 6.5, y: p.y - 5))
     }
     if let wx = st.wx, !wx.isEmpty {
         let short = wx.count > 5 ? String(wx.prefix(5)) : wx
         label(short, UIColor(red: 1.0, green: 0.85, blue: 0.3, alpha: 1),
-              CGPoint(x: p.x - 12, y: p.y), size: 6)
+              CGPoint(x: p.x - 9, y: p.y), size: 5.5)
     }
 }
 
@@ -555,6 +559,7 @@ enum RadarSnapshot {
             // Temperatures, thinned in screen space so the labels stay readable —
             // the same trick the dashboard uses for its station layer.
             var claimed = Set<Int64>()
+            var placed: [CGRect] = []      // station-model footprints already drawn
             // Tighter than the dashboard's 40px, because a widget is read closer
             // and a sparse scatter of numbers looks like missing data. Widens
             // with the view, where stations crowd together on screen.
@@ -563,13 +568,23 @@ enum RadarSnapshot {
                 let p = snap.point(for: CLLocationCoordinate2D(latitude: st.lat, longitude: st.lon))
                 guard p.x > 0, p.y > 0, p.x < size.width, p.y < size.height else { continue }
                 let key = Int64(p.x / cell) &* 1000 &+ Int64(p.y / cell)
-                if claimed.contains(key) { continue }
+                if !stationModel && claimed.contains(key) { continue }
                 if stationModel {
                     // The plot needs room on every side, so keep it clear of the
                     // frame rather than nudging it inwards like a bare number.
-                    guard p.x > 15, p.y > 17, p.x < size.width - 15, p.y < size.height - 17
+                    guard p.x > 11, p.y > 12, p.x < size.width - 11, p.y < size.height - 12
                     else { continue }
-                    claimed.insert(key)
+                    // Packed against what is already drawn rather than bucketed
+                    // into a grid. A grid reserves a whole cell for a plot sitting
+                    // anywhere inside it, so a station near a corner blocks the
+                    // space its neighbour could have used; testing the actual
+                    // footprint fits appreciably more in without overlap.
+                    let rect = CGRect(x: p.x - stationPlotSize.width / 2 - 1,
+                                      y: p.y - stationPlotSize.height / 2 - 1,
+                                      width: stationPlotSize.width + 2,
+                                      height: stationPlotSize.height + 2)
+                    if placed.contains(where: { $0.intersects(rect) }) { continue }
+                    placed.append(rect)
                     drawStationModel(st, at: p)
                     continue
                 }
