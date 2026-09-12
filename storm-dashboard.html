@@ -1477,6 +1477,7 @@ function syncAppSettings(){
         showReports: !!spcVisible.lsr,
         showAlerts: !!(hazardVisible.tornado || hazardVisible.thunderstorm || hazardVisible.flood),
         showTracks: !!tracksOn,
+        showDiscussion: !!afdAreasOn,
       });
     }catch(e){}
   }, 400);

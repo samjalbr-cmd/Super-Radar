@@ -45,9 +45,12 @@ struct RadarConfig: WidgetConfigurationIntent {
     @Parameter(title: "Show temperatures", default: true)
     var showTemps: Bool
 
-    @Parameter(title: "Show warnings", default: true)
+    @Parameter(title: "Show watches & warnings", default: true)
     var showAlerts: Bool
 
     @Parameter(title: "Show storm tracks", default: true)
     var showTracks: Bool
+
+    @Parameter(title: "Show discussion areas", default: true)
+    var showDiscussion: Bool
 }

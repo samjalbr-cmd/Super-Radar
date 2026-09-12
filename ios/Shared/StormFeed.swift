@@ -14,6 +14,7 @@ struct WatchLocation: Codable {
     var showTemps: Bool = true
     var showAlerts: Bool = true
     var showTracks: Bool = true
+    var showDiscussion: Bool = true
     var zoom: RadarZoom = .county
     /// Two-letter state, resolved by the app. The national station feed is
     /// 3.4 MB; one state's network is about 100 KB, and the API accepts only one.
@@ -23,7 +24,8 @@ struct WatchLocation: Codable {
     static let key = "watchLocation"
     static let fallback = WatchLocation(lat: 42.907058, lon: -85.763014, name: "Grand Rapids",
                                         showReports: true, showTemps: true, showAlerts: true,
-                                        showTracks: true, zoom: .county, state: "MI")
+                                        showTracks: true, showDiscussion: true,
+                                        zoom: .county, state: "MI")
 
     static func load() -> WatchLocation {
         guard let d = UserDefaults(suiteName: appGroup)?.data(forKey: key),
@@ -141,6 +143,20 @@ enum StormFeed {
     }
 
     /// A warning or watch polygon, in the dashboard's colours.
+    /// Polygon and MultiPolygon differ by one level of nesting.
+    struct GeoJSONGeometry: Decodable {
+        struct Coords: Decodable {
+            var rings: [[[Double]]] = []
+            init(from decoder: Decoder) throws {
+                let c = try decoder.singleValueContainer()
+                if let poly = try? c.decode([[[Double]]].self) { rings = poly }
+                else if let multi = try? c.decode([[[[Double]]]].self) { rings = multi.flatMap { $0 } }
+            }
+        }
+        let type: String
+        let coordinates: Coords
+    }
+
     struct AlertArea {
         let rings: [[CLLocationCoordinate2D]]
         let color: UIColor
@@ -158,56 +174,191 @@ enum StormFeed {
         return UIColor(red: 0.72, green: 0.44, blue: 1.00, alpha: 1)
     }
 
-    /// Active warnings and watches overlapping the box. The national feed is
-    /// filtered client-side; alerts without geometry are skipped rather than
-    /// approximated, since a wrong polygon is worse than a missing one.
-    static func alerts(sw: CLLocationCoordinate2D, ne: CLLocationCoordinate2D) async -> [AlertArea] {
-        guard let url = URL(string: "https://api.weather.gov/alerts/active?status=actual&message_type=alert")
-        else { return [] }
+    /// Geometry for a forecast zone, cached forever in the App Group.
+    ///
+    /// Most alerts — and *every* watch — carry no polygon of their own, only a
+    /// list of zones. Zone boundaries are county and marine borders, so they do
+    /// not change; once fetched a zone is good indefinitely and the cache fills
+    /// in as alerts come and go.
+    static func zoneGeometry(_ zoneURL: String) async -> [[CLLocationCoordinate2D]]? {
+        let store = UserDefaults(suiteName: WatchLocation.appGroup)
+        let key = "zone." + (zoneURL.split(separator: "/").last.map(String.init) ?? zoneURL)
+        if let raw = store?.data(forKey: key),
+           let rings = try? JSONDecoder().decode([[[Double]]].self, from: raw) {
+            return rings.map { $0.compactMap { p in
+                p.count >= 2 ? CLLocationCoordinate2D(latitude: p[0], longitude: p[1]) : nil } }
+        }
+        guard let url = URL(string: zoneURL) else { return nil }
+        struct Z: Decodable { let geometry: GeoJSONGeometry? }
+        var req = URLRequest(url: url); req.timeoutInterval = 15
+        guard let data = try? await URLSession.shared.data(for: req).0,
+              let z = try? JSONDecoder().decode(Z.self, from: data),
+              let g = z.geometry else { return nil }
+        let rings = g.coordinates.rings
+            .map { $0.filter { $0.count >= 2 }.map { [$0[1], $0[0]] } }
+            .filter { $0.count >= 3 }
+        guard !rings.isEmpty else { return nil }
+        if let enc = try? JSONEncoder().encode(rings) { store?.set(enc, forKey: key) }
+        return rings.map { $0.map { CLLocationCoordinate2D(latitude: $0[0], longitude: $0[1]) } }
+    }
+
+    /// Active warnings, watches and advisories overlapping the box.
+    ///
+    /// Restricted to the states in view, which drops ~96% of the national feed.
+    /// Alerts without their own polygon are resolved through their zones — the
+    /// dashboard does the same, and without it no watch is ever drawn, since
+    /// watches are issued by zone and never carry geometry.
+    static func alerts(states: [String], sw: CLLocationCoordinate2D, ne: CLLocationCoordinate2D) async -> [AlertArea] {
+        var str = "https://api.weather.gov/alerts/active?status=actual&message_type=alert"
+        if !states.isEmpty { str += "&area=" + states.joined(separator: ",") }
+        guard let url = URL(string: str) else { return [] }
         struct FC: Decodable {
             struct F: Decodable {
-                struct P: Decodable { let event: String? }
-                let geometry: Geo?
+                struct P: Decodable { let event: String?; let affectedZones: [String]? }
+                let geometry: GeoJSONGeometry?
                 let properties: P
             }
-            struct Geo: Decodable {
-                let type: String
-                let coordinates: Coords
-            }
             let features: [F]
-        }
-        // Polygon and MultiPolygon differ by one level of nesting.
-        struct Coords: Decodable {
-            var rings: [[[Double]]] = []
-            init(from decoder: Decoder) throws {
-                let c = try decoder.singleValueContainer()
-                if let poly = try? c.decode([[[Double]]].self) { rings = poly }
-                else if let multi = try? c.decode([[[[Double]]]].self) { rings = multi.flatMap { $0 } }
-            }
         }
         var req = URLRequest(url: url); req.timeoutInterval = 20
         guard let data = try? await URLSession.shared.data(for: req).0,
               let fc = try? JSONDecoder().decode(FC.self, from: data) else { return [] }
 
+        // Gather the zones that still need fetching, so the cap applies to real
+        // network work rather than to cache hits.
+        var needed: [String] = []
+        for f in fc.features where f.geometry == nil {
+            let e = (f.properties.event ?? "").lowercased()
+            guard e.contains("warning") || e.contains("watch") else { continue }
+            for z in f.properties.affectedZones ?? [] where !needed.contains(z) { needed.append(z) }
+        }
+        // A single watch can span forty counties; bound the work per refresh and
+        // let the permanent cache close the gap over subsequent ones.
+        var zones: [String: [[CLLocationCoordinate2D]]] = [:]
+        await withTaskGroup(of: (String, [[CLLocationCoordinate2D]]?).self) { group in
+            for z in needed.prefix(40) {
+                group.addTask { (z, await zoneGeometry(z)) }
+            }
+            for await (z, rings) in group { if let rings { zones[z] = rings } }
+        }
+
         return fc.features.compactMap { f -> AlertArea? in
-            guard let g = f.geometry, g.type == "Polygon" || g.type == "MultiPolygon" else { return nil }
-            let rings: [[CLLocationCoordinate2D]] = g.coordinates.rings.map { ring in
-                ring.compactMap { p in
-                    p.count >= 2 ? CLLocationCoordinate2D(latitude: p[1], longitude: p[0]) : nil
-                }
-            }.filter { $0.count >= 3 }
-            guard !rings.isEmpty else { return nil }
-            let hits = rings.contains { ring in
-                ring.contains { c in
-                    c.latitude >= sw.latitude && c.latitude <= ne.latitude &&
-                    c.longitude >= sw.longitude && c.longitude <= ne.longitude
+            let event = f.properties.event ?? ""
+            var rings: [[CLLocationCoordinate2D]] = []
+            if let g = f.geometry {
+                rings = g.coordinates.rings.map { ring in
+                    ring.compactMap { p in
+                        p.count >= 2 ? CLLocationCoordinate2D(latitude: p[1], longitude: p[0]) : nil }
+                }.filter { $0.count >= 3 }
+            } else {
+                for z in f.properties.affectedZones ?? [] {
+                    if let r = zones[z] { rings.append(contentsOf: r) }
                 }
             }
-            guard hits else { return nil }
-            let event = f.properties.event ?? ""
+            rings = rings.filter { overlaps($0, sw: sw, ne: ne) }
+            guard !rings.isEmpty else { return nil }
             return AlertArea(rings: rings, color: alertColor(event),
                              isWatch: event.lowercased().contains("watch"))
         }
+    }
+
+    /// Bounding-box overlap rather than a vertex-in-box test, so a zone larger
+    /// than the view still counts as visible.
+    private static func overlaps(_ ring: [CLLocationCoordinate2D],
+                                 sw: CLLocationCoordinate2D, ne: CLLocationCoordinate2D) -> Bool {
+        guard let first = ring.first else { return false }
+        var minLat = first.latitude, maxLat = first.latitude
+        var minLon = first.longitude, maxLon = first.longitude
+        for c in ring {
+            minLat = min(minLat, c.latitude);  maxLat = max(maxLat, c.latitude)
+            minLon = min(minLon, c.longitude); maxLon = max(maxLon, c.longitude)
+        }
+        return maxLat >= sw.latitude && minLat <= ne.latitude
+            && maxLon >= sw.longitude && minLon <= ne.longitude
+    }
+
+    // MARK: - Forecast discussion areas
+
+    /// One hazard area decoded from a forecast discussion, as the dashboard
+    /// draws it: the forecaster's own words turned into a polygon with a time
+    /// window.
+    struct AfdArea {
+        let ring: [CLLocationCoordinate2D]
+        let label: String
+        let color: UIColor
+        let live: Bool          // inside its window now, rather than still ahead
+        let rank: Int           // higher is more serious; drawn last so it sits on top
+    }
+
+    /// Colours and seriousness ranking, matching the dashboard's AFD_HAZARD table.
+    private static let afdHazards: [String: (UIColor, Int)] = [
+        "tornado":        (UIColor(red: 0.88, green: 0.02, blue: 0.00, alpha: 1), 6),
+        "damaging wind":  (UIColor(red: 1.00, green: 0.48, blue: 0.00, alpha: 1), 5),
+        "hail":           (UIColor(red: 0.23, green: 0.63, blue: 1.00, alpha: 1), 5),
+        "severe storms":  (UIColor(red: 0.95, green: 0.72, blue: 0.02, alpha: 1), 4),
+        "flash flooding": (UIColor(red: 0.18, green: 0.80, blue: 0.44, alpha: 1), 4),
+        "heavy snow":     (UIColor(red: 0.81, green: 0.91, blue: 1.00, alpha: 1), 3),
+        "ice":            (UIColor(red: 0.69, green: 0.31, blue: 1.00, alpha: 1), 3),
+        "extreme cold":   (UIColor(red: 0.56, green: 0.83, blue: 1.00, alpha: 1), 2),
+        "heat":           (UIColor(red: 1.00, green: 0.23, blue: 0.96, alpha: 1), 2),
+        "high wind":      (UIColor(red: 1.00, green: 0.48, blue: 0.00, alpha: 1), 2),
+        "fire weather":   (UIColor(red: 1.00, green: 0.48, blue: 0.00, alpha: 1), 2),
+        "dense fog":      (UIColor(red: 0.54, green: 0.58, blue: 0.65, alpha: 1), 1),
+        "marine":         (UIColor(red: 0.29, green: 0.44, blue: 0.65, alpha: 1), 1),
+    ]
+
+    /// Hazard areas decoded from the current forecast discussions.
+    ///
+    /// Served as a static file from the same GitHub Pages site as the dashboard,
+    /// rebuilt twice a day by the extraction workflow. Areas whose window has
+    /// passed are dropped, so a build that stops updating fades to nothing
+    /// rather than showing yesterday's hazards as current.
+    static func afdAreas(sw: CLLocationCoordinate2D, ne: CLLocationCoordinate2D) async -> [AfdArea] {
+        guard let url = URL(string: "https://samjalbr-cmd.github.io/Super-Radar/data/afd-areas.json")
+        else { return [] }
+        struct Doc: Decodable {
+            struct Office: Decodable {
+                struct Area: Decodable {
+                    let hazard: String?; let label: String?
+                    let start: String?;  let end: String?
+                    let polygon: [[Double]]?
+                }
+                let areas: [Area]?
+            }
+            let offices: [String: Office]?
+        }
+        var req = URLRequest(url: url); req.timeoutInterval = 20
+        guard let data = try? await URLSession.shared.data(for: req).0,
+              let doc = try? JSONDecoder().decode(Doc.self, from: data),
+              let offices = doc.offices else { return [] }
+
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let plain = ISO8601DateFormatter()
+        func parse(_ t: String?) -> Date? {
+            guard let t else { return nil }
+            return iso.date(from: t) ?? plain.date(from: t)
+        }
+
+        let now = Date()
+        var out: [AfdArea] = []
+        for (_, office) in offices {
+            for a in office.areas ?? [] {
+                guard let pts = a.polygon, pts.count >= 3,
+                      let t0 = parse(a.start), let t1 = parse(a.end),
+                      now <= t1 else { continue }
+                let ring = pts.compactMap { p in
+                    p.count >= 2 ? CLLocationCoordinate2D(latitude: p[0], longitude: p[1]) : nil
+                }
+                guard ring.count >= 3, overlaps(ring, sw: sw, ne: ne) else { continue }
+                let (color, rank) = afdHazards[(a.hazard ?? "").lowercased()]
+                    ?? (UIColor(red: 0.54, green: 0.58, blue: 0.65, alpha: 1), 1)
+                out.append(AfdArea(ring: ring, label: a.label ?? a.hazard ?? "",
+                                   color: color, live: now >= t0, rank: rank))
+            }
+        }
+        // Least serious first, so the worst hazard ends up on top; live over ahead.
+        return out.sorted { ($0.live ? 1 : 0, $0.rank) < ($1.live ? 1 : 0, $1.rank) }
     }
 
     struct Station {

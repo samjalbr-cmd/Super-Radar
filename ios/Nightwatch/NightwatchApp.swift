@@ -31,6 +31,9 @@ final class SettingsBridge: NSObject, WKScriptMessageHandler {
         if let z = d["zoom"] as? String, let parsed = RadarZoom(rawValue: z) { loc.zoom = parsed }
         if let t = d["showTemps"] as? Bool { loc.showTemps = t }
         if let r = d["showReports"] as? Bool { loc.showReports = r }
+        if let a = d["showAlerts"] as? Bool { loc.showAlerts = a }
+        if let t = d["showTracks"] as? Bool { loc.showTracks = t }
+        if let a = d["showDiscussion"] as? Bool { loc.showDiscussion = a }
         if moved { loc.state = nil }
         loc.save()
 

@@ -61,7 +61,8 @@ enum RadarSnapshot {
     @MainActor
     static func compose(lat: Double, lon: Double, zoom: RadarZoom, size: CGSize,
                         showReports: Bool, showTemps: Bool, showAlerts: Bool,
-                        showTracks: Bool, state: String?) async -> (image: UIImage, hasEcho: Bool)? {
+                        showTracks: Bool, showDiscussion: Bool,
+                        state: String?) async -> (image: UIImage, hasEcho: Bool)? {
         let half = zoom.halfDegrees
         let region = MKCoordinateRegion(
             center: CLLocationCoordinate2D(latitude: lat, longitude: lon),
@@ -88,12 +89,17 @@ enum RadarSnapshot {
         let px = Int(max(size.width, size.height) * 2)
         let render = await StormFeed.radarImage(sw: sw, ne: ne, pixels: px)
         let reports = showReports ? await StormFeed.recentReports(sw: sw, ne: ne) : []
-        var temps: [StormFeed.Station] = []
-        if showTemps && zoom.showsTemperatures {
-            let states = await StormFeed.statesCovering(sw: sw, ne: ne, fallback: state)
-            temps = await StormFeed.stations(states: states, sw: sw, ne: ne)
+        // Both temperatures and the alert query are scoped by the states in
+        // view, so resolve the list once and share it.
+        let wantTemps = showTemps && zoom.showsTemperatures
+        var states: [String] = []
+        if wantTemps || showAlerts {
+            states = await StormFeed.statesCovering(sw: sw, ne: ne, fallback: state)
         }
-        let alerts = showAlerts ? await StormFeed.alerts(sw: sw, ne: ne) : []
+        let temps: [StormFeed.Station] = wantTemps
+            ? await StormFeed.stations(states: states, sw: sw, ne: ne) : []
+        let alerts = showAlerts ? await StormFeed.alerts(states: states, sw: sw, ne: ne) : []
+        let afd = showDiscussion ? await StormFeed.afdAreas(sw: sw, ne: ne) : []
         let cells: [StormCell] = showTracks ? ((try? await StormFeed.cells()) ?? []) : []
 
         let out = UIGraphicsImageRenderer(size: size).image { ctx in
@@ -122,6 +128,42 @@ enum RadarSnapshot {
                 let rect = CGRect(x: min(p0.x, p1.x), y: min(p0.y, p1.y),
                                   width: abs(p1.x - p0.x), height: abs(p1.y - p0.y))
                 radar.draw(in: rect, blendMode: .normal, alpha: 0.75)
+            }
+
+            // Forecast-discussion areas sit above the radar, since the point is
+            // the forecaster's outline against the echoes it refers to. Live
+            // areas are solid, ones still ahead of their window are dashed —
+            // the same distinction the dashboard draws.
+            for a in afd {
+                let path = UIBezierPath()
+                for (i, c) in a.ring.enumerated() {
+                    let p = snap.point(for: c)
+                    i == 0 ? path.move(to: p) : path.addLine(to: p)
+                }
+                path.close()
+                a.color.withAlphaComponent(a.live ? 0.12 : 0.06).setFill()
+                path.fill()
+                a.color.setStroke()
+                path.lineWidth = a.live ? 2.0 : 1.4
+                if !a.live { path.setLineDash([7, 5], count: 2, phase: 0) }
+                path.stroke()
+
+                // Label the area at the top of its outline, where the dashboard
+                // puts it. Skipped when the shape is too small to read.
+                let bounds = path.bounds
+                guard bounds.width > 54, bounds.height > 26, !a.label.isEmpty else { continue }
+                let text = a.label.uppercased() as NSString
+                let attrs: [NSAttributedString.Key: Any] = [
+                    .font: UIFont.systemFont(ofSize: 8, weight: .heavy),
+                    .foregroundColor: a.color,
+                    .strokeColor: UIColor.black, .strokeWidth: -3.0,
+                ]
+                let sz = text.size(withAttributes: attrs)
+                let at = CGPoint(x: bounds.midX - sz.width / 2,
+                                 y: bounds.minY + bounds.height * 0.12)
+                if at.x > 2, at.x + sz.width < size.width - 2, at.y > 2 {
+                    text.draw(at: at, withAttributes: attrs)
+                }
             }
 
             for r in reports {
