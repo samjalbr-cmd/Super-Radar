@@ -66,6 +66,17 @@ struct DashboardView: UIViewRepresentable {
         web.backgroundColor = UIColor(red: 0.04, green: 0.055, blue: 0.10, alpha: 1)
         web.scrollView.bounces = false
         web.scrollView.contentInsetAdjustmentBehavior = .never
+        // A map is a direct-manipulation surface, so the web view must not add
+        // its own gestures on top of Leaflet's. Long-press previews are for
+        // links and documents, and the scroll view's pinch zooms the whole
+        // document — both fight the map rather than helping it.
+        web.allowsLinkPreview = false
+        web.scrollView.minimumZoomScale = 1
+        web.scrollView.maximumZoomScale = 1
+        web.scrollView.bouncesZoom = false
+        // The page fills the view; nothing below it should scroll.
+        web.scrollView.showsVerticalScrollIndicator = false
+        web.scrollView.showsHorizontalScrollIndicator = false
         // Hand the page the same location the widget watches, so the arrival
         // countdown in both places is answering about the same spot.
         var c = URLComponents(string: dashboardURL)!

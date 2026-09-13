@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Nightwatch — Storm Dashboard</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
 <style>
@@ -67,10 +67,26 @@
 
   /* Each group collapses, so twenty settings stay scannable instead of being
      one long scroll. <details> gives the behaviour without any script. */
+  /* Touch handling. The map is a direct-manipulation surface: a long press
+     there should not raise the iOS selection callout, a tap should not flash a
+     grey box, and a double tap should not zoom the document out from under
+     Leaflet's own gestures. Text worth copying opts back in below. */
+  html{ -webkit-text-size-adjust:100%; }
+  body{
+    -webkit-touch-callout:none; -webkit-user-select:none; user-select:none;
+    -webkit-tap-highlight-color:transparent; overscroll-behavior:none;
+  }
+  button, summary, label, select, input, .set-row, .tab, .feed-item,
+  #gear, #feedTab, #afdTab{ touch-action:manipulation; }
+  /* Readable text stays selectable, so a forecast quote can still be copied. */
+  .alert-popup, .feed-item, #feedPanel, #afdPanel{
+    -webkit-user-select:text; user-select:text;
+  }
+
   .set-sec{border-bottom:1px solid rgba(255,255,255,0.055);}
   .set-sec > summary{
     list-style:none;cursor:pointer;user-select:none;
-    padding:11px 15px;display:flex;align-items:center;gap:7px;
+    padding:11px 0;display:flex;align-items:center;gap:7px;
     font-family:monospace;font-size:11px;color:var(--dim);
     text-transform:uppercase;letter-spacing:0.07em;
   }
@@ -103,21 +119,21 @@
   /* A real switch rather than a default checkbox — the rows read as a list of
      things that are on or off, which is what they are. */
   .set-row{
-    display:flex;align-items:center;gap:9px;cursor:pointer;
+    display:flex;align-items:center;gap:10px;cursor:pointer;
     font-family:sans-serif;font-size:13px;color:#F5F3EC;
-    text-transform:none;letter-spacing:0;padding:1px 0;
+    text-transform:none;letter-spacing:0;padding:8px 0;min-height:34px;
   }
   .set-row input{position:absolute;opacity:0;width:0;height:0;}
   .sw-t{
-    position:relative;width:30px;height:17px;border-radius:9px;flex-shrink:0;
+    position:relative;width:38px;height:22px;border-radius:11px;flex-shrink:0;
     background:#0d1420;border:1px solid var(--border);transition:background 0.15s ease,border-color 0.15s ease;
   }
   .sw-t::after{
-    content:'';position:absolute;top:2px;left:2px;width:11px;height:11px;border-radius:50%;
+    content:'';position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;
     background:var(--dim);transition:transform 0.15s ease,background 0.15s ease;
   }
   .set-row input:checked + .sw-t{background:rgba(242,183,5,0.22);border-color:var(--amber);}
-  .set-row input:checked + .sw-t::after{transform:translateX(13px);background:var(--amber);}
+  .set-row input:checked + .sw-t::after{transform:translateX(16px);background:var(--amber);}
   .set-row input:focus-visible + .sw-t{outline:2px solid var(--amber);outline-offset:2px;}
   .set-row.disabled{opacity:0.45;cursor:not-allowed;}
 
