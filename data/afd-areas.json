@@ -1,30 +1,180 @@
 {
- "generated": "2026-09-03T23:21:46.288Z",
+ "generated": "2026-09-13T15:36:04.222Z",
  "offices": {
   "GRR": {
-   "product": "6fee807e-fd7a-45df-9bf1-4a8a4d85993c",
-   "issued": "2026-09-03T22:40:00+00:00",
+   "product": "004a2a9f-156b-4e58-b0e2-f906769c97a6",
+   "issued": "2026-09-13T10:39:00+00:00",
    "office": "Grand Rapids MI",
-   "headline": "Overnight storms may flood US-10 and Lansing; severe threat this eve",
+   "headline": "Lakeshore gales and beach hazards today; heavy rain threat Tuesday",
    "areas": [
     {
-     "hazard": "severe storms",
-     "label": "Damaging wind, hail, brief tornado",
+     "hazard": "marine",
+     "label": "Small craft advisory, lakeshore winds",
      "confidence": "high",
-     "start": "2026-09-03T22:40:00.000Z",
-     "end": "2026-09-04T01:00:00.000Z",
-     "quote": "Through the end of the afternoon, the most concentrated areas for \nstronger convection will be near/north of I-96 and east of US 131 \nwhere scattered damaging wind gusts and large hail will be possible.",
+     "start": "2026-09-13T15:00:00.000Z",
+     "end": "2026-09-14T03:00:00.000Z",
+     "quote": "Small Craft Advisory from 11 AM this morning to 11 PM EDT this \n     evening for LMZ844>849.",
+     "polygon": [
+      [
+       44.18,
+       -86.39
+      ],
+      [
+       44.06,
+       -86.52
+      ],
+      [
+       43.97,
+       -86.46
+      ],
+      [
+       43.63,
+       -86.54
+      ],
+      [
+       42.99,
+       -86.23
+      ],
+      [
+       42.45,
+       -86.26
+      ],
+      [
+       42.24,
+       -86.37
+      ],
+      [
+       42.24,
+       -86.15
+      ],
+      [
+       42.6,
+       -86.05
+      ],
+      [
+       43,
+       -86.03
+      ],
+      [
+       43.6,
+       -86.3
+      ],
+      [
+       44,
+       -86.2
+      ],
+      [
+       44.18,
+       -86.18
+      ]
+     ]
+    },
+    {
+     "hazard": "other",
+     "label": "Beach hazards along Lake Michigan",
+     "confidence": "high",
+     "start": "2026-09-13T15:00:00.000Z",
+     "end": "2026-09-14T02:00:00.000Z",
+     "quote": "Beach Hazards Statement from 11 AM EDT this morning through this \n     evening for MIZ037-043-050-056-064-071.",
+     "polygon": [
+      [
+       44.18,
+       -86.38
+      ],
+      [
+       44,
+       -86.45
+      ],
+      [
+       43.63,
+       -86.53
+      ],
+      [
+       43.2,
+       -86.3
+      ],
+      [
+       42.9,
+       -86.22
+      ],
+      [
+       42.45,
+       -86.25
+      ],
+      [
+       42.25,
+       -86.36
+      ],
+      [
+       42.25,
+       -86.05
+      ],
+      [
+       42.9,
+       -86
+      ],
+      [
+       43.5,
+       -86.1
+      ],
+      [
+       44.1,
+       -86.1
+      ]
+     ]
+    },
+    {
+     "hazard": "heavy snow",
+     "label": "Cold night, upper 30s north interior",
+     "confidence": "medium",
+     "start": "2026-09-14T04:00:00.000Z",
+     "end": "2026-09-14T12:00:00.000Z",
+     "quote": "With the surface high building in tonight,\nradiational cooling conditions will be optimized and temperatures\nwill fall into the 40s in most places, with even upper 30s possible\nacross the northern interior.",
      "polygon": [
       [
        44.16,
-       -85.7
+       -86.2
       ],
       [
        44.16,
        -84.61
       ],
       [
-       43.46,
+       43.47,
+       -84.61
+      ],
+      [
+       43.47,
+       -85.4
+      ],
+      [
+       43.5,
+       -86.4
+      ],
+      [
+       44,
+       -86.45
+      ]
+     ]
+    },
+    {
+     "hazard": "flash flooding",
+     "label": "Heavy rain with slow-moving front",
+     "confidence": "medium",
+     "start": "2026-09-15T04:00:00.000Z",
+     "end": "2026-09-16T06:00:00.000Z",
+     "quote": "Precipitable \nwater surges close 2 inches, so heavy rain potential is there as \nthe front will be moving slowly and MBE vectors are less than 5 \nknots.",
+     "polygon": [
+      [
+       44.17,
+       -86.38
+      ],
+      [
+       44.16,
+       -84.61
+      ],
+      [
+       43.47,
        -84.61
       ],
       [
@@ -32,54 +182,12 @@
        -84.37
       ],
       [
-       42.78,
+       42.77,
        -84.36
       ],
       [
-       42.75,
-       -84.14
-      ],
-      [
-       42.5,
-       -84.5
-      ],
-      [
-       42.6,
-       -85.3
-      ],
-      [
-       42.95,
-       -85.7
-      ],
-      [
-       44.16,
-       -85.7
-      ]
-     ]
-    },
-    {
-     "hazard": "flash flooding",
-     "label": "Training storms, 1-3 inch rain",
-     "confidence": "medium",
-     "start": "2026-09-04T03:00:00.000Z",
-     "end": "2026-09-04T15:00:00.000Z",
-     "quote": "HREF 6 hr PMM rainfall indicates 1\"-2\" especially near and \nwest of US 131, though max 6 hr QPF from the membership indicates \nareas of 2\"-3\" or slightly more.",
-     "polygon": [
-      [
-       44.17,
-       -86.38
-      ],
-      [
-       44.17,
-       -85.35
-      ],
-      [
-       43,
-       -85.5
-      ],
-      [
        42.07,
-       -85.6
+       -84.13
       ],
       [
        42.07,
@@ -98,80 +206,8 @@
        -86.54
       ],
       [
-       44.17,
-       -86.38
-      ]
-     ]
-    },
-    {
-     "hazard": "flash flooding",
-     "label": "Urban flooding, Lansing area",
-     "confidence": "high",
-     "start": "2026-09-04T03:00:00.000Z",
-     "end": "2026-09-04T15:00:00.000Z",
-     "quote": "Areas that would be most \nsusceptible to localized flooding overnight and into Friday morning \nwould be along US 10 (where 1\"-2\" occurred today) as well as the \ngreater Lansing area where several rounds of thunderstorms have \noccurred.",
-     "polygon": [
-      [
-       43.05,
-       -84.95
-      ],
-      [
-       43.05,
-       -84.2
-      ],
-      [
-       42.5,
-       -84.18
-      ],
-      [
-       42.5,
-       -84.95
-      ],
-      [
-       43.05,
-       -84.95
-      ]
-     ]
-    },
-    {
-     "hazard": "damaging wind",
-     "label": "Isolated severe storms S of GRR-LAN",
-     "confidence": "medium",
-     "start": "2026-09-04T20:00:00.000Z",
-     "end": "2026-09-05T04:00:00.000Z",
-     "quote": "An \nisolated severe thunderstorm cannot be ruled out near and south of \nGRR to LAN with damaging wind gusts the primary hazard.",
-     "polygon": [
-      [
-       42.96,
-       -85.67
-      ],
-      [
-       42.73,
-       -84.55
-      ],
-      [
-       42.74,
-       -84.15
-      ],
-      [
-       42.07,
-       -84.13
-      ],
-      [
-       42.07,
-       -86.22
-      ],
-      [
-       42.45,
-       -86.26
-      ],
-      [
-       42.59,
-       -86.23
-      ],
-      [
-       42.96,
-       -85.67
+       44.06,
+       -86.5
       ]
      ]
     }
