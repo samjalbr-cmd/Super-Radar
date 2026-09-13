@@ -154,6 +154,17 @@ async function main() {
   let out = { generated: null, offices: {} };
   try { out = JSON.parse(readFileSync(OUT, 'utf8')); } catch {}
   out.offices ||= {};
+  // The previous run's output is kept so an office whose discussion has not
+  // been reissued can be skipped without a model call. That merge also meant an
+  // office dropped from the config kept its last extraction for ever: narrowing
+  // to Michigan left nine other offices sitting in the file with a week-old
+  // reading of the sky. Prune anything no longer configured.
+  for (const wfo of Object.keys(out.offices)) {
+    if (!offices.includes(wfo)) {
+      delete out.offices[wfo];
+      console.log(`${wfo}: removed — no longer in ${OFFICES}`);
+    }
+  }
   const before = JSON.stringify(out.offices);
 
   const client = new Anthropic();
