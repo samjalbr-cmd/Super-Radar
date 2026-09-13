@@ -31,9 +31,23 @@ const ONLY = (process.argv.find(a => a.startsWith('--only=')) || '').split('=')[
 const CWA_URL = 'https://mapservices.weather.noaa.gov/static/rest/services/' +
                 'nws_reference_maps/nws_reference_map/FeatureServer/1/query';
 
-const HAZARDS = ['tornado', 'hail', 'damaging wind', 'flash flooding', 'severe storms',
-                 'heavy snow', 'ice', 'extreme cold', 'heat', 'dense fog',
-                 'fire weather', 'high wind', 'marine', 'other'];
+// Two categories were missing, and their absence was pushing the model into
+// wrong ones: a soaking rain with no flooding language had only 'flash flooding'
+// to aim at, which overstates it, and a merely chilly night had only 'extreme
+// cold'. Both ended up filed as 'heavy snow'.
+const HAZARDS = ['tornado', 'hail', 'damaging wind', 'flash flooding', 'heavy rain',
+                 'severe storms', 'heavy snow', 'ice', 'frost', 'extreme cold', 'heat',
+                 'dense fog', 'fire weather', 'high wind', 'marine', 'other'];
+
+// Every other field in the schema carries a description; this one did not, so
+// the model was choosing between fourteen bare strings.
+const HAZARD_GUIDE = `What the threat actually is. Choose by what the text says falls or happens, not by season:
+tornado; hail; damaging wind (severe convective gusts); severe storms (a storm threat without one dominant mode);
+flash flooding (the text says flooding, training, or rapid rises); heavy rain (significant rainfall with no flooding language);
+heavy snow (frozen accumulation — never use this for rain); ice (freezing rain, sleet, glaze);
+frost (a frost or freeze, lows near or just below freezing); extreme cold (dangerous cold or wind chill);
+heat; dense fog; fire weather; high wind (non-convective gradient wind); marine (lake or coastal waters, gales, small craft, swim hazard);
+other (a real hazard that fits nothing above).`;
 
 // One object per area the discussion actually describes. Everything is required
 // so the model can't quietly omit the parts we rely on.
@@ -51,7 +65,7 @@ const SCHEMA = {
         additionalProperties: false,
         required: ['hazard', 'label', 'confidence', 'start', 'end', 'polygon', 'quote'],
         properties: {
-          hazard: { type: 'string', enum: HAZARDS },
+          hazard: { type: 'string', enum: HAZARDS, description: HAZARD_GUIDE },
           label: { type: 'string', description: 'Under 40 characters, e.g. "Large hail, damaging winds".' },
           confidence: { type: 'string', enum: ['low', 'medium', 'high'] },
           start: { type: 'string', description: 'ISO 8601 UTC, e.g. 2026-09-02T02:00:00Z' },
@@ -81,6 +95,7 @@ Rules:
 - If the text describes one hazard over the whole area, one polygon covering the office is correct.
 - Prefer fewer, larger areas over many small ones.
 - quote must be copied verbatim from the discussion. Do not paraphrase it.
+- Pick hazard from what the text actually describes falling or happening. Rain is never 'heavy snow', however cold it is; a night in the upper 30s is 'frost' at worst, not snow or extreme cold.
 - confidence reflects how specific the text is about that area, not how severe the weather is. "greatest threat across southwest Lower Michigan" is high; "somewhere in the region" is low.`;
 
 const j = async (url) => {
@@ -136,7 +151,24 @@ function validate(area, box, wfo) {
   if (span > (box.n - box.s) * 3 + 2) return bad('polygon far larger than the office');
   const t0 = Date.parse(area.start), t1 = Date.parse(area.end);
   if (!t0 || !t1 || t1 <= t0) return bad('unusable time window');
-  return { hazard: area.hazard, label: String(area.label).slice(0, 60), confidence: area.confidence,
+  // The quote is verbatim from the discussion, so it can be used to check the
+  // hazard against the forecaster's own words. A frozen category on a quote that
+  // talks about rain and never mentions anything frozen is the model reaching
+  // for the wrong bucket — that is how "Rainfall amounts of an inch or greater"
+  // came back as heavy snow. Re-file rather than reject, since the hazard itself
+  // is real; the label on it was wrong.
+  const q = String(area.quote || '').toLowerCase();
+  const frozen = /snow|sleet|freezing|ice|wintry|flurr|blizzard/.test(q);
+  const liquid = /\brain|rainfall|showers|downpour|precipitation amounts/.test(q);
+  let hazard = area.hazard;
+  if (['heavy snow', 'ice'].includes(hazard) && liquid && !frozen) {
+    console.log(`    refiled ${hazard} -> heavy rain (quote is liquid): ${area.label}`);
+    hazard = 'heavy rain';
+  } else if (['heavy snow', 'ice', 'extreme cold'].includes(hazard) && !frozen && !liquid) {
+    console.log(`    refiled ${hazard} -> other (quote mentions no precipitation): ${area.label}`);
+    hazard = 'other';
+  }
+  return { hazard, label: String(area.label).slice(0, 60), confidence: area.confidence,
            start: new Date(t0).toISOString(), end: new Date(t1).toISOString(),
            quote: String(area.quote).slice(0, 300), polygon: pts };
 }
