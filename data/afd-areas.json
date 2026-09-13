@@ -1,5 +1,5 @@
 {
- "generated": "2026-09-13T15:36:04.222Z",
+ "generated": "2026-09-13T15:38:51.691Z",
  "offices": {
   "GRR": {
    "product": "004a2a9f-156b-4e58-b0e2-f906769c97a6",
@@ -214,156 +214,142 @@
    ]
   },
   "DTX": {
-   "product": "6dbdf2b8-e9a6-4e17-b51b-6cfddf7f15a7",
-   "issued": "2026-09-03T19:25:00+00:00",
+   "product": "5d306e7a-eb3c-4f31-898f-0113bf18d5ca",
+   "issued": "2026-09-13T10:58:00+00:00",
    "office": "Detroit/Pontiac MI",
-   "headline": "Damaging 60-75 mph gusts and torrential rain hit SE Michigan",
+   "headline": "Small craft advisories today; gales possible Tuesday, storms return",
    "areas": [
     {
-     "hazard": "damaging wind",
-     "label": "60-75 mph gusts, hail, MCS",
+     "hazard": "marine",
+     "label": "Small craft advisory, 25-30 kt winds",
      "confidence": "high",
-     "start": "2026-09-03T19:25:00.000Z",
-     "end": "2026-09-04T00:00:00.000Z",
-     "quote": "A Severe Thunderstorm Watch remains in effect for parts of SE MI \nuntil 7 PM. Damaging wind gusts of 60 to 75 mph and torrential \nrainfall will be the main threats, but potential also exists for \nlarge hail and tornadoes.",
+     "start": "2026-09-13T20:00:00.000Z",
+     "end": "2026-09-14T15:00:00.000Z",
+     "quote": "Small craft advisories have been issued for all nearshore waters later this afternoon through tonight for a combination of wind gusts in excess of 25 knots and/or 3+ foot waves.",
      "polygon": [
       [
-       44.07,
-       -82.92
+       44.05,
+       -83.05
       ],
       [
-       43.58,
-       -83.68
+       43.9,
+       -82.6
       ],
       [
-       44,
-       -84.05
+       43.2,
+       -82.35
       ],
       [
-       43.81,
-       -84.61
+       42.6,
+       -82.4
       ],
       [
-       42.78,
-       -84.16
+       42.1,
+       -83
       ],
       [
-       41.71,
-       -84.36
+       41.8,
+       -83.25
       ],
       [
-       41.74,
-       -83.42
+       41.85,
+       -83.4
       ],
       [
-       42.63,
-       -82.52
+       42.3,
+       -83.1
+      ],
+      [
+       42.6,
+       -82.62
+      ],
+      [
+       43.2,
+       -82.62
+      ],
+      [
+       43.8,
+       -82.95
       ]
      ]
     },
     {
-     "hazard": "tornado",
-     "label": "Tornado risk near Metro Detroit",
+     "hazard": "marine",
+     "label": "Possible 35-40 kt gales, Lake Huron",
      "confidence": "medium",
-     "start": "2026-09-03T19:25:00.000Z",
-     "end": "2026-09-03T23:30:00.000Z",
-     "quote": "A tornado or two also can't be ruled out, especially where any segments deviate S to SSE to capitalize on enhanced SRH that exists near Metro Detroit.",
+     "start": "2026-09-15T00:00:00.000Z",
+     "end": "2026-09-15T21:00:00.000Z",
+     "quote": "However, blended ensemble guidance show a strong signal for 35-40 kt gales peaking Tuesday morning over the open water of Lake Huron.",
      "polygon": [
       [
-       42.05,
-       -83.5
+       44.05,
+       -83.05
       ],
       [
-       42,
-       -82.95
+       43.9,
+       -82.6
       ],
       [
-       42.5,
-       -82.65
-      ],
-      [
-       42.8,
-       -83.2
+       43.2,
+       -82.35
       ],
       [
        42.65,
-       -83.75
+       -82.4
       ],
       [
-       42.2,
-       -83.75
-      ]
-     ]
-    },
-    {
-     "hazard": "flash flooding",
-     "label": "Localized 2\"+ rain, urban flooding",
-     "confidence": "medium",
-     "start": "2026-09-03T19:25:00.000Z",
-     "end": "2026-09-04T16:00:00.000Z",
-     "quote": "There is the potential for some training or backbuilding of storms this afternoon which would result in pockets of amounts in excess of 2 inches.",
-     "polygon": [
-      [
-       44.07,
-       -82.92
+       42.65,
+       -82.65
       ],
       [
-       43.58,
-       -83.68
+       43.2,
+       -82.62
       ],
       [
-       44,
-       -84.05
-      ],
-      [
-       43.81,
-       -84.61
-      ],
-      [
-       42.78,
-       -84.16
-      ],
-      [
-       41.71,
-       -84.36
-      ],
-      [
-       41.74,
-       -83.42
-      ],
-      [
-       42.63,
-       -82.52
+       43.8,
+       -82.95
       ]
      ]
     },
     {
      "hazard": "severe storms",
-     "label": "Fri PM storms south of M-59",
+     "label": "Storms, training heavy rain",
      "confidence": "medium",
-     "start": "2026-09-04T18:00:00.000Z",
-     "end": "2026-09-05T02:00:00.000Z",
-     "quote": "A majority of CAMs place this corridor across \nwestern Lower MI, intersecting areas as far north as M-59.",
+     "start": "2026-09-15T15:00:00.000Z",
+     "end": "2026-09-18T12:00:00.000Z",
+     "quote": "There are plenty of details that will be refined as we get closer, but Tuesday through late next week currently feature numerous chances for showers and thunderstorms, including the potential for training precipitation.",
      "polygon": [
+      [
+       44.07,
+       -82.92
+      ],
+      [
+       43.58,
+       -83.68
+      ],
+      [
+       44,
+       -84.05
+      ],
+      [
+       43.81,
+       -84.61
+      ],
       [
        42.78,
        -84.16
       ],
       [
-       42.7,
-       -83.3
-      ],
-      [
-       42.1,
-       -83.15
+       41.71,
+       -84.36
       ],
       [
        41.74,
-       -83.45
+       -83.42
       ],
       [
-       41.72,
-       -84.36
+       42.63,
+       -82.52
       ]
      ]
     }
@@ -554,86 +540,110 @@
    ]
   },
   "APX": {
-   "product": "daa158dc-d952-4ad2-800e-12fc2be335d1",
-   "issued": "2026-09-03T17:26:00+00:00",
+   "product": "b9dde1ae-c18e-4738-8482-3d9c45e0eb25",
+   "issued": "2026-09-13T10:19:00+00:00",
    "office": "Gaylord MI",
-   "headline": "Locally heavy rain, isolated strong storms through Friday morning",
+   "headline": "Heavy rain and possible gales Monday night into Tuesday",
    "areas": [
     {
-     "hazard": "severe storms",
-     "label": "Isolated strong storms, gusty winds",
-     "confidence": "medium",
-     "start": "2026-09-03T17:30:00.000Z",
-     "end": "2026-09-04T01:00:00.000Z",
-     "quote": "Not a ton of change to this through early evening with the highest PoPs focused near and south of M-72.",
-     "polygon": [
-      [
-       44.78,
-       -86.15
-      ],
-      [
-       44.78,
-       -83.45
-      ],
-      [
-       44.06,
-       -83.58
-      ],
-      [
-       44.16,
-       -86.35
-      ]
-     ]
-    },
-    {
      "hazard": "flash flooding",
-     "label": "Localized flooding on saturated soils",
-     "confidence": "high",
-     "start": "2026-09-03T17:30:00.000Z",
-     "end": "2026-09-04T04:00:00.000Z",
-     "quote": "Areas that received 1-3.5\"+ of rain over the last several hours (far southwestern portions of the CWA) will be most susceptible to potential localized flooding concerns with any additional locally heavy downpours.",
+     "label": "Heavy rain: EUP & Tip of the Mitt",
+     "confidence": "medium",
+     "start": "2026-09-15T02:00:00.000Z",
+     "end": "2026-09-16T00:00:00.000Z",
+     "quote": "Expect we will see stronger \nfrontogenetic responses that will enhance QPF in localized \nswaths...some of which are currently progged to influence the EUP \nand Tip of the Mitt region late Monday night...and will watch for a \npotential maximum in QPF up here, as well as elsewhere along the \nfront (in",
      "polygon": [
       [
-       44.75,
-       -86.2
+       46.4,
+       -85.6
       ],
       [
-       44.72,
-       -85.35
+       46.5,
+       -84.2
       ],
       [
-       44.15,
-       -85.4
+       45.9,
+       -83.6
       ],
       [
-       44.17,
-       -86.35
+       45.3,
+       -84
+      ],
+      [
+       45.2,
+       -85.2
+      ],
+      [
+       45.7,
+       -85.9
       ]
      ]
     },
     {
-     "hazard": "heavy snow",
-     "label": "Overnight locally heavy rain threat",
+     "hazard": "marine",
+     "label": "Gales possible near Lake Michigan",
      "confidence": "medium",
-     "start": "2026-09-04T02:00:00.000Z",
-     "end": "2026-09-04T14:00:00.000Z",
-     "quote": "While lots of uncertainty riddles this time frame (partially hinging on how this afternoon/evening shake out across the broader region), think that if precip is able to survive into northern Michigan later tonight that'll it'll be primary a locally heavy rain threat rather than a severe weather thre",
+     "start": "2026-09-15T02:00:00.000Z",
+     "end": "2026-09-15T18:00:00.000Z",
+     "quote": "Current sounding-derived probs suggest a 30-40 percent \n(medium confidence) chance of wind gusts in excess of 34kts, \nparticularly at sites near Lake MI (and perhaps up toward DeTour and \nDrummond Island) where there is better fetch off the effectively \nfrictionless lake surface on S to SW flow",
      "polygon": [
       [
-       45.78,
-       -84.75
+       46.3,
+       -85.8
       ],
       [
-       44.18,
-       -86.39
+       46.2,
+       -83.9
       ],
       [
-       44.05,
-       -83.58
+       45.7,
+       -83.9
       ],
       [
-       45.27,
-       -83.38
+       45.3,
+       -84.8
+      ],
+      [
+       44.9,
+       -85.8
+      ],
+      [
+       45.3,
+       -86.3
+      ],
+      [
+       46,
+       -86.2
+      ]
+     ]
+    },
+    {
+     "hazard": "other",
+     "label": "Chilly night, mid 30s interior",
+     "confidence": "medium",
+     "start": "2026-09-14T04:00:00.000Z",
+     "end": "2026-09-14T12:00:00.000Z",
+     "quote": "Have trended lows a little cooler for tonight \nespecially across the interior higher terrain, down into the upper \n30s there...where a 25 degree temperature swing would take lows \ntonight down into the mid thirties.",
+     "polygon": [
+      [
+       45.4,
+       -85.3
+      ],
+      [
+       45.4,
+       -84.1
+      ],
+      [
+       44.5,
+       -83.9
+      ],
+      [
+       44.3,
+       -85.2
+      ],
+      [
+       44.8,
+       -85.6
       ]
      ]
     }
@@ -2164,6 +2174,154 @@
       [
        40.82,
        -83.88
+      ]
+     ]
+    }
+   ]
+  },
+  "MQT": {
+   "product": "474f35eb-b327-4498-8152-bb09ca8a7d9e",
+   "issued": "2026-09-13T11:13:00+00:00",
+   "office": "Marquette MI",
+   "headline": "Frost in interior west tonight; soaking rain and gales Monday night–Tuesday",
+   "areas": [
+    {
+     "hazard": "other",
+     "label": "Frost, lows in the 20s-30s",
+     "confidence": "high",
+     "start": "2026-09-14T06:00:00.000Z",
+     "end": "2026-09-14T13:00:00.000Z",
+     "quote": "Chilly tonight with frost in the interior west. Frost Advisory\n  in effect for Gogebic, Iron, and Baraga counties.",
+     "polygon": [
+      [
+       46.6,
+       -90.3
+      ],
+      [
+       46.85,
+       -89
+      ],
+      [
+       46.8,
+       -88.3
+      ],
+      [
+       46.1,
+       -88.4
+      ],
+      [
+       46,
+       -89.2
+      ],
+      [
+       46.3,
+       -90
+      ]
+     ]
+    },
+    {
+     "hazard": "marine",
+     "label": "Dangerous swimming, Alger shoreline",
+     "confidence": "high",
+     "start": "2026-09-13T12:00:00.000Z",
+     "end": "2026-09-14T00:00:00.000Z",
+     "quote": "Dangerous swimming conditions persist along the Alger County\n  shoreline today.",
+     "polygon": [
+      [
+       46.7,
+       -87
+      ],
+      [
+       46.7,
+       -86.3
+      ],
+      [
+       46.35,
+       -86.3
+      ],
+      [
+       46.35,
+       -87
+      ]
+     ]
+    },
+    {
+     "hazard": "heavy snow",
+     "label": "Soaking rain, 1 inch+ likely",
+     "confidence": "medium",
+     "start": "2026-09-14T22:00:00.000Z",
+     "end": "2026-09-15T14:00:00.000Z",
+     "quote": "Widespread rain moves into the UP from west to east late\n  Monday into Monday night, ending Tuesday morning. Rainfall\n  amounts of an inch or greater range from 40 to 70% across the\n  U.P.",
+     "polygon": [
+      [
+       47.4,
+       -88
+      ],
+      [
+       46.7,
+       -90.4
+      ],
+      [
+       45.95,
+       -88.1
+      ],
+      [
+       45.1,
+       -87.6
+      ],
+      [
+       45.9,
+       -86.97
+      ],
+      [
+       46.3,
+       -85.3
+      ],
+      [
+       46.76,
+       -85.3
+      ],
+      [
+       46.76,
+       -88.5
+      ]
+     ]
+    },
+    {
+     "hazard": "marine",
+     "label": "Southerly then westerly gales",
+     "confidence": "high",
+     "start": "2026-09-14T22:00:00.000Z",
+     "end": "2026-09-15T23:00:00.000Z",
+     "quote": "A Gale Watch has been issued for southerly gales followed by\n  westerly gales over the Upper Great Lakes Monday evening\n  through Tuesday.",
+     "polygon": [
+      [
+       46.8,
+       -90.3
+      ],
+      [
+       48,
+       -89.2
+      ],
+      [
+       47.6,
+       -87.5
+      ],
+      [
+       46.9,
+       -86.4
+      ],
+      [
+       46.5,
+       -86.6
+      ],
+      [
+       46.6,
+       -88.5
+      ],
+      [
+       46.6,
+       -89.6
       ]
      ]
     }
