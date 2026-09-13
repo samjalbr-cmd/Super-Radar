@@ -64,19 +64,10 @@ struct RadarWidgetView: View {
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
             if let d = entry.imageData, let ui = UIImage(data: d) {
-                // The map is drawn whether or not there is weather on it; only
-                // the caption changes, so a quiet sky still looks like a map and
-                // not like a failure.
+                // The map is drawn whether or not there is weather on it, so a
+                // quiet sky still looks like a map rather than a failure. A
+                // genuine fetch failure falls through to the NO DATA panel below.
                 Image(uiImage: ui).resizable().scaledToFill()
-                if !entry.hasEcho {
-                    Text("CLEAR")
-                        .font(.system(size: 11, weight: .heavy))
-                        .foregroundStyle(.white.opacity(0.85))
-                        .padding(.horizontal, 6).padding(.vertical, 2)
-                        .background(.black.opacity(0.5), in: Capsule())
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                        .padding(.top, 6)
-                }
             } else {
                 panel
                 VStack(spacing: 3) {
