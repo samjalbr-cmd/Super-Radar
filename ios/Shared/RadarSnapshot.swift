@@ -388,7 +388,11 @@ enum RadarSnapshot {
         }
         let temps: [StormFeed.Station] = wantTemps
             ? await StormFeed.stations(states: states, sw: sw, ne: ne) : []
-        let alerts = showAlerts ? await StormFeed.alerts(states: states, sw: sw, ne: ne) : []
+        // Marine areas go in alongside the states, or warnings over water — a
+        // gale on the lakes, say — never appear at all.
+        let alertAreas = showAlerts
+            ? states + StormFeed.marineCovering(sw: sw, ne: ne) : []
+        let alerts = showAlerts ? await StormFeed.alerts(states: alertAreas, sw: sw, ne: ne) : []
         let afd = showDiscussion ? await StormFeed.afdAreas(sw: sw, ne: ne) : []
         let outlook = showOutlook ? await MapLayers.outlook(sw: sw, ne: ne) : []
         let mcds = showOutlook ? await MapLayers.mesoscaleDiscussions(sw: sw, ne: ne) : []

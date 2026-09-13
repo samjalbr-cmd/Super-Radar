@@ -464,6 +464,42 @@ enum StormFeed {
         "WY": (41.04, -111.04, 44.91, -104.13),
     ]
 
+    /// Marine forecast areas — the Great Lakes and the coastal and offshore
+    /// waters — with the ground each covers.
+    ///
+    /// Water is not in any state, so a marine warning is invisible to a query
+    /// scoped by state codes: a Gale Watch over Lake Michigan carries LMZ zones
+    /// and belongs to area LM, and asking for MI,IN,OH,WI,IL returns none of it.
+    /// Bounds are sampled from the zone geometries and padded, since including
+    /// an extra code costs nothing — the alert query is one request either way.
+    static let marineBounds: [String: (Double, Double, Double, Double)] = [
+        "AM": (10.27, -80.94, 36.18, -55.00),
+        "AN": (31.00, -80.31, 43.91, -65.75),
+        "GM": (18.38, -96.88, 30.43, -80.55),
+        "LC": (42.01, -83.21, 43.00, -82.41),
+        "LE": (41.38, -83.47, 42.91, -78.85),
+        "LH": (43.00, -84.85, 46.05, -82.12),
+        "LM": (41.61, -87.87, 46.10, -84.85),
+        "LO": (43.08, -79.20, 44.20, -76.05),
+        "LS": (46.41, -92.29, 48.31, -84.87),
+        "PH": (14.91, -164.24, 26.23, -150.81),
+        "PK": (52.34, -180.00, 71.10, -132.34),
+        "PM": (-3.44, -119.47, 28.66, 167.33),
+        "PS": (-15.21, -171.75, -10.38, -167.49),
+        "PZ": (32.43, -129.25, 48.10, -117.33),
+        "SL": (44.18, -76.27, 45.00, -74.87),
+    ]
+
+    /// The marine areas a view touches, padded so an alert at the edge of a
+    /// sampled boundary is not missed.
+    static func marineCovering(sw: CLLocationCoordinate2D, ne: CLLocationCoordinate2D) -> [String] {
+        let pad = 2.0
+        return marineBounds.filter { _, b in
+            b.2 + pad >= sw.latitude && b.0 - pad <= ne.latitude &&
+            b.3 + pad >= sw.longitude && b.1 - pad <= ne.longitude
+        }.keys.sorted()
+    }
+
     /// Every state whose stations could fall inside the view.
     static func statesCovering(sw: CLLocationCoordinate2D, ne: CLLocationCoordinate2D,
                                fallback: String?) -> [String] {
