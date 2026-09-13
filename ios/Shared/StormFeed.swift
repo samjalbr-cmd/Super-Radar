@@ -231,7 +231,13 @@ enum StormFeed {
     /// dashboard does the same, and without it no watch is ever drawn, since
     /// watches are issued by zone and never carry geometry.
     static func alerts(states: [String], sw: CLLocationCoordinate2D, ne: CLLocationCoordinate2D) async -> [AlertArea] {
-        var str = "https://api.weather.gov/alerts/active?status=actual&message_type=alert"
+        // No message_type filter. Restricting to "alert" drops every alert that
+        // has since been updated, and an update is not a different kind of
+        // thing — it is the same alert, revised. Nationally that filter hid 90
+        // of 197 active alerts, including every Lake Michigan gale watch and
+        // eight flash flood warnings. The active endpoint already returns only
+        // what is in force.
+        var str = "https://api.weather.gov/alerts/active?status=actual"
         if !states.isEmpty { str += "&area=" + states.joined(separator: ",") }
         guard let url = URL(string: str) else { return [] }
         struct FC: Decodable {
@@ -248,17 +254,32 @@ enum StormFeed {
 
         // Gather the zones that still need fetching, so the cap applies to real
         // network work rather than to cache hits.
+        // Most severe first, so if the cap bites it drops advisories rather than
+        // warnings — with the update filter gone there are roughly twice as many
+        // alerts to resolve.
+        func rank(_ event: String) -> Int {
+            let e = event.lowercased()
+            if e.contains("warning") { return 0 }
+            if e.contains("watch") { return 1 }
+            return 2
+        }
         var needed: [String] = []
-        for f in fc.features where f.geometry == nil {
-            let e = (f.properties.event ?? "").lowercased()
-            guard e.contains("warning") || e.contains("watch") else { continue }
+        let resolvable = fc.features
+            .filter { $0.geometry == nil }
+            .filter { f in
+                let e = (f.properties.event ?? "").lowercased()
+                return e.contains("warning") || e.contains("watch")
+            }
+            .sorted { rank($0.properties.event ?? "") < rank($1.properties.event ?? "") }
+        for f in resolvable {
             for z in f.properties.affectedZones ?? [] where !needed.contains(z) { needed.append(z) }
         }
         // A single watch can span forty counties; bound the work per refresh and
-        // let the permanent cache close the gap over subsequent ones.
+        // let the permanent cache close the gap over subsequent ones. One Lake
+        // Michigan gale watch alone carries sixteen zones.
         var zones: [String: [[CLLocationCoordinate2D]]] = [:]
         await withTaskGroup(of: (String, [[CLLocationCoordinate2D]]?).self) { group in
-            for z in needed.prefix(40) {
+            for z in needed.prefix(60) {
                 group.addTask { (z, await zoneGeometry(z)) }
             }
             for await (z, rings) in group { if let rings { zones[z] = rings } }

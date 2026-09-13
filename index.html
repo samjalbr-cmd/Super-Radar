@@ -2665,22 +2665,34 @@ let isobarTimer = null, isobarSeq = 0;
 // to crawl and wriggle while panning. Snapping to a fixed lattice means a pan
 // re-samples the same points and the lines stay put. The padding is what lets a
 // contour run past the edge of the screen instead of stopping short of it.
-const ISO_STEPS = [0.1, 0.2, 0.25, 0.5, 1, 2, 2.5, 5, 10];
-function isobarGrid(bounds){
+// The lattice step is banded by zoom level, not derived from the visible span.
+//
+// Deriving it from the span meant every zoom — even a fractional one — picked a
+// slightly different step, resampled somewhere else and redrew a different line.
+// Banding it means zooming within a band does not change the sampling at all.
+// The bands double, so a coarser lattice is a strict subset of the finer one and
+// crossing a band keeps the values at every point it retains.
+function isoStep(z){
+  if(z >= 10) return 0.25;
+  if(z >= 8)  return 0.5;
+  if(z >= 6)  return 1;
+  return 2;
+}
+
+// The sampled region is padded well past the view so that panning and zooming
+// stay inside what has already been fetched; while they do, the contours are
+// redrawn from the same numbers and do not move at all.
+function isobarGrid(bounds, step){
   const w = bounds.getEast() - bounds.getWest(), h = bounds.getNorth() - bounds.getSouth();
-  const pad = 0.2;
-  let west = bounds.getWest() - w * pad, east = bounds.getEast() + w * pad;
-  let south = bounds.getSouth() - h * pad, north = bounds.getNorth() + h * pad;
-  const want = (east - west) / 14;
-  let step = ISO_STEPS.find(v => v >= want) || ISO_STEPS[ISO_STEPS.length - 1];
-  let c0, c1, r0, r1;
-  for(;;){
-    c0 = Math.floor(west / step); c1 = Math.ceil(east / step);
-    r0 = Math.floor(south / step); r1 = Math.ceil(north / step);
-    if((c1 - c0 + 1) * (r1 - r0 + 1) <= 260) break;      // keep the request bounded
-    const next = ISO_STEPS[ISO_STEPS.indexOf(step) + 1];
-    if(!next) break;
-    step = next;
+  const padX = Math.max(w * 0.45, step), padY = Math.max(h * 0.45, step);
+  const west = bounds.getWest() - padX, east = bounds.getEast() + padX;
+  const south = bounds.getSouth() - padY, north = bounds.getNorth() + padY;
+  let c0 = Math.floor(west / step), c1 = Math.ceil(east / step);
+  let r0 = Math.floor(south / step), r1 = Math.ceil(north / step);
+  // Trim from the outside in if the request would get too large, rather than
+  // changing the step, which would move every point.
+  while((c1 - c0 + 1) * (r1 - r0 + 1) > 260){
+    if(c1 - c0 >= r1 - r0){ c0++; c1--; } else { r0++; r1--; }
   }
   const cols = c1 - c0 + 1, rows = r1 - r0 + 1;
   const lats = [], lons = [], pts = [];
@@ -2691,13 +2703,26 @@ function isobarGrid(bounds){
       pts.push([la, lo]);
     }
   }
-  return {lats, lons, pts, cols, rows};
+  return {lats, lons, pts, cols, rows,
+          region: {step, west: c0 * step, east: c1 * step, south: r0 * step, north: r1 * step}};
+}
+
+// Whether the view has left what was sampled, or the sample has gone stale.
+let isoRegion = null;
+function isoNeedsFetch(){
+  const step = isoStep(map.getZoom());
+  if(!isoRegion || isoRegion.step !== step) return true;
+  if(Date.now() - isoRegion.at > 20 * 60e3) return true;
+  const b = map.getBounds();
+  return !(b.getWest() >= isoRegion.west && b.getEast() <= isoRegion.east &&
+           b.getSouth() >= isoRegion.south && b.getNorth() <= isoRegion.north);
 }
 
 async function fetchIsobars(){
   if(!isobarsOn || !isobarLayer) return;
   const seq = ++isobarSeq;
-  const {lats, lons, pts, cols, rows} = isobarGrid(map.getBounds());
+  const step = isoStep(map.getZoom());
+  const {lats, lons, pts, cols, rows, region} = isobarGrid(map.getBounds(), step);
   const url = 'https://api.open-meteo.com/v1/forecast'
             + `?latitude=${lats.join(',')}&longitude=${lons.join(',')}`
             + '&hourly=pressure_msl&timezone=GMT&forecast_days=1';
@@ -2708,6 +2733,7 @@ async function fetchIsobars(){
     if(!arr.length || !arr[0].hourly) return;
     const idx = currentHourIndex(arr[0].hourly.time);
     const vals = arr.map(loc => (loc.hourly && loc.hourly.pressure_msl) ? loc.hourly.pressure_msl[idx] : null);
+    isoRegion = Object.assign({at: Date.now()}, region);
     renderIsobars(vals, pts, cols, rows);
   }catch(e){ console.error('isobar error', e); }
 }
@@ -2780,6 +2806,10 @@ function isoSegments(vals, pts, cols, rows, lvl){
 
 function scheduleIsobarRefresh(){
   if(!isobarsOn) return;
+  // Only go back to the network when the view has actually left what was
+  // sampled. Otherwise the cached grid is redrawn, which is what keeps the
+  // lines still while panning and zooming.
+  if(!isoNeedsFetch()) return;
   clearTimeout(isobarTimer);
   isobarTimer = setTimeout(fetchIsobars, 600);           // debounce panning
 }
