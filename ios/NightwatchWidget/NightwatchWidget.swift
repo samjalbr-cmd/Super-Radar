@@ -80,11 +80,14 @@ struct RadarWidgetView: View {
                 }
                 .padding(.horizontal, 6)
             }
-            Text(entry.date, style: .time)
+            // Date as well as time. A widget can hold a stale snapshot for a
+            // while, and "10:26" alone gives no way to tell this morning's radar
+            // from yesterday's.
+            Text(entry.date, format: .dateTime.month(.abbreviated).day().hour().minute())
                 .font(.system(size: 9, design: .monospaced))
-                .foregroundStyle(.white.opacity(0.75))
+                .foregroundStyle(.white.opacity(0.8))
                 .padding(.horizontal, 5).padding(.vertical, 2)
-                .background(.black.opacity(0.45), in: Capsule())
+                .background(.black.opacity(0.5), in: Capsule())
                 .padding(6)
         }
         .containerBackground(panel, for: .widget)
@@ -199,7 +202,7 @@ struct ArrivalWidgetView: View {
                     .foregroundStyle(.white.opacity(0.5))
                     .minimumScaleFactor(0.7).lineLimit(1)
                 Spacer(minLength: 0)
-                Text(entry.date, style: .time)
+                Text(entry.date, format: .dateTime.month(.abbreviated).day().hour().minute())
                     .font(.system(size: 9.5, design: .monospaced))
                     .foregroundStyle(.white.opacity(0.4))
             }

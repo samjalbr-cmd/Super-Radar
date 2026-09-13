@@ -581,10 +581,10 @@ enum RadarSnapshot {
                 // Label the area at the top of its outline, where the dashboard
                 // puts it. Skipped when the shape is too small to read.
                 let bounds = path.bounds
-                guard bounds.width > 54, bounds.height > 26, !a.label.isEmpty else { continue }
+                guard bounds.width > 44, bounds.height > 22, !a.label.isEmpty else { continue }
                 let text = a.label.uppercased() as NSString
                 let attrs: [NSAttributedString.Key: Any] = [
-                    .font: UIFont.systemFont(ofSize: 8, weight: .heavy),
+                    .font: UIFont.systemFont(ofSize: 6.5, weight: .heavy),
                     .foregroundColor: a.color,
                     .strokeColor: UIColor.black, .strokeWidth: -3.0,
                 ]
