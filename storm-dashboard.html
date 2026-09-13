@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Nightwatch — Storm Dashboard</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
 <style>
@@ -179,7 +179,7 @@
   body.tv #lightningBadge{ font-size:14px; padding:9px 14px; }
 
   @media (max-width: 560px){
-    #statusStack{ top:20px; left:12px; gap:6px; max-width:calc(100vw - 76px); }
+    #statusStack{ gap:6px; }
     #radarStatus, #precipStatus, #afdStatus{ font-size:10px; padding:6px 9px; }
     #arrival{ padding:8px 11px; }
     .arr-head{ font-size:11px; }
@@ -187,10 +187,21 @@
     .arr-sub{ font-size:9.5px; }
     #radarLoop{ bottom:16px; width:calc(100vw - 24px); }
   }
-  /* Too narrow for a centred control cluster and a left-aligned stack to share
-     the top row, so the stack drops below it. */
-  @media (max-width: 420px){
-    #statusStack{ top:66px; max-width:calc(100vw - 24px); }
+  /* No phone is wide enough for a centred control cluster and a left-aligned
+     status stack to share the top row, so the stack drops below it. This used
+     to trigger at 420px, which no iPhone reaches — a Pro Max is 440pt and a
+     Plus 428pt — so the big phones kept the desktop layout and the buttons
+     landed on top of the status text.
+
+     The offsets also clear the display cutout. The app draws edge to edge, so
+     without the safe-area inset the top row sits under the Dynamic Island. */
+  @media (max-width: 560px){
+    #topControls{ top:calc(env(safe-area-inset-top, 0px) + 10px); }
+    #gear{ top:calc(env(safe-area-inset-top, 0px) + 12px); right:12px; }
+    #statusStack{ top:calc(env(safe-area-inset-top, 0px) + 56px);
+                  left:12px; max-width:calc(100vw - 24px); }
+    #radarLoop{ bottom:calc(env(safe-area-inset-bottom, 0px) + 16px); }
+    .leaflet-control-attribution{ padding-bottom:env(safe-area-inset-bottom, 0px); }
   }
 
   #loading{

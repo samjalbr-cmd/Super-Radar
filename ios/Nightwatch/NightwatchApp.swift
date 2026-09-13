@@ -100,7 +100,11 @@ struct NightwatchApp: App {
         WindowGroup {
             DashboardView(location: location)
                 .ignoresSafeArea()
-                .statusBarHidden(true)
+                // The status bar stays visible. Hiding it while the web view
+                // also ignores the safe area leaves the page no way to know
+                // where the display cutout is, so the top row ends up under the
+                // Dynamic Island — and on a weather dashboard the clock and
+                // battery are worth having anyway.
                 .onAppear {
                     // Keep the default written where the widget can read it, and
                     // stop the phone dimming while the radar is being watched.
