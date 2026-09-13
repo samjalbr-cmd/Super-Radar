@@ -339,7 +339,7 @@ enum RadarSnapshot {
                         showReports: Bool, showTemps: Bool, showAlerts: Bool,
                         showTracks: Bool, showDiscussion: Bool,
                         showOutlook: Bool, showFronts: Bool, stationModel: Bool,
-                        state: String?) async -> (image: UIImage, hasEcho: Bool)? {
+                        showIsobars: Bool, state: String?) async -> (image: UIImage, hasEcho: Bool)? {
         let half = zoom.halfDegrees
 
         // Framed as a projected rect, not a coordinate span. A degree of
@@ -397,6 +397,7 @@ enum RadarSnapshot {
         let outlook = showOutlook ? await MapLayers.outlook(sw: sw, ne: ne) : []
         let mcds = showOutlook ? await MapLayers.mesoscaleDiscussions(sw: sw, ne: ne) : []
         let sfc = showFronts ? await MapLayers.surface() : nil
+        let isobars = showIsobars ? await MapLayers.isobars(sw: sw, ne: ne) : []
         let cells: [StormCell] = showTracks ? ((try? await StormFeed.cells()) ?? []) : []
 
         let out = UIGraphicsImageRenderer(size: size).image { ctx in
@@ -452,6 +453,38 @@ enum RadarSnapshot {
                 let rect = CGRect(x: min(p0.x, p1.x), y: min(p0.y, p1.y),
                                   width: abs(p1.x - p0.x), height: abs(p1.y - p0.y))
                 radar.draw(in: rect, blendMode: .normal, alpha: 0.75)
+            }
+
+            // Isobars sit under the fronts: they are the background field the
+            // fronts are drawn on, and a front should read over the top of them.
+            for iso in isobars {
+                let path = UIBezierPath()
+                for seg in iso.segments {
+                    guard seg.count >= 2 else { continue }
+                    path.move(to: snap.point(for: seg[0]))
+                    for c in seg.dropFirst() { path.addLine(to: snap.point(for: c)) }
+                }
+                path.lineWidth = 1
+                UIColor(red: 0.87, green: 0.90, blue: 0.94, alpha: 0.55).setStroke()
+                path.stroke()
+                // Label the level once per contour, on a segment well inside the
+                // frame so the number is not clipped.
+                if let mark = iso.segments.compactMap({ seg -> CGPoint? in
+                    guard seg.count >= 2 else { return nil }
+                    let a = snap.point(for: seg[0]), b = snap.point(for: seg[1])
+                    let m = CGPoint(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2)
+                    return (m.x > 24 && m.y > 14 && m.x < size.width - 24 && m.y < size.height - 14) ? m : nil
+                }).first {
+                    let text = "\(iso.millibars)" as NSString
+                    let attrs: [NSAttributedString.Key: Any] = [
+                        .font: UIFont.monospacedDigitSystemFont(ofSize: 7, weight: .semibold),
+                        .foregroundColor: UIColor(red: 0.87, green: 0.90, blue: 0.94, alpha: 0.9),
+                        .strokeColor: UIColor.black, .strokeWidth: -3.0,
+                    ]
+                    let sz = text.size(withAttributes: attrs)
+                    text.draw(at: CGPoint(x: mark.x - sz.width / 2, y: mark.y - sz.height / 2),
+                              withAttributes: attrs)
+                }
             }
 
             // Surface analysis: fronts with their pips, and pressure centres.

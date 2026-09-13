@@ -18,6 +18,7 @@ struct WatchLocation: Codable {
     var showOutlook: Bool = true
     var showFronts: Bool = true
     var stationModel: Bool = false
+    var showIsobars: Bool = true
     var zoom: RadarZoom = .county
     /// Two-letter state, resolved by the app. The national station feed is
     /// 3.4 MB; one state's network is about 100 KB, and the API accepts only one.
@@ -28,7 +29,7 @@ struct WatchLocation: Codable {
     static let fallback = WatchLocation(lat: 42.907058, lon: -85.763014, name: "Grand Rapids",
                                         showReports: true, showTemps: true, showAlerts: true,
                                         showTracks: true, showDiscussion: true,
-                                        showOutlook: true, showFronts: true, stationModel: false,
+                                        showOutlook: true, showFronts: true, stationModel: false, showIsobars: true,
                                         zoom: .county, state: "MI")
 
     static func load() -> WatchLocation {

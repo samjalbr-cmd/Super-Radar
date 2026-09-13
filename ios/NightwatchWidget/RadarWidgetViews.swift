@@ -62,4 +62,7 @@ struct RadarConfig: WidgetConfigurationIntent {
 
     @Parameter(title: "Full station model", default: false)
     var stationModel: Bool
+
+    @Parameter(title: "Show isobars", default: true)
+    var showIsobars: Bool
 }

@@ -189,6 +189,118 @@ enum MapLayers {
         return Surface(fronts: fronts, centers: centers)
     }
 
+    // MARK: - Isobars
+
+    /// A mean-sea-level pressure contour: the line, and the level it traces.
+    struct Isobar {
+        let segments: [[CLLocationCoordinate2D]]
+        let millibars: Int
+    }
+
+    /// Isobars across the view, on the standard 4 hPa interval.
+    ///
+    /// A coarse 14x10 grid sampled from Open-Meteo and traced with marching
+    /// squares — the same grid size and the same tracer the dashboard uses, so
+    /// the two draw the same lines. Pressure centres are deliberately not
+    /// derived here: the surface analysis already places H and L from WPC's own
+    /// bulletin, and a second set off a coarse model grid would disagree with
+    /// them.
+    static func isobars(sw: CLLocationCoordinate2D, ne: CLLocationCoordinate2D) async -> [Isobar] {
+        let cols = 14, rows = 10
+        let dLat = (ne.latitude - sw.latitude) / Double(rows)
+        let dLon = (ne.longitude - sw.longitude) / Double(cols)
+        var lats: [String] = [], lons: [String] = []
+        var centres: [CLLocationCoordinate2D] = []
+        for r in 0..<rows {
+            for c in 0..<cols {
+                let la = sw.latitude + (Double(r) + 0.5) * dLat
+                let lo = sw.longitude + (Double(c) + 0.5) * dLon
+                lats.append(String(format: "%.3f", la))
+                lons.append(String(format: "%.3f", lo))
+                centres.append(CLLocationCoordinate2D(latitude: la, longitude: lo))
+            }
+        }
+        var comps = URLComponents(string: "https://api.open-meteo.com/v1/forecast")!
+        comps.queryItems = [
+            .init(name: "latitude", value: lats.joined(separator: ",")),
+            .init(name: "longitude", value: lons.joined(separator: ",")),
+            .init(name: "hourly", value: "pressure_msl"),
+            .init(name: "timezone", value: "GMT"),
+            .init(name: "forecast_days", value: "1"),
+        ]
+        guard let url = comps.url else { return [] }
+        struct Point: Decodable {
+            struct Hourly: Decodable { let time: [String]?; let pressure_msl: [Double?]? }
+            let hourly: Hourly?
+        }
+        var req = URLRequest(url: url); req.timeoutInterval = 25
+        guard let data = try? await URLSession.shared.data(for: req).0 else { return [] }
+        // A multi-point request answers with an array; a single point with an object.
+        let points: [Point]
+        if let many = try? JSONDecoder().decode([Point].self, from: data) { points = many }
+        else if let one = try? JSONDecoder().decode(Point.self, from: data) { points = [one] }
+        else { return [] }
+        guard points.count == centres.count, let times = points.first?.hourly?.time else { return [] }
+
+        // The hour nearest now, matching the dashboard's currentHourIndex.
+        let fmt = ISO8601DateFormatter()
+        fmt.formatOptions = [.withInternetDateTime, .withTimeZone]
+        let now = Date()
+        var idx = 0, best = Double.greatestFiniteMagnitude
+        for (i, t) in times.enumerated() {
+            guard let d = fmt.date(from: t + "Z") ?? fmt.date(from: t) else { continue }
+            let gap = abs(d.timeIntervalSince(now))
+            if gap < best { best = gap; idx = i }
+        }
+        let vals: [Double?] = points.map { p in
+            guard let arr = p.hourly?.pressure_msl, idx < arr.count else { return nil }
+            return arr[idx]
+        }
+        let present = vals.compactMap { $0 }
+        guard present.count > cols, let lo = present.min(), let hi = present.max() else { return [] }
+
+        let interval = 4.0
+        var out: [Isobar] = []
+        var level = (lo / interval).rounded(.up) * interval
+        while level <= hi {
+            let segs = contour(vals, centres, cols: cols, rows: rows, level: level)
+            if !segs.isEmpty { out.append(Isobar(segments: segs, millibars: Int(level.rounded()))) }
+            level += interval
+        }
+        return out
+    }
+
+    /// Marching squares over the sample grid — a direct port of the tracer the
+    /// dashboard draws its isobars with.
+    private static func contour(_ vals: [Double?], _ pts: [CLLocationCoordinate2D],
+                                cols: Int, rows: Int, level: Double) -> [[CLLocationCoordinate2D]] {
+        func interp(_ a: Int, _ b: Int) -> CLLocationCoordinate2D? {
+            guard let va = vals[a], let vb = vals[b], va != vb else { return nil }
+            let t = (level - va) / (vb - va)
+            return CLLocationCoordinate2D(
+                latitude: pts[a].latitude + (pts[b].latitude - pts[a].latitude) * t,
+                longitude: pts[a].longitude + (pts[b].longitude - pts[a].longitude) * t)
+        }
+        var segs: [[CLLocationCoordinate2D]] = []
+        for r in 0..<(rows - 1) {
+            for c in 0..<(cols - 1) {
+                let corner = [r * cols + c, r * cols + c + 1,
+                              (r + 1) * cols + c + 1, (r + 1) * cols + c]
+                if corner.contains(where: { vals[$0] == nil }) { continue }
+                var cross: [CLLocationCoordinate2D] = []
+                for e in 0..<4 {
+                    let a = corner[e], b = corner[(e + 1) % 4]
+                    if (vals[a]! < level) != (vals[b]! < level), let p = interp(a, b) { cross.append(p) }
+                }
+                if cross.count == 2 { segs.append([cross[0], cross[1]]) }
+                else if cross.count == 4 {
+                    segs.append([cross[0], cross[1]]); segs.append([cross[2], cross[3]])
+                }
+            }
+        }
+        return segs
+    }
+
     // MARK: - Helpers
 
     static func ringsIn(_ g: StormFeed.GeoJSONGeometry,

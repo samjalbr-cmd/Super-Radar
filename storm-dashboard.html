@@ -642,6 +642,7 @@
           <label class="set-row"><input type="checkbox" data-spc="lsr" checked onchange="toggleSpc(this)"><span class="sw-t"></span>Storm reports (24 h)</label>
         </div>
         <label class="set-row"><input type="checkbox" id="sfcChk" checked onchange="toggleSurface(this)"><span class="sw-t"></span>Surface fronts and pressure</label>
+        <label class="set-row"><input type="checkbox" id="isobarChk" checked onchange="toggleIsobars(this)"><span class="sw-t"></span>Isobars</label>
         <label class="set-row"><input type="checkbox" id="afdAreasChk" checked onchange="toggleAfdAreas(this)"><span class="sw-t"></span>Forecast discussion areas</label>
       </div>
     </details>
@@ -779,7 +780,8 @@
 <script>
 let lat = 42.907058, lon = -85.763014;
 let map, basemap, basemapLabels, radarLayer, marker, alertLayerGroup, lightningLayerGroup, feedLayerGroup;
-let spcOutlookLayer, mcdLayer, lsrLayer, stationLayer, modelLayer, modelMarkers, afdHazardLayer, sfcLayer, trackLayer;
+let spcOutlookLayer, mcdLayer, lsrLayer, stationLayer, modelLayer, modelMarkers, afdHazardLayer, sfcLayer, trackLayer
+let isobarLayer, isobarMarkers;
 let precipGroup, precipMarkers;
 const ESRI_CANVAS = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/';
 
@@ -821,6 +823,8 @@ function initMap(){
 
   precipGroup = L.layerGroup().addTo(map);
   precipMarkers = L.layerGroup().addTo(map);
+  isobarLayer = L.layerGroup().addTo(map);
+  isobarMarkers = L.layerGroup().addTo(map);
   modelLayer = L.layerGroup().addTo(map);
   modelMarkers = L.layerGroup().addTo(map);
   spcOutlookLayer = L.layerGroup().addTo(map);
@@ -836,6 +840,7 @@ function initMap(){
   // Re-filter station markers to the viewport when the map moves (no refetch).
   map.on('moveend', renderStations);
   map.on('moveend', scheduleModelRefresh);
+  map.on('moveend', scheduleIsobarRefresh);
   map.on('moveend', scheduleAfdRefresh);
   map.on('moveend', renderSurface);
   map.on('moveend', renderStormTracks);
@@ -1514,6 +1519,7 @@ function syncAppSettings(){
         showOutlook: !!(spcVisible.outlook || spcVisible.mcd),
         showFronts: !!sfcOn,
         stationModel: !!windBarbsOn,
+        showIsobars: !!isobarsOn,
       });
     }catch(e){}
   }, 400);
@@ -2539,7 +2545,8 @@ function isoInterp(a, b, lvl){
   const t = (lvl - a.v) / (b.v - a.v);
   return [a.p.lat + (b.p.lat - a.p.lat) * t, a.p.lon + (b.p.lon - a.p.lon) * t];
 }
-function drawIsobars(vals, rects, cols, rows){
+function drawIsobars(vals, rects, cols, rows, lineLayer, labelLayer){
+  lineLayer = lineLayer || modelLayer; labelLayer = labelLayer || modelMarkers;
   const INTERVAL = 4;
   let mn = Infinity, mx = -Infinity;
   for(const v of vals){ if(v == null) continue; if(v < mn) mn = v; if(v > mx) mx = v; }
@@ -2549,12 +2556,12 @@ function drawIsobars(vals, rects, cols, rows){
   const labeled = {};
   for(let lvl = first; lvl <= mx; lvl += INTERVAL){
     for(const seg of contourSegments(vals, rects, cols, rows, lvl)){
-      L.polyline(seg, style).addTo(modelLayer);
+      L.polyline(seg, style).addTo(lineLayer);
       if(!labeled[lvl]){
         labeled[lvl] = true;
         const mid = [(seg[0][0] + seg[1][0]) / 2, (seg[0][1] + seg[1][1]) / 2];
         const icon = L.divIcon({className: 'iso-icon', html: `<span class="iso-label">${lvl}</span>`, iconSize: [0, 0], iconAnchor: [0, 0]});
-        L.marker(mid, {icon, interactive: false}).addTo(modelMarkers);
+        L.marker(mid, {icon, interactive: false}).addTo(labelLayer);
       }
     }
   }
@@ -2587,7 +2594,8 @@ function contourSegments(vals, rects, cols, rows, lvl){
 }
 
 // Mark interior grid cells that are strict local min (Low) / max (High).
-function placePressureHL(vals, rects, cols, rows){
+function placePressureHL(vals, rects, cols, rows, target){
+  target = target || modelMarkers;
   const at = (r, c) => (r < 0 || c < 0 || r >= rows || c >= cols) ? null : vals[r * cols + c];
   for(let r = 1; r < rows - 1; r++){
     for(let c = 1; c < cols - 1; c++){
@@ -2611,7 +2619,7 @@ function placePressureHL(vals, rects, cols, rows){
         html: `<div class="hl-mark" style="color:${color}">${letter}<span class="hl-mb">${Math.round(v)}</span></div>`,
         iconSize: [0, 0], iconAnchor: [0, 0]
       });
-      L.marker([latC, lonC], {icon, interactive: false}).addTo(modelMarkers);
+      L.marker([latC, lonC], {icon, interactive: false}).addTo(target);
     }
   }
 }
@@ -2639,6 +2647,56 @@ function renderModelLegend(field){
   let html = rows.map(([c, l]) => `<div class="legend-row"><span class="sw" style="background:${c}"></span>${l}</div>`).join('');
   if(field === 'mslp') html += `<div class="legend-row"><span style="color:#E10600;font-weight:800;">L</span> / <span style="color:#3A6FE0;font-weight:800;">H</span> + isobars</div>`;
   el.innerHTML = html;
+}
+
+/* ---------------- Isobars ----------------
+   Mean sea-level pressure contours on their own. The MSLP model layer already
+   drew these, but only as a side effect of painting the whole pressure field in
+   colour; isobars are most useful over the radar, not under a colour wash, so
+   they get their own layer and their own fetch. */
+let isobarsOn = true;
+let isobarTimer = null, isobarSeq = 0;
+
+async function fetchIsobars(){
+  if(!isobarsOn || !isobarLayer) return;
+  const seq = ++isobarSeq;
+  const cols = 14, rows = 10;
+  const {lats, lons, rects} = buildGrid(map.getBounds(), cols, rows);
+  const url = 'https://api.open-meteo.com/v1/forecast'
+            + `?latitude=${lats.join(',')}&longitude=${lons.join(',')}`
+            + '&hourly=pressure_msl&timezone=GMT&forecast_days=1';
+  try{
+    const data = await (await fetch(url)).json();
+    if(seq !== isobarSeq || !isobarsOn) return;          // panned since, or turned off
+    const arr = Array.isArray(data) ? data : [data];
+    if(!arr.length || !arr[0].hourly) return;
+    const idx = currentHourIndex(arr[0].hourly.time);
+    const vals = arr.map(loc => (loc.hourly && loc.hourly.pressure_msl) ? loc.hourly.pressure_msl[idx] : null);
+    renderIsobars(vals, rects, cols, rows);
+  }catch(e){ console.error('isobar error', e); }
+}
+
+function renderIsobars(vals, rects, cols, rows){
+  isobarLayer.clearLayers();
+  isobarMarkers.clearLayers();
+  if(!isobarsOn) return;
+  // Lines only. The surface analysis already places H and L from WPC's own
+  // bulletin, and deriving a second set from a coarse model grid would put two
+  // disagreeing sets of centres on the same map.
+  drawIsobars(vals, rects, cols, rows, isobarLayer, isobarMarkers);
+}
+
+function scheduleIsobarRefresh(){
+  if(!isobarsOn) return;
+  clearTimeout(isobarTimer);
+  isobarTimer = setTimeout(fetchIsobars, 600);           // debounce panning
+}
+
+function toggleIsobars(cb){
+  isobarsOn = cb.checked;
+  if(isobarsOn){ fetchIsobars(); }
+  else { isobarLayer.clearLayers(); isobarMarkers.clearLayers(); }
+  syncAppSettings();
 }
 
 function setModelField(v){
@@ -3692,6 +3750,7 @@ async function boot(){
   setInterval(() => { renderFeed(); }, 30000);   // keep "Xm ago" fresh
   loadAfdAreas();
   loadSurfaceAnalysis();
+  fetchIsobars();
   syncAppSettings();   // hand the app its opening state
   setInterval(loadAfdAreas, 20 * 60 * 1000);
   setInterval(loadSurfaceAnalysis, 20 * 60 * 1000);
