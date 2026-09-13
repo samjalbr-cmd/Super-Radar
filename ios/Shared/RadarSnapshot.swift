@@ -60,36 +60,36 @@ enum RadarZoom: String, CaseIterable, Codable, Sendable {
 }
 
 /// The dashboard's temperature ramp, so a number means the same thing in both.
+///
+/// Interpolated between its stops rather than stepped, so a view spanning only a
+/// few degrees still shows a gradient instead of one flat colour.
+private let tempStops: [(Double, CGFloat, CGFloat, CGFloat)] = [
+    (0, 0xA0, 0x20, 0xF0), (20, 0xAD, 0xD8, 0xE6), (30, 0xE0, 0xFF, 0xFF),
+    (40, 0x00, 0xFF, 0xFF), (50, 0xB0, 0xE5, 0x7C), (60, 0x00, 0x80, 0x00),
+    (70, 0xFF, 0xFF, 0x00), (80, 0xFF, 0xA5, 0x00), (90, 0xFF, 0x45, 0x00),
+    (100, 0xFF, 0x00, 0x00), (110, 0x8B, 0x00, 0x00),
+]
+
 private func tempColor(_ f: Double) -> UIColor {
-    switch f {
-    case 105...: return UIColor(red: 1.00, green: 0.00, blue: 0.00, alpha: 1)
-    case 95..<105: return UIColor(red: 1.00, green: 0.40, blue: 0.00, alpha: 1)
-    case 85..<95:  return UIColor(red: 1.00, green: 0.60, blue: 0.00, alpha: 1)
-    case 75..<85:  return UIColor(red: 1.00, green: 0.90, blue: 0.00, alpha: 1)
-    case 65..<75:  return UIColor(red: 0.60, green: 1.00, blue: 0.20, alpha: 1)
-    case 55..<65:  return UIColor(red: 0.20, green: 0.90, blue: 0.20, alpha: 1)
-    case 45..<55:  return UIColor(red: 0.00, green: 0.80, blue: 0.80, alpha: 1)
-    case 35..<45:  return UIColor(red: 0.00, green: 0.60, blue: 1.00, alpha: 1)
-    case 25..<35:  return UIColor(red: 0.20, green: 0.40, blue: 1.00, alpha: 1)
-    case 15..<25:  return UIColor(red: 0.40, green: 0.20, blue: 0.60, alpha: 1)
-    default:       return UIColor(red: 0.50, green: 0.00, blue: 0.50, alpha: 1)
+    func rgb(_ r: CGFloat, _ g: CGFloat, _ b: CGFloat) -> UIColor {
+        UIColor(red: r / 255, green: g / 255, blue: b / 255, alpha: 1)
     }
+    guard let first = tempStops.first, let last = tempStops.last else { return .white }
+    if f <= first.0 { return rgb(first.1, first.2, first.3) }
+    if f >= last.0 { return rgb(last.1, last.2, last.3) }
+    for i in 0..<(tempStops.count - 1) {
+        let a = tempStops[i], b = tempStops[i + 1]
+        guard f <= b.0 else { continue }
+        let t = CGFloat((f - a.0) / (b.0 - a.0))
+        return rgb(a.1 + (b.1 - a.1) * t, a.2 + (b.2 - a.2) * t, a.3 + (b.3 - a.3) * t)
+    }
+    return .white
 }
 
-/// The temperature colour, lifted to stay legible as a thin line.
-///
-/// The ramp's cold end is a dark purple that reads fine as text with a black
-/// outline behind it, but vanishes as a one-point stroke over a dark basemap,
-/// so anything below mid brightness is blended towards white.
-private func barbColor(_ f: Double) -> UIColor {
-    let c = tempColor(f)
-    var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
-    guard c.getRed(&r, green: &g, blue: &b, alpha: &a) else { return c }
-    let luma = 0.299 * r + 0.587 * g + 0.114 * b
-    guard luma < 0.5 else { return c }
-    let t = (0.5 - luma) / 0.5 * 0.55
-    return UIColor(red: r + (1 - r) * t, green: g + (1 - g) * t, blue: b + (1 - b) * t, alpha: a)
-}
+/// The barb, the sky circle and every figure in the plot take the temperature
+/// colour. The black halo behind them carries the contrast, so the palette is
+/// used exactly as specified rather than being lightened.
+private func barbColor(_ f: Double) -> UIColor { tempColor(f) }
 
 /// Which side of a front its symbols go on. WPC digitises fronts so that the
 /// left of the digitised direction is the leading edge.
@@ -204,6 +204,12 @@ private let stationPlotSize = CGSize(width: 19, height: 20)
 private func drawStationModel(_ st: StormFeed.Station, at p: CGPoint) {
     guard let ctx = UIGraphicsGetCurrentContext() else { return }
     let r: CGFloat = 2.8
+    // Every figure in the plot carries the temperature, so the field reads as
+    // colour before it reads as digits. Sky cover is still the fill fraction,
+    // and dew point and pressure are still told apart by their position — the
+    // station model's own convention — rather than by colour.
+    let tint = tempColor(st.tempF)
+    ctx.setShadow(offset: .zero, blur: 2.2, color: UIColor.black.withAlphaComponent(0.9).cgColor)
 
     // Sky cover: the circle is filled in proportion to the reported coverage.
     let ring = UIBezierPath(arcCenter: p, radius: r, startAngle: 0, endAngle: .pi * 2, clockwise: true)
@@ -219,7 +225,7 @@ private func drawStationModel(_ st: StormFeed.Station, at p: CGPoint) {
     case "OVC":               fraction = 1
     default:                  fraction = -1      // VV — obscured
     }
-    UIColor.white.setStroke()
+    tint.setStroke()
     ring.lineWidth = 0.9
     ring.stroke()
     if fraction > 0 {
@@ -228,7 +234,7 @@ private func drawStationModel(_ st: StormFeed.Station, at p: CGPoint) {
         wedge.addArc(withCenter: p, radius: r,
                      startAngle: -.pi / 2, endAngle: -.pi / 2 + .pi * 2 * fraction, clockwise: true)
         wedge.close()
-        UIColor.white.setFill()
+        tint.setFill()
         wedge.fill()
     } else if fraction < 0 {
         let x = UIBezierPath()
@@ -237,7 +243,7 @@ private func drawStationModel(_ st: StormFeed.Station, at p: CGPoint) {
         x.move(to: CGPoint(x: p.x + r * 0.7, y: p.y - r * 0.7))
         x.addLine(to: CGPoint(x: p.x - r * 0.7, y: p.y + r * 0.7))
         x.lineWidth = 1.2
-        UIColor.white.setStroke()
+        tint.setStroke()
         x.stroke()
     }
 
@@ -250,8 +256,7 @@ private func drawStationModel(_ st: StormFeed.Station, at p: CGPoint) {
         // The barbs already carry the speed, so the colour is free to carry the
         // temperature — which makes the field readable at a glance from the
         // barbs alone, rather than from 6pt digits.
-        let wind = barbColor(st.tempF)
-        ctx.setShadow(offset: .zero, blur: 2.2, color: UIColor.black.withAlphaComponent(0.9).cgColor)
+        let wind = tint
         ctx.translateBy(x: p.x, y: p.y)
         ctx.rotate(by: CGFloat(dir) * .pi / 180)
         let staff = UIBezierPath()
@@ -308,19 +313,19 @@ private func drawStationModel(_ st: StormFeed.Station, at p: CGPoint) {
         ns.draw(at: CGPoint(x: at.x - sz.width / 2, y: at.y - sz.height / 2), withAttributes: attrs)
     }
 
-    label("\(Int(st.tempF.rounded()))", tempColor(st.tempF), CGPoint(x: p.x - 6.5, y: p.y - 5))
+    label("\(Int(st.tempF.rounded()))", tint, CGPoint(x: p.x - 6.5, y: p.y - 5))
     if let d = st.dewF {
-        label("\(Int(d.rounded()))", UIColor(red: 0.36, green: 0.86, blue: 0.55, alpha: 1),
+        label("\(Int(d.rounded()))", tint,
               CGPoint(x: p.x - 6.5, y: p.y + 5))
     }
     if let mb = st.mslp {
         // The standard three-digit code: tenths of a millibar, hundreds dropped.
         let code = String(format: "%03d", Int((mb * 10).rounded()) % 1000)
-        label(code, UIColor.white.withAlphaComponent(0.9), CGPoint(x: p.x + 6.5, y: p.y - 5))
+        label(code, tint, CGPoint(x: p.x + 6.5, y: p.y - 5))
     }
     if let wx = st.wx, !wx.isEmpty {
         let short = wx.count > 5 ? String(wx.prefix(5)) : wx
-        label(short, UIColor(red: 1.0, green: 0.85, blue: 0.3, alpha: 1),
+        label(short, tint,
               CGPoint(x: p.x - 9, y: p.y), size: 5.5)
     }
 }
