@@ -2064,6 +2064,13 @@ function windColor(kt){
 }
 // Meteorological wind barb SVG (shaft points FROM-direction; half=5, full=10, pennant=50 kt).
 const BARB_PX = 32;   // rendered size of the wind-barb / station-plot SVG; matches --sm
+// What one plot actually occupies on screen, measured from the rendered
+// markup. The box is BARB_PX square and the temperature and dew point sit
+// inside it, but the pressure code hangs off the right — and only about 40% of
+// stations report pressure, so reserving the wide figure for all of them throws
+// away room most plots never use.
+const PLOT_H = 33;
+const plotWidth = p => (p.mslp != null ? 37 : 33);
 // Sky cover: the circle at the centre of the station plot, filled in proportion
 // to the reported coverage. An obscured sky (VV) is crossed out instead.
 const SKY_FRACTION = {CLR: 0, SKC: 0, NSC: 0, FEW: 0.25, SCT: 0.5, BKN: 0.75, OVC: 1};
@@ -2272,17 +2279,30 @@ function renderStations(){
   // views show the major hubs, not an unreadable pile of overlapping labels.
   // The full plot is wider than a bare number but not by much once it is drawn
   // at 32px, so it no longer needs to thin the field as aggressively as it did.
-  const cell = windBarbsOn ? 42 : (PRECIP_METRICS.has(stationMetric) ? 52 : 40);
+  const cell = PRECIP_METRICS.has(stationMetric) ? 52 : 40;
   const claimed = new Set();
+  const placed = [];                   // drawn plot footprints, for the packer
   const visible = stationData
     .filter(s => b.contains([s.lat, s.lon]))
     .sort((a, z) => stationScore(z.p) - stationScore(a.p));
 
   for(const s of visible){
     const pt = map.latLngToLayerPoint([s.lat, s.lon]);
-    const key = Math.round(pt.x / cell) + ':' + Math.round(pt.y / cell);
-    if(claimed.has(key)) continue;
-    claimed.add(key);
+    if(windBarbsOn){
+      // Packed against what is already drawn rather than bucketed into a grid,
+      // as the widget does. A grid reserves a whole cell for a plot sitting
+      // anywhere inside it, so a station near a corner blocks the space its
+      // neighbour could have used; testing the real footprint fits more in
+      // without any of them overlapping.
+      const half = plotWidth(s.p) / 2, halfV = PLOT_H / 2;
+      const r = {l: pt.x - half, t: pt.y - halfV, r: pt.x + half, b: pt.y + halfV};
+      if(placed.some(q => !(r.r <= q.l || r.l >= q.r || r.b <= q.t || r.t >= q.b))) continue;
+      placed.push(r);
+    }else{
+      const key = Math.round(pt.x / cell) + ':' + Math.round(pt.y / cell);
+      if(claimed.has(key)) continue;
+      claimed.add(key);
+    }
     const v = metric.val(s.p);
     let text, color;
     if(v == null){ text = '·'; color = '#5a6577'; }
