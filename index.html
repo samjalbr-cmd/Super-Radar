@@ -572,11 +572,11 @@
 
 
 <div id="gear">
-  <div id="gearbtn" onclick="document.getElementById('settingsPanel').classList.toggle('open')">⚙</div>
+  <div id="gearbtn" onclick="toggleSettings()">⚙</div>
   <div id="settingsPanel">
     <div class="set-head">
       <span class="set-title">Nightwatch</span>
-      <button class="set-close" onclick="document.getElementById('settingsPanel').classList.remove('open')" title="Close">✕</button>
+      <button class="set-close" onclick="toggleSettings(false)" title="Close">✕</button>
     </div>
 
     <details class="set-sec" open>
@@ -3351,12 +3351,36 @@ function setRadarOpacity(v){
 let feedOpen = false;
 function toggleFeed(){
   feedOpen = !feedOpen;
-  document.getElementById('feedPanel').classList.toggle('open', feedOpen);
+  const panel = document.getElementById('feedPanel');
+  panel.classList.toggle('open', feedOpen);
   if(feedOpen){
     feedSeenAt = Date.now();                       // opening clears the badge
     try{ localStorage.setItem('nightwatch.feedSeen', String(feedSeenAt)); }catch(e){}
   }
-  renderFeed();                                    // pins stay either way
+  // renderFeed() rebuilds the whole list and the map pins. Run inline it lands
+  // in the same frame as the class flip, and on a phone that task is long
+  // enough to starve the slide: the transition never gets a first frame and the
+  // panel is left parked at translateX(100%), fully off screen, looking like
+  // the tab did nothing. Deferring a frame lets the animation start first.
+  requestAnimationFrame(() => renderFeed());
+  settlePanel(panel, feedOpen);
+}
+
+// A transition that never started leaves the panel stranded off screen with no
+// way back, so confirm it actually arrived and place it directly if not. Cheap
+// insurance against a dropped frame on a busy phone.
+function settlePanel(panel, open){
+  setTimeout(() => {
+    if(panel.classList.contains('open') !== open) return;   // toggled again since
+    const tx = new DOMMatrixReadOnly(getComputedStyle(panel).transform).m41;
+    const want = open ? 0 : panel.offsetWidth;
+    if(Math.abs(tx - want) < 1) return;                     // arrived, nothing to do
+    panel.style.transition = 'none';
+    panel.style.transform = open ? 'translateX(0)' : 'translateX(100%)';
+    void panel.offsetWidth;
+    panel.style.transition = '';
+    panel.style.transform = '';
+  }, 450);                                                  // transition is 300ms
 }
 function flyTo(lat, lon){ if(lat != null && lon != null) map.setView([lat, lon], Math.max(map.getZoom(), 9)); }
 function feedTimeMs(iso){ if(!iso) return 0; const t = new Date(iso).getTime(); return isNaN(t) ? 0 : t; }
@@ -3533,6 +3557,13 @@ function feedChipsHTML(){
   return '<div class="feed-chips">' + Object.keys(FEED_CATS).map(k =>
     `<span class="feed-chip${feedFilter[k] ? ' on' : ''}" onclick="toggleFeedCat('${k}')">${FEED_CATS[k]}</span>`).join('') + '</div>';
 }
+function toggleSettings(force){
+  const panel = document.getElementById('settingsPanel');
+  const open = (force === undefined) ? !panel.classList.contains('open') : !!force;
+  panel.classList.toggle('open', open);
+  return open;
+}
+
 function toggleFeedCat(k){
   feedFilter[k] = !feedFilter[k];
   renderFeed();
