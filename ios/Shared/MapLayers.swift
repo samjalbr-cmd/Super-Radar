@@ -206,15 +206,35 @@ enum MapLayers {
     /// bulletin, and a second set off a coarse model grid would disagree with
     /// them.
     static func isobars(sw: CLLocationCoordinate2D, ne: CLLocationCoordinate2D) async -> [Isobar] {
-        let cols = 14, rows = 10
-        let dLat = (ne.latitude - sw.latitude) / Double(rows)
-        let dLon = (ne.longitude - sw.longitude) / Double(cols)
+        // Sampled on a lattice snapped to fixed degrees and padded past the
+        // view. Sampling the view itself moved every point whenever the map
+        // moved, so the contours were re-interpolated from different places each
+        // time and crawled; and because the samples stopped at the edge, so did
+        // the lines. A fixed lattice re-samples the same points, and the padding
+        // lets a contour run off the edge instead of ending at it.
+        let padLat = (ne.latitude - sw.latitude) * 0.2
+        let padLon = (ne.longitude - sw.longitude) * 0.2
+        let west = sw.longitude - padLon, east = ne.longitude + padLon
+        let south = sw.latitude - padLat, north = ne.latitude + padLat
+
+        let choices: [Double] = [0.1, 0.2, 0.25, 0.5, 1, 2, 2.5, 5, 10]
+        var step = choices.first { $0 >= (east - west) / 14 } ?? 10
+        var c0 = 0, c1 = 0, r0 = 0, r1 = 0
+        while true {
+            c0 = Int((west / step).rounded(.down)); c1 = Int((east / step).rounded(.up))
+            r0 = Int((south / step).rounded(.down)); r1 = Int((north / step).rounded(.up))
+            if (c1 - c0 + 1) * (r1 - r0 + 1) <= 260 { break }
+            guard let i = choices.firstIndex(of: step), i + 1 < choices.count else { break }
+            step = choices[i + 1]
+        }
+        let cols = c1 - c0 + 1, rows = r1 - r0 + 1
+        guard cols > 1, rows > 1 else { return [] }
+
         var lats: [String] = [], lons: [String] = []
         var centres: [CLLocationCoordinate2D] = []
         for r in 0..<rows {
             for c in 0..<cols {
-                let la = sw.latitude + (Double(r) + 0.5) * dLat
-                let lo = sw.longitude + (Double(c) + 0.5) * dLon
+                let la = Double(r0 + r) * step, lo = Double(c0 + c) * step
                 lats.append(String(format: "%.3f", la))
                 lons.append(String(format: "%.3f", lo))
                 centres.append(CLLocationCoordinate2D(latitude: la, longitude: lo))

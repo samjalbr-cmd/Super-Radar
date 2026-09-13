@@ -840,6 +840,7 @@ function initMap(){
   // Re-filter station markers to the viewport when the map moves (no refetch).
   map.on('moveend', renderStations);
   map.on('moveend', scheduleModelRefresh);
+  map.on('moveend', drawIsoLines);
   map.on('moveend', scheduleIsobarRefresh);
   map.on('moveend', scheduleAfdRefresh);
   map.on('moveend', renderSurface);
@@ -2657,11 +2658,46 @@ function renderModelLegend(field){
 let isobarsOn = true;
 let isobarTimer = null, isobarSeq = 0;
 
+// A sample lattice snapped to fixed degrees, padded beyond the view.
+//
+// Sampling the view itself meant every point moved whenever the map moved, so
+// the contours were re-interpolated from different places each time and appeared
+// to crawl and wriggle while panning. Snapping to a fixed lattice means a pan
+// re-samples the same points and the lines stay put. The padding is what lets a
+// contour run past the edge of the screen instead of stopping short of it.
+const ISO_STEPS = [0.1, 0.2, 0.25, 0.5, 1, 2, 2.5, 5, 10];
+function isobarGrid(bounds){
+  const w = bounds.getEast() - bounds.getWest(), h = bounds.getNorth() - bounds.getSouth();
+  const pad = 0.2;
+  let west = bounds.getWest() - w * pad, east = bounds.getEast() + w * pad;
+  let south = bounds.getSouth() - h * pad, north = bounds.getNorth() + h * pad;
+  const want = (east - west) / 14;
+  let step = ISO_STEPS.find(v => v >= want) || ISO_STEPS[ISO_STEPS.length - 1];
+  let c0, c1, r0, r1;
+  for(;;){
+    c0 = Math.floor(west / step); c1 = Math.ceil(east / step);
+    r0 = Math.floor(south / step); r1 = Math.ceil(north / step);
+    if((c1 - c0 + 1) * (r1 - r0 + 1) <= 260) break;      // keep the request bounded
+    const next = ISO_STEPS[ISO_STEPS.indexOf(step) + 1];
+    if(!next) break;
+    step = next;
+  }
+  const cols = c1 - c0 + 1, rows = r1 - r0 + 1;
+  const lats = [], lons = [], pts = [];
+  for(let r = 0; r < rows; r++){
+    for(let c = 0; c < cols; c++){
+      const la = (r0 + r) * step, lo = (c0 + c) * step;
+      lats.push(la.toFixed(3)); lons.push(lo.toFixed(3));
+      pts.push([la, lo]);
+    }
+  }
+  return {lats, lons, pts, cols, rows};
+}
+
 async function fetchIsobars(){
   if(!isobarsOn || !isobarLayer) return;
   const seq = ++isobarSeq;
-  const cols = 14, rows = 10;
-  const {lats, lons, rects} = buildGrid(map.getBounds(), cols, rows);
+  const {lats, lons, pts, cols, rows} = isobarGrid(map.getBounds());
   const url = 'https://api.open-meteo.com/v1/forecast'
             + `?latitude=${lats.join(',')}&longitude=${lons.join(',')}`
             + '&hourly=pressure_msl&timezone=GMT&forecast_days=1';
@@ -2672,18 +2708,74 @@ async function fetchIsobars(){
     if(!arr.length || !arr[0].hourly) return;
     const idx = currentHourIndex(arr[0].hourly.time);
     const vals = arr.map(loc => (loc.hourly && loc.hourly.pressure_msl) ? loc.hourly.pressure_msl[idx] : null);
-    renderIsobars(vals, rects, cols, rows);
+    renderIsobars(vals, pts, cols, rows);
   }catch(e){ console.error('isobar error', e); }
 }
 
-function renderIsobars(vals, rects, cols, rows){
+function renderIsobars(vals, pts, cols, rows){
   isobarLayer.clearLayers();
   isobarMarkers.clearLayers();
   if(!isobarsOn) return;
-  // Lines only. The surface analysis already places H and L from WPC's own
-  // bulletin, and deriving a second set from a coarse model grid would put two
-  // disagreeing sets of centres on the same map.
-  drawIsobars(vals, rects, cols, rows, isobarLayer, isobarMarkers);
+  isoCache = {vals, pts, cols, rows};
+  drawIsoLines();
+}
+
+// Lines only. The surface analysis already places H and L from WPC's own
+// bulletin, and deriving a second set from a coarse model grid would put two
+// disagreeing sets of centres on the same map.
+let isoCache = null;
+function drawIsoLines(){
+  if(!isoCache || !isobarsOn) return;
+  const {vals, pts, cols, rows} = isoCache;
+  isobarLayer.clearLayers();
+  isobarMarkers.clearLayers();
+  const INTERVAL = 4;
+  let mn = Infinity, mx = -Infinity;
+  for(const v of vals){ if(v == null) continue; if(v < mn) mn = v; if(v > mx) mx = v; }
+  if(!isFinite(mn)) return;
+  const view = map.getBounds();
+  const style = {color: '#DFE6F0', weight: 1.1, opacity: 0.7, interactive: false};
+  for(let lvl = Math.ceil(mn / INTERVAL) * INTERVAL; lvl <= mx; lvl += INTERVAL){
+    const segs = isoSegments(vals, pts, cols, rows, lvl);
+    for(const seg of segs) L.polyline(seg, style).addTo(isobarLayer);
+    // Label along the line rather than once per contour, and only where the
+    // label lands on screen — a contour whose only segment is off the edge used
+    // to leave its value invisible.
+    const onScreen = segs.filter(sg => view.contains(sg[0]) || view.contains(sg[1]));
+    const every = Math.max(1, Math.floor(onScreen.length / 3));
+    onScreen.forEach((sg, i) => {
+      if(i % every) return;
+      const mid = [(sg[0][0] + sg[1][0]) / 2, (sg[0][1] + sg[1][1]) / 2];
+      if(!view.contains(mid)) return;
+      const icon = L.divIcon({className: 'iso-icon', html: `<span class="iso-label">${lvl}</span>`,
+                              iconSize: [0, 0], iconAnchor: [0, 0]});
+      L.marker(mid, {icon, interactive: false}).addTo(isobarMarkers);
+    });
+  }
+}
+
+// Marching squares over the lattice. Same maths as drawIsobars, but over point
+// samples rather than the model layer's cell rectangles.
+function isoSegments(vals, pts, cols, rows, lvl){
+  const segs = [];
+  const lerp = (a, b) => {
+    const t = (lvl - vals[a]) / (vals[b] - vals[a]);
+    return [pts[a][0] + (pts[b][0] - pts[a][0]) * t, pts[a][1] + (pts[b][1] - pts[a][1]) * t];
+  };
+  for(let r = 0; r < rows - 1; r++){
+    for(let c = 0; c < cols - 1; c++){
+      const idx = [r * cols + c, r * cols + c + 1, (r + 1) * cols + c + 1, (r + 1) * cols + c];
+      if(idx.some(i => vals[i] == null)) continue;
+      const cross = [];
+      for(let e = 0; e < 4; e++){
+        const a = idx[e], b = idx[(e + 1) % 4];
+        if((vals[a] < lvl) !== (vals[b] < lvl)) cross.push(lerp(a, b));
+      }
+      if(cross.length === 2) segs.push([cross[0], cross[1]]);
+      else if(cross.length === 4){ segs.push([cross[0], cross[1]]); segs.push([cross[2], cross[3]]); }
+    }
+  }
+  return segs;
 }
 
 function scheduleIsobarRefresh(){

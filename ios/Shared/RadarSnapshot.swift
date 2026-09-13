@@ -469,16 +469,22 @@ enum RadarSnapshot {
                 path.stroke()
                 // Label the level once per contour, on a segment well inside the
                 // frame so the number is not clipped.
-                if let mark = iso.segments.compactMap({ seg -> CGPoint? in
+                // Label along the line, not once per contour. Most of a contour
+                // now lies in the padded area off screen, so a single label
+                // picked from the first segment usually fell outside the frame
+                // and the value was never visible.
+                let onScreen = iso.segments.compactMap { seg -> CGPoint? in
                     guard seg.count >= 2 else { return nil }
                     let a = snap.point(for: seg[0]), b = snap.point(for: seg[1])
                     let m = CGPoint(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2)
-                    return (m.x > 24 && m.y > 14 && m.x < size.width - 24 && m.y < size.height - 14) ? m : nil
-                }).first {
+                    return (m.x > 18 && m.y > 12 && m.x < size.width - 18 && m.y < size.height - 12) ? m : nil
+                }
+                let every = max(1, onScreen.count / 2)
+                for (i, mark) in onScreen.enumerated() where i % every == 0 {
                     let text = "\(iso.millibars)" as NSString
                     let attrs: [NSAttributedString.Key: Any] = [
                         .font: UIFont.monospacedDigitSystemFont(ofSize: 7, weight: .semibold),
-                        .foregroundColor: UIColor(red: 0.87, green: 0.90, blue: 0.94, alpha: 0.9),
+                        .foregroundColor: UIColor(red: 0.87, green: 0.90, blue: 0.94, alpha: 0.95),
                         .strokeColor: UIColor.black, .strokeWidth: -3.0,
                     ]
                     let sz = text.size(withAttributes: attrs)
