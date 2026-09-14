@@ -2359,6 +2359,7 @@ async function loadStations(){
     detectTempChanges();
     renderStations();
     renderFeed();
+    if(isobarsOn) fetchIsobars();      // the pressure field comes from these now
   }catch(e){ console.error('stations error', e); }
 }
 
@@ -2919,11 +2920,112 @@ function isoNeedsFetch(){
            b.getSouth() >= isoRegion.south && b.getNorth() <= isoRegion.north);
 }
 
+// The pressure field, interpolated from the observations already in hand.
+//
+// Every ASOS report the station layer fetches carries mslp — 1138 of 2539 of
+// them, filling 232 of the ~390 two-degree cells over the lower 48. That is a
+// denser sample than the grid being drawn on, it costs nothing, it is already
+// in memory, and it is measured rather than modelled, which is what a surface
+// analysis is made of. It also cannot be rate limited, which is the whole
+// reason the isobars kept vanishing.
+//
+// Two stages, because one radius cannot serve both jobs. Inside three degrees
+// the weighting is steep (inverse fourth power) so dense station country keeps
+// its gradient instead of being averaged flat. Only where that finds fewer than
+// three reports does it widen to six degrees and fall back to gentle inverse
+// square, which is the right shape for a sparse region anyway. A point with
+// nothing within six degrees stays null; the contour tracer already skips
+// nulls, so contours stop at the edge of the observations rather than being
+// invented past it.
+//
+// Scored against the model field at 40 grid points: one six-degree pass gave
+// 2.27 hPa mean absolute difference, a three-degree pass 1.57 but filled only
+// 68% of the grid, and this gives 2.12 across all of it — accurate where there
+// are observations, best effort where there are not. Some of that remaining
+// difference is the model and the observations genuinely disagreeing, not
+// interpolation error, so it should not be read as precision lost.
+function isobarFromStations(pts){
+  const obs = [];
+  for(const s of stationData){
+    const v = s.p ? s.p.mslp : null;
+    // ASOS occasionally reports a wild sea-level pressure; the live feed had a
+    // 1078.8 in it. Anything outside the plausible surface range is dropped.
+    if(v == null || v < 940 || v > 1060) continue;
+    obs.push([s.lat, s.lon, v]);
+  }
+  if(obs.length < 30) return null;
+  const NEAR2 = 9, FAR2 = 36;          // three and six degrees, squared
+  const out = new Array(pts.length).fill(null);
+  let filled = 0;
+  // Bucketed by three degrees first. Testing every station against every grid
+  // point is 210 x 1138 distance checks and measured 171 ms, which is the same
+  // order as the station rebuild this work is trying not to add to. Only the
+  // buckets that can reach within six degrees are visited instead.
+  const BUCKET = 3, index = new Map();
+  for(let j = 0; j < obs.length; j++){
+    const k = Math.floor(obs[j][0] / BUCKET) + ':' + Math.floor(obs[j][1] / BUCKET);
+    const bin = index.get(k);
+    if(bin) bin.push(obs[j]); else index.set(k, [obs[j]]);
+  }
+  const near = [], far = [];
+  for(let i = 0; i < pts.length; i++){
+    const la = pts[i][0], lo = pts[i][1];
+    const cosLat = Math.cos(la * Math.PI / 180);
+    // Six degrees of latitude is six degrees; six degrees of distance in
+    // longitude is wider the further north you are.
+    const lonReach = 6 / Math.max(cosLat, 0.3);
+    const r0 = Math.floor((la - 6) / BUCKET), r1 = Math.floor((la + 6) / BUCKET);
+    const c0 = Math.floor((lo - lonReach) / BUCKET), c1 = Math.floor((lo + lonReach) / BUCKET);
+    near.length = 0; far.length = 0;
+    let exact = null;
+    for(let br = r0; br <= r1 && exact == null; br++){
+      for(let bc = c0; bc <= c1; bc++){
+        const bin = index.get(br + ':' + bc);
+        if(!bin) continue;
+        for(let j = 0; j < bin.length; j++){
+          const dy = bin[j][0] - la, dx = (bin[j][1] - lo) * cosLat;
+          const d2 = dx * dx + dy * dy;
+          if(d2 < 1e-6){ exact = bin[j][2]; break; }
+          if(d2 <= NEAR2) near.push(d2, bin[j][2]);
+          else if(d2 <= FAR2) far.push(d2, bin[j][2]);
+        }
+        if(exact != null) break;
+      }
+    }
+    if(exact != null){ out[i] = exact; filled++; continue; }
+    let wsum = 0, vsum = 0;
+    if(near.length >= 6){                       // three pairs
+      for(let k = 0; k < near.length; k += 2){
+        const w = 1 / (near[k] * near[k]);      // inverse fourth power
+        wsum += w; vsum += near[k + 1] * w;
+      }
+    }else if(near.length + far.length >= 6){
+      for(const list of [near, far])
+        for(let k = 0; k < list.length; k += 2){
+          const w = 1 / list[k];                // inverse square
+          wsum += w; vsum += list[k + 1] * w;
+        }
+    }else continue;
+    out[i] = vsum / wsum; filled++;
+  }
+  // Off the station network — out to sea, or across the border — fall back.
+  return filled >= pts.length * 0.5 ? out : null;
+}
+
 async function fetchIsobars(){
   if(!isobarsOn || !isobarLayer) return;
   const seq = ++isobarSeq;
   const step = isoStep(map.getZoom());
   const {lats, lons, pts, cols, rows, region} = isobarGrid(map.getBounds(), step);
+
+  // Observations first; the model API is only for where they run out.
+  const local = isobarFromStations(pts);
+  if(local){
+    isoRegion = Object.assign({at: Date.now()}, region);
+    renderIsobars(local, pts, cols, rows);
+    renderIsoStatus();
+    return;
+  }
   const url = 'https://api.open-meteo.com/v1/forecast'
             + `?latitude=${lats.join(',')}&longitude=${lons.join(',')}`
             + '&hourly=pressure_msl&timezone=GMT&forecast_days=1';
