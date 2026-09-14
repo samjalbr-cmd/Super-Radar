@@ -2619,10 +2619,17 @@ function isoInterp(a, b, lvl){
 }
 function drawIsobars(vals, rects, cols, rows, lineLayer, labelLayer){
   lineLayer = lineLayer || modelLayer; labelLayer = labelLayer || modelMarkers;
-  const INTERVAL = 4;
   let mn = Infinity, mx = -Infinity;
   for(const v of vals){ if(v == null) continue; if(v < mn) mn = v; if(v > mx) mx = v; }
   if(!isFinite(mn)) return;
+  // 4 hPa is the interval a national surface analysis is drawn on, and across
+  // one state the whole field often spans less than that — which is why this
+  // kept rendering a single line, or none at all, and read as broken rather
+  // than as flat. Tighten the interval when the field is flat, so the gradient
+  // is still visible locally, and keep 4 where there is enough spread for the
+  // lines to match what a surface chart would show.
+  const spread = mx - mn;
+  const INTERVAL = spread >= 16 ? 4 : spread >= 8 ? 2 : 1;
   const style = {color: '#DFE6F0', weight: 1, opacity: 0.65, interactive: false};
   const first = Math.ceil(mn / INTERVAL) * INTERVAL;
   const labeled = {};
@@ -2743,11 +2750,14 @@ let isobarTimer = null, isobarSeq = 0;
 // Banding it means zooming within a band does not change the sampling at all.
 // The bands double, so a coarser lattice is a strict subset of the finer one and
 // crossing a band keeps the values at every point it retains.
+// Contours are traced from sampled points, so changing the sampling changes the
+// contours. Four steps meant three thresholds where every line jumped as you
+// zoomed through them, re-interpolated from a different lattice each time. One
+// degree covers everything the budget allows, and only a view too wide for it
+// falls back to two — a lattice that nests inside the first, so half the points
+// are the same ones. The widget already learned this; the map had not.
 function isoStep(z){
-  if(z >= 10) return 0.25;
-  if(z >= 8)  return 0.5;
-  if(z >= 6)  return 1;
-  return 2;
+  return z >= 5 ? 1 : 2;
 }
 
 // The sampled region is padded well past the view so that panning and zooming

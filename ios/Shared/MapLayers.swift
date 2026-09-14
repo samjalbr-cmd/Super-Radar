@@ -197,7 +197,7 @@ enum MapLayers {
         let millibars: Int
     }
 
-    /// Isobars across the view, on the standard 4 hPa interval.
+    /// Isobars across the view, on the 4 hPa analysis interval or tighter when flat.
     ///
     /// A coarse 14x10 grid sampled from Open-Meteo and traced with marching
     /// squares — the same grid size and the same tracer the dashboard uses, so
@@ -279,7 +279,13 @@ enum MapLayers {
         let present = vals.compactMap { $0 }
         guard present.count > cols, let lo = present.min(), let hi = present.max() else { return [] }
 
-        let interval = 4.0
+        // Matches the dashboard: 4 hPa is the national surface-analysis interval,
+        // but a widget frames a few degrees, where the whole field often spans
+        // less than one contour — so nothing was drawn and the widget looked
+        // like it had no isobars at all. Tighten the interval when the field is
+        // flat; keep 4 once there is real gradient to show.
+        let spread = hi - lo
+        let interval: Double = spread >= 16 ? 4 : spread >= 8 ? 2 : 1
         var out: [Isobar] = []
         var level = (lo / interval).rounded(.up) * interval
         while level <= hi {
