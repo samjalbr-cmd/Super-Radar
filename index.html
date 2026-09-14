@@ -870,34 +870,60 @@ function initMap(){
   stationLayer = L.layerGroup().addTo(map);
   lightningLayerGroup = L.layerGroup().addTo(map);
   feedLayerGroup = L.layerGroup().addTo(map);   // location pins for listed events
-  // Re-filter station markers to the viewport when the map moves (no refetch).
-  map.on('moveend', renderStations);
-  map.on('moveend', scheduleModelRefresh);
-  map.on('moveend', drawIsoLines);
-  map.on('moveend', scheduleIsobarRefresh);
-  map.on('moveend', scheduleAfdRefresh);
-  map.on('moveend', renderSurface);
-  map.on('moveend', renderStormTracks);
-  map.on('moveend', scheduleNoaaRadar);
-  map.on('moveend', syncAppSettings);
   const panel = document.getElementById('settingsPanel');
   if(panel) panel.addEventListener('change', syncAppSettings);
-  map.on('moveend', schedulePrecipRefresh);
   map.on('click', precipPointPopup);   // tap anywhere for the estimate at that point
-  map.on('moveend', renderFeed);
 
-  // Registered after every render handler above, so the labels cannot come back
-  // before the rebuild that gives them their new positions. The timeout is only
-  // a guard: if a zoom is interrupted such that no moveend arrives, the labels
-  // must not stay hidden.
+  // Everything that has to be redrawn when the map stops moving. These all used
+  // to be separate moveend handlers, which meant they ran back to back as one
+  // synchronous block: 437 ms measured on a desktop, most of it tearing down
+  // and rebuilding eight hundred-odd markers, and several times that on a
+  // phone. It landed the instant the map came to rest, which is exactly when it
+  // is most obvious.
+  //
+  // Same work, spread across frames instead. The browser gets to paint between
+  // slices, so the map stays responsive rather than locking up once; and a
+  // burst of moveends — a pinch is several — collapses into a single pass
+  // instead of repeating all of it each time.
+  //
+  // Order is the order they were registered in. The cheap schedulers are last
+  // because they only set timers.
+  const MOVE_TASKS = [renderStations, drawIsoLines, renderSurface, renderStormTracks,
+                      renderFeed, scheduleAfdRefresh, scheduleModelRefresh,
+                      scheduleIsobarRefresh, scheduleNoaaRadar, schedulePrecipRefresh,
+                      syncAppSettings];
+  const FRAME_BUDGET_MS = 8;          // leaves room in a 16 ms frame to paint
+  let movePass = false, moveAgain = false;
+  function runMoveTasks(){
+    if(movePass){ moveAgain = true; return; }
+    movePass = true;
+    let i = 0;
+    const step = () => {
+      const started = performance.now();
+      do{
+        try{ MOVE_TASKS[i](); }catch(e){ console.error('moveend task', MOVE_TASKS[i].name, e); }
+        i++;
+      }while(i < MOVE_TASKS.length && performance.now() - started < FRAME_BUDGET_MS);
+      if(i < MOVE_TASKS.length){ requestAnimationFrame(step); return; }
+      movePass = false;
+      showLabels();                    // only once the rebuild is actually done
+      if(moveAgain){ moveAgain = false; runMoveTasks(); }
+    };
+    requestAnimationFrame(step);
+  }
+  map.on('moveend', runMoveTasks);
+
+  // Labels are hidden for the zoom animation and come back at the end of the
+  // pass above, not at moveend — deferring the work would otherwise show them
+  // before the markers had been rebuilt. The timeout is a guard for a zoom that
+  // starts and never finishes: they must not stay hidden.
   let labelsHidden = false, labelUnhideTimer = null;
   map.on('zoomstart', () => {
     labelsHidden = true;
     map.getContainer().classList.add('zooming');
     clearTimeout(labelUnhideTimer);
-    labelUnhideTimer = setTimeout(showLabels, 700);
+    labelUnhideTimer = setTimeout(showLabels, 1500);
   });
-  map.on('moveend', showLabels);
   function showLabels(){
     if(!labelsHidden) return;
     labelsHidden = false;
