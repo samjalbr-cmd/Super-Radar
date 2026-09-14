@@ -2812,30 +2812,49 @@ let isobarTimer = null, isobarSeq = 0;
 // The bands double, so a coarser lattice is a strict subset of the finer one and
 // crossing a band keeps the values at every point it retains.
 // Contours are traced from sampled points, so changing the sampling changes the
-// contours. Four steps meant three thresholds where every line jumped as you
-// zoomed through them, re-interpolated from a different lattice each time. One
-// degree covers everything the budget allows, and only a view too wide for it
-// falls back to two — a lattice that nests inside the first, so half the points
-// are the same ones. The widget already learned this; the map had not.
+// contours: four steps meant three thresholds where every line jumped as you
+// zoomed through them. Two degrees now holds from zoom 6 all the way in, which
+// is every zoom anyone reads isobars at, and the coarser lattices below it are
+// multiples of it so they nest.
+//
+// Two rather than one deliberately. Every sampled point is a billed call, so
+// the budget buys either resolution or area, and at one degree it bought so
+// little area that the sampled box collapsed to about ten degrees square — the
+// contours stopped at the edge of the Midwest while the map showed half the
+// country. Pressure is a smooth synoptic field that does not reward fine
+// sampling, so the same budget is far better spent on covering the view.
 function isoStep(z){
-  return z >= 5 ? 1 : 2;
+  return z >= 6 ? 2 : z >= 5 ? 4 : 8;
 }
 
 // The sampled region is padded well past the view so that panning and zooming
 // stay inside what has already been fetched; while they do, the contours are
 // redrawn from the same numbers and do not move at all.
+const ISO_CAP = 250;         // sampled points, and so billed calls, per fetch
+const ISO_MIN_W = 22, ISO_MIN_H = 15;   // degrees: enough to contour at any zoom
+
 function isobarGrid(bounds, step){
-  const w = bounds.getEast() - bounds.getWest(), h = bounds.getNorth() - bounds.getSouth();
-  const padX = Math.max(w * 0.45, step), padY = Math.max(h * 0.45, step);
-  const west = bounds.getWest() - padX, east = bounds.getEast() + padX;
-  const south = bounds.getSouth() - padY, north = bounds.getNorth() + padY;
-  let c0 = Math.floor(west / step), c1 = Math.ceil(east / step);
-  let r0 = Math.floor(south / step), r1 = Math.ceil(north / step);
-  // Trim from the outside in if the request would get too large, rather than
-  // changing the step, which would move every point.
-  // Each point is one billed call, so this cap is a budget as much as a size.
-  while((c1 - c0 + 1) * (r1 - r0 + 1) > 130){
+  // Cover the view first, then spend whatever budget is left widening the box.
+  // The previous order — pad generously, then trim to fit — could trim past the
+  // view itself, which is what left the contours sitting in a small square in
+  // the middle of the map with empty space around them.
+  let c0 = Math.floor(bounds.getWest() / step), c1 = Math.ceil(bounds.getEast() / step);
+  let r0 = Math.floor(bounds.getSouth() / step), r1 = Math.ceil(bounds.getNorth() / step);
+  // If even the bare view will not fit, the step is too fine for this zoom.
+  while((c1 - c0 + 1) * (r1 - r0 + 1) > ISO_CAP && (c1 - c0 > 1 || r1 - r0 > 1)){
     if(c1 - c0 >= r1 - r0){ c0++; c1--; } else { r0++; r1--; }
+  }
+  // Grow outwards a ring at a time: past the view so panning does not refetch,
+  // and out to a minimum window so a tight zoom still has points to contour.
+  const wantW = Math.max((bounds.getEast() - bounds.getWest()) * 1.4, ISO_MIN_W);
+  const wantH = Math.max((bounds.getNorth() - bounds.getSouth()) * 1.4, ISO_MIN_H);
+  for(let guard = 0; guard < 64; guard++){
+    const wide = (c1 - c0) * step < wantW, tall = (r1 - r0) * step < wantH;
+    if(!wide && !tall) break;
+    const nextC = wide ? 2 : 0, nextR = tall ? 2 : 0;
+    if((c1 - c0 + 1 + nextC) * (r1 - r0 + 1 + nextR) > ISO_CAP) break;
+    if(wide){ c0--; c1++; }
+    if(tall){ r0--; r1++; }
   }
   const cols = c1 - c0 + 1, rows = r1 - r0 + 1;
   const lats = [], lons = [], pts = [];
