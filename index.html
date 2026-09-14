@@ -305,6 +305,15 @@
     font-family:monospace;font-size:11px;color:var(--dim);letter-spacing:0.03em;
   }
   #afdStatus.show{display:flex;}
+  #isoStatus{
+    padding:7px 11px;display:none;align-items:center;gap:7px;align-self:flex-start;max-width:100%;
+    background:var(--panel);border:1px solid var(--border);border-radius:10px;
+    backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+    font-family:monospace;font-size:11px;color:var(--dim);letter-spacing:0.03em;
+    flex-wrap:wrap;row-gap:2px;
+  }
+  #isoStatus.show{display:flex;}
+  #isoStatus .sw{width:9px;height:9px;border-radius:2px;flex-shrink:0;}
   #precipStatus .sw{width:9px;height:9px;border-radius:2px;flex-shrink:0;}
   #radarStatus .dot{
     width:7px;height:7px;border-radius:50%;background:#2ECC71;
@@ -560,6 +569,7 @@
   <div id="radarStatus"><span class="dot"></span><span id="radarStatusText">NEXRAD N0Q</span></div>
   <div id="precipStatus"><span class="sw" id="precipSw"></span><span id="precipStatusText"></span></div>
   <div id="afdStatus"><span class="sw" style="background:#F2B705"></span><span id="afdStatusText"></span></div>
+  <div id="isoStatus"><span class="sw" style="background:#9FB3C8"></span><span id="isoStatusText"></span></div>
   <div id="arrival"></div>
 </div>
 <div id="radarLoop">
@@ -2488,7 +2498,8 @@ async function fetchModel(){
   const base = m.api === 'marine' ? 'https://marine-api.open-meteo.com/v1/marine' : 'https://api.open-meteo.com/v1/forecast';
   const url = `${base}?latitude=${la}&longitude=${lo}&hourly=${m.vars}&timezone=GMT&forecast_days=1`;
   try{
-    const data = await (await fetch(url)).json();
+    const data = await omFetchJSON(url);
+    if(!data) return;
     const arr = Array.isArray(data) ? data : [data];
     if(field !== modelField) return;   // user changed selection mid-flight
     renderModel(field, arr, rects, cols, rows);
@@ -2751,7 +2762,8 @@ function isobarGrid(bounds, step){
   let r0 = Math.floor(south / step), r1 = Math.ceil(north / step);
   // Trim from the outside in if the request would get too large, rather than
   // changing the step, which would move every point.
-  while((c1 - c0 + 1) * (r1 - r0 + 1) > 260){
+  // Each point is one billed call, so this cap is a budget as much as a size.
+  while((c1 - c0 + 1) * (r1 - r0 + 1) > 130){
     if(c1 - c0 >= r1 - r0){ c0++; c1--; } else { r0++; r1--; }
   }
   const cols = c1 - c0 + 1, rows = r1 - r0 + 1;
@@ -2766,6 +2778,45 @@ function isobarGrid(bounds, step){
   return {lats, lons, pts, cols, rows,
           region: {step, west: c0 * step, east: c1 * step, south: r0 * step, north: r1 * step}};
 }
+
+// Open-Meteo bills a multi-location request once per location, against a
+// per-IP hourly allowance. One isobar grid is well over a hundred of those, and
+// three separate features draw on the same budget — isobars, the model field
+// and the snow overlay. Exhaust it and every one of them starts coming back
+// 429 with an empty body, which used to surface as contours that silently
+// stopped appearing and never came back, because each caller kept retrying and
+// none of them knew the others had already been refused.
+//
+// So the refusal is shared, and it lasts until the top of the next hour, which
+// is when the allowance resets.
+let omBlockedUntil = 0;
+function omBlocked(){ return Date.now() < omBlockedUntil; }
+async function omFetchJSON(url){
+  if(omBlocked()) return null;
+  const r = await fetch(url);
+  if(r.status === 429){
+    const t = new Date(); t.setMinutes(60, 0, 0);      // top of the next hour
+    omBlockedUntil = t.getTime();
+    renderIsoStatus();
+    console.warn('open-meteo hourly quota exhausted; paused until', t.toLocaleTimeString());
+    return null;
+  }
+  if(!r.ok) return null;
+  return r.json();
+}
+
+// Say so on the map, rather than just drawing nothing.
+function renderIsoStatus(){
+  const el = document.getElementById('isoStatus'), tx = document.getElementById('isoStatusText');
+  if(!el || !tx) return;
+  const show = isobarsOn && omBlocked();
+  if(show){
+    const back = new Date(omBlockedUntil).toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'});
+    tx.textContent = `Isobars paused — weather-model quota used up, back at ${back}`;
+  }
+  el.classList.toggle('show', show);
+}
+setInterval(renderIsoStatus, 30 * 1000);
 
 // Whether the view has left what was sampled, or the sample has gone stale.
 let isoRegion = null;
@@ -2787,8 +2838,10 @@ async function fetchIsobars(){
             + `?latitude=${lats.join(',')}&longitude=${lons.join(',')}`
             + '&hourly=pressure_msl&timezone=GMT&forecast_days=1';
   try{
-    const data = await (await fetch(url)).json();
+    const data = await omFetchJSON(url);
+    if(!data) return;                                    // refused, or budget spent
     if(seq !== isobarSeq || !isobarsOn) return;          // panned since, or turned off
+    renderIsoStatus();
     const arr = Array.isArray(data) ? data : [data];
     if(!arr.length || !arr[0].hourly) return;
     const idx = currentHourIndex(arr[0].hourly.time);
@@ -3414,7 +3467,8 @@ async function loadSnowOverlay(seq){
   const url = 'https://api.open-meteo.com/v1/forecast' +
     `?latitude=${lats.join(',')}&longitude=${lons.join(',')}&hourly=snowfall` +
     `&timezone=GMT&past_days=${Math.ceil(precipWindow / 24)}&forecast_days=1&precipitation_unit=inch`;
-  const data = await (await fetch(url)).json();
+  const data = await omFetchJSON(url);
+  if(!data) return;
   const arr = Array.isArray(data) ? data : [data];
   if(seq !== precipSeq || precipMode !== 'snow') return;
   if(!arr.length || !arr[0].hourly) return;
