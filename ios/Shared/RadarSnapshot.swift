@@ -340,7 +340,8 @@ enum RadarSnapshot {
                         showReports: Bool, showTemps: Bool, showAlerts: Bool,
                         showTracks: Bool, showDiscussion: Bool,
                         showOutlook: Bool, showFronts: Bool, stationModel: Bool,
-                        showIsobars: Bool, showMarine: Bool, state: String?) async -> (image: UIImage, hasEcho: Bool)? {
+                        showIsobars: Bool, showMarine: Bool,
+                        reportTier: StormFeed.ReportTier, state: String?) async -> (image: UIImage, hasEcho: Bool)? {
         let half = zoom.halfDegrees
 
         // Framed as a projected rect, not a coordinate span. A degree of
@@ -376,7 +377,8 @@ enum RadarSnapshot {
         // Height follows from the box's aspect, so the returned extent is the
         // box asked for rather than one ArcGIS has reshaped.
         let render = await StormFeed.radarImage(sw: sw, ne: ne, pixelsWide: Int(size.width * 2))
-        let reports = showReports ? await StormFeed.recentReports(sw: sw, ne: ne) : []
+        let reports = showReports
+            ? await StormFeed.recentReports(sw: sw, ne: ne, tier: reportTier) : []
         // Both temperatures and the alert query are scoped by the states in
         // view, so resolve the list once and share it.
         let wantTemps = showTemps && zoom.showsTemperatures
@@ -611,6 +613,18 @@ enum RadarSnapshot {
                 ctx.cgContext.setLineWidth(1)
                 ctx.cgContext.addEllipse(in: dot)
                 ctx.cgContext.drawPath(using: .fillStroke)
+                // The value beside the dot, as the dashboard does it — a report
+                // is worth far more when you can see 62 mph rather than a dot.
+                guard !r.label.isEmpty, p.x > 2, p.y > 8, p.y < size.height - 8 else { continue }
+                let text = r.label as NSString
+                let attrs: [NSAttributedString.Key: Any] = [
+                    .font: UIFont.monospacedDigitSystemFont(ofSize: 7, weight: .bold),
+                    .foregroundColor: r.color,
+                    .strokeColor: UIColor.black, .strokeWidth: -3.0,
+                ]
+                let sz = text.size(withAttributes: attrs)
+                let x = min(p.x + 5, size.width - sz.width - 1)
+                text.draw(at: CGPoint(x: x, y: p.y - sz.height / 2), withAttributes: attrs)
             }
 
             // Projected cell tracks, over the radar as on the dashboard.

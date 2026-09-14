@@ -20,6 +20,7 @@ struct WatchLocation: Codable {
     var stationModel: Bool = false
     var showIsobars: Bool = true
     var showMarine: Bool = false
+    var reportTier: String = "notable"
     var zoom: RadarZoom = .county
     /// Two-letter state, resolved by the app. The national station feed is
     /// 3.4 MB; one state's network is about 100 KB, and the API accepts only one.
@@ -31,7 +32,7 @@ struct WatchLocation: Codable {
                                         showReports: true, showTemps: true, showAlerts: true,
                                         showTracks: true, showDiscussion: true,
                                         showOutlook: true, showFronts: true, stationModel: false, showIsobars: true,
-                                        showMarine: false,
+                                        showMarine: false, reportTier: "notable",
                                         zoom: .county, state: "MI")
 
     static func load() -> WatchLocation {
@@ -160,11 +161,82 @@ enum StormFeed {
         let lat: Double
         let lon: Double
         let color: UIColor
+        var label: String = ""      // "62 mph", "1.5\" hail"
+    }
+
+    /// How much of the storm-report feed is worth a pin.
+    ///
+    /// The national feed carries everything a spotter phoned in — about 1,500
+    /// reports a week, a quarter of them rain totals starting at 0.07 inches.
+    /// The service only bothers reporting significant values in the first place,
+    /// so the median rain report is already 1.98 inches and the median
+    /// thunderstorm gust 59 mph; a 40 mph / 1 inch cut trims about a tenth, and
+    /// 'severe' uses the NWS severe-thunderstorm criteria of 58 mph and one inch
+    /// of hail, which is the line forecasters themselves draw.
+    enum ReportTier: String {
+        case all, notable, severe
+
+        var wind: Double { self == .severe ? 58 : 40 }
+        var rain: Double { self == .severe ? 2.0 : 1.0 }
+        var hail: Double { self == .severe ? 1.0 : 0.75 }
+        var snow: Double { self == .severe ? 6.0 : 2.0 }
+
+        /// Reports with no magnitude to threshold, where the event is the report.
+        var damage: Set<String> {
+            let core: Set<String> = ["TORNADO", "WATERSPOUT", "LANDSPOUT", "FLASH FLOOD",
+                                     "TSTM WND DMG", "NON-TSTM WND DMG", "DEBRIS FLOW",
+                                     "LANDSLIDE", "STORM SURGE", "TROPICAL CYCLONE",
+                                     "ICE STORM", "BLIZZARD"]
+            if self == .severe { return core }
+            return core.union(["FLOOD", "AVALANCHE", "WILDFIRE", "FREEZING RAIN",
+                               "SNOW SQUALL", "DUST STORM"])
+        }
+    }
+
+    private static let reportWind: Set<String> = ["TSTM WND GST", "NON-TSTM WND GST",
+                                                  "MARINE TSTM WIND", "MARINE HIGH WIND",
+                                                  "HIGH SUST WINDS"]
+    // Real reports, but not ones worth a pin over the radar.
+    private static let reportMinor: Set<String> = ["LIGHTNING", "RIP CURRENTS", "HIGH SURF",
+                                                   "COASTAL FLOOD", "ASTRONOMICAL LOW TIDE",
+                                                   "DENSE FOG", "SEICHE", "FUNNEL CLOUD"]
+
+    static func reportKeep(type: String, magnitude: Double?, tier: ReportTier) -> Bool {
+        if tier == .all { return true }
+        let t = type.uppercased().trimmingCharacters(in: .whitespaces)
+        if reportMinor.contains(t) { return false }
+        if reportWind.contains(t) { return (magnitude ?? -1) >= tier.wind }
+        if t == "RAIN" { return (magnitude ?? -1) >= tier.rain }
+        if t == "HAIL" { return (magnitude ?? -1) >= tier.hail }
+        if t.contains("SNOW") || t == "SLEET" { return magnitude == nil || magnitude! >= tier.snow }
+        return tier.damage.contains(t)
+    }
+
+    /// The value a report is worth showing, matching the dashboard's wording.
+    static func reportLabel(type: String, magnitude: Double?, unit: String?) -> String {
+        let t = type.uppercased()
+        if let m = magnitude, m > 0 {
+            let u = (unit ?? "").uppercased()
+            if u.contains("MPH") || t.contains("WND") || t.contains("WIND") { return "\(Int(m.rounded())) mph" }
+            if t.contains("HAIL") { return "\(trimmed(m))\" hail" }
+            if t.contains("SNOW") { return "\(trimmed(m))\" snow" }
+            if t.contains("RAIN") { return "\(trimmed(m))\" rain" }
+            return trimmed(m)
+        }
+        if t.contains("TORNADO") { return "TOR" }
+        if t.contains("FLOOD") { return "flood" }
+        if t.contains("DMG") { return "damage" }
+        return ""
+    }
+
+    private static func trimmed(_ v: Double) -> String {
+        v == v.rounded() ? String(Int(v)) : String(format: "%g", v)
     }
 
     /// Local storm reports in the last few hours, inside the given box. Same
     /// feed and colours the dashboard uses.
-    static func recentReports(sw: CLLocationCoordinate2D, ne: CLLocationCoordinate2D) async -> [Report] {
+    static func recentReports(sw: CLLocationCoordinate2D, ne: CLLocationCoordinate2D,
+                              tier: ReportTier = .notable) async -> [Report] {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd'T'HH:mm'Z'"
         f.timeZone = TimeZone(identifier: "UTC")
@@ -174,10 +246,24 @@ enum StormFeed {
         struct FC: Decodable {
             struct F: Decodable {
                 struct G: Decodable { let coordinates: [Double] }
-                struct P: Decodable { let typetext: String? }
+                struct P: Decodable {
+                    let typetext: String?
+                    let magnitude: Magnitude?
+                    let unit: String?
+                }
                 let geometry: G?; let properties: P
             }
             let features: [F]
+        }
+        // magnitude arrives as a number on some reports and a string on others.
+        struct Magnitude: Decodable {
+            let value: Double?
+            init(from decoder: Decoder) throws {
+                let c = try decoder.singleValueContainer()
+                if let d = try? c.decode(Double.self) { value = d }
+                else if let s = try? c.decode(String.self) { value = Double(s) }
+                else { value = nil }
+            }
         }
         var req = URLRequest(url: url); req.timeoutInterval = 15; req.cachePolicy = .reloadIgnoringLocalCacheData
         guard let data = try? await URLSession.shared.data(for: req).0,
@@ -187,13 +273,16 @@ enum StormFeed {
                   c[1] >= sw.latitude, c[1] <= ne.latitude,
                   c[0] >= sw.longitude, c[0] <= ne.longitude else { return nil }
             let t = (f.properties.typetext ?? "").uppercased()
+            let mag = f.properties.magnitude?.value
+            guard reportKeep(type: t, magnitude: mag, tier: tier) else { return nil }
             let color: UIColor
             if t.contains("TORNADO") || t.contains("FUNNEL") { color = UIColor(red: 0.88, green: 0.02, blue: 0, alpha: 1) }
             else if t.contains("HAIL") { color = UIColor(red: 0, green: 0.88, blue: 0.82, alpha: 1) }
             else if t.contains("WIND") || t.contains("TSTM") { color = UIColor(red: 0.23, green: 0.63, blue: 1, alpha: 1) }
             else if t.contains("FLOOD") || t.contains("RAIN") { color = UIColor(red: 0.18, green: 0.80, blue: 0.44, alpha: 1) }
             else { color = UIColor(red: 0.72, green: 0.44, blue: 1, alpha: 1) }
-            return Report(lat: c[1], lon: c[0], color: color)
+            return Report(lat: c[1], lon: c[0], color: color,
+                          label: reportLabel(type: t, magnitude: mag, unit: f.properties.unit))
         }
     }
 

@@ -673,6 +673,14 @@
           <label class="set-row"><input type="checkbox" data-spc="outlook" checked onchange="toggleSpc(this)"><span class="sw-t"></span>SPC convective outlook</label>
           <label class="set-row"><input type="checkbox" data-spc="mcd" checked onchange="toggleSpc(this)"><span class="sw-t"></span>Mesoscale discussions</label>
           <label class="set-row"><input type="checkbox" data-spc="lsr" checked onchange="toggleSpc(this)"><span class="sw-t"></span>Storm reports (24 h)</label>
+          <label class="set-row" style="gap:8px">
+            <span style="flex:1">Report threshold</span>
+            <select onchange="setLsrTier(this.value)" style="flex:0 0 auto">
+              <option value="all">All</option>
+              <option value="notable" selected>40 mph &middot; 1 in</option>
+              <option value="severe">58 mph &middot; 2 in</option>
+            </select>
+          </label>
         </div>
         <label class="set-row"><input type="checkbox" id="sfcChk" checked onchange="toggleSurface(this)"><span class="sw-t"></span>Surface fronts and pressure</label>
         <label class="set-row"><input type="checkbox" id="isobarChk" checked onchange="toggleIsobars(this)"><span class="sw-t"></span>Isobars</label>
@@ -1565,8 +1573,17 @@ async function loadLSR(){
     const res = await fetch(`https://mesonet.agron.iastate.edu/geojson/lsr.geojson?sts=${sts}&ets=${ets}`);
     const data = await res.json();
     lsrData = data.features || [];
-    lsrLayer.clearLayers();
+    renderLSR();
+    renderFeed();
+  }catch(e){ console.error('lsr error', e); }
+}
+
+function renderLSR(){
+  if(!lsrLayer) return;
+  lsrLayer.clearLayers();
+  try{
     for(const f of lsrData){
+      if(!lsrKeep(f.properties)) continue;
       const c = f.geometry && f.geometry.coordinates;
       if(!c) continue;
       const p = f.properties;
@@ -1580,11 +1597,62 @@ async function loadLSR(){
       const label = L.divIcon({className: 'lsr-icon', html: `<span class="lsr-val" style="color:${color}">${lsrValue(p)}</span>`, iconSize: [0, 0], iconAnchor: [0, 0]});
       L.marker([c[1], c[0]], {icon: label, keyboard: false}).bindPopup(popup).addTo(lsrLayer);
     }
-    renderFeed();
-  }catch(e){ console.error('lsr error', e); }
+  }catch(e){ console.error('lsr render', e); }
 }
 
 // Short value label for a storm report, formatted by type/unit.
+/* ---------------- Storm report filtering ----------------
+   The national feed carries everything a spotter phoned in, and most of it is
+   not news on a radar map: a week's worth is about 1,500 reports, a quarter of
+   them rain totals starting at 0.07 inches. These tiers cut that down.
+
+   The thresholds sit where they do because the service only bothers reporting
+   significant values in the first place — over a week the median rain report is
+   1.98 inches and the median thunderstorm gust 59 mph — so a 40 mph / 1 inch cut
+   trims only about a tenth. 'severe' uses the NWS severe-thunderstorm criteria,
+   58 mph and one inch of hail, which is the line forecasters themselves draw. */
+const LSR_WIND = new Set(['TSTM WND GST','NON-TSTM WND GST','MARINE TSTM WIND',
+                          'MARINE HIGH WIND','HIGH SUST WINDS']);
+// No magnitude to threshold, but the event itself is the report.
+const LSR_DAMAGE = new Set(['TORNADO','WATERSPOUT','LANDSPOUT','FLASH FLOOD','TSTM WND DMG',
+                            'NON-TSTM WND DMG','FLOOD','DEBRIS FLOW','LANDSLIDE','AVALANCHE',
+                            'STORM SURGE','TROPICAL CYCLONE','WILDFIRE','FREEZING RAIN',
+                            'ICE STORM','BLIZZARD','SNOW SQUALL','DUST STORM']);
+const LSR_DAMAGE_SEVERE = new Set(['TORNADO','WATERSPOUT','LANDSPOUT','FLASH FLOOD','TSTM WND DMG',
+                                   'NON-TSTM WND DMG','DEBRIS FLOW','LANDSLIDE','STORM SURGE',
+                                   'TROPICAL CYCLONE','ICE STORM','BLIZZARD']);
+// Real reports, but not ones worth a pin over the radar.
+const LSR_MINOR = new Set(['LIGHTNING','RIP CURRENTS','HIGH SURF','COASTAL FLOOD',
+                           'ASTRONOMICAL LOW TIDE','DENSE FOG','SEICHE','FUNNEL CLOUD']);
+const LSR_TIERS = {
+  all: null,
+  notable: {wind: 40, rain: 1.0, hail: 0.75, snow: 2.0, damage: LSR_DAMAGE, minor: LSR_MINOR},
+  severe:  {wind: 58, rain: 2.0, hail: 1.0, snow: 6.0, damage: LSR_DAMAGE_SEVERE,
+            minor: new Set([...LSR_MINOR, ...[...LSR_DAMAGE].filter(t => !LSR_DAMAGE_SEVERE.has(t))])},
+};
+let lsrTier = 'notable';
+
+function lsrKeep(p){
+  const cfg = LSR_TIERS[lsrTier];
+  if(!cfg) return true;
+  const t = String(p.typetext || '').toUpperCase().trim();
+  if(cfg.minor.has(t)) return false;
+  const raw = p.magnitude;
+  const m = (raw == null || raw === '') ? null : Number(raw);
+  const has = m != null && isFinite(m);
+  if(LSR_WIND.has(t)) return has && m >= cfg.wind;
+  if(t === 'RAIN')    return has && m >= cfg.rain;
+  if(t === 'HAIL')    return has && m >= cfg.hail;
+  if(t.includes('SNOW') || t === 'SLEET') return !has || m >= cfg.snow;
+  return cfg.damage.has(t);
+}
+
+function setLsrTier(v){
+  lsrTier = LSR_TIERS[v] !== undefined ? v : 'notable';
+  renderLSR();
+  renderFeed();
+}
+
 function lsrValue(p){
   const t = (p.typetext || '').toUpperCase();
   const u = (p.unit || '').toUpperCase();
@@ -1650,6 +1718,7 @@ function syncAppSettings(){
         showFronts: !!sfcOn,
         stationModel: !!windBarbsOn,
         showIsobars: !!isobarsOn,
+        reportTier: lsrTier,
       });
     }catch(e){}
   }, 400);
@@ -3968,6 +4037,7 @@ function collectEvents(){
   }
   for(const f of lsrData){
     const c = f.geometry && f.geometry.coordinates; if(!c || !inView(c[1], c[0])) continue;
+    if(!lsrKeep(f.properties)) continue;      // the feed obeys the same filter as the map
     const p = f.properties;
     const mag = p.magnitude ? ` ${p.magnitude} ${p.unit || ''}`.trimEnd() : '';
     const type = p.typetext || 'Report';
