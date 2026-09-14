@@ -74,6 +74,7 @@ enum StormFeed {
     static func cells() async throws -> [StormCell] {
         var req = URLRequest(url: attributesURL)
         req.timeoutInterval = 20
+        req.cachePolicy = .reloadIgnoringLocalCacheData
         let (data, _) = try await URLSession.shared.data(for: req)
         let fc = try JSONDecoder().decode(FeatureCollection.self, from: data)
         let iso = ISO8601DateFormatter()
@@ -176,7 +177,7 @@ enum StormFeed {
             }
             let features: [F]
         }
-        var req = URLRequest(url: url); req.timeoutInterval = 15
+        var req = URLRequest(url: url); req.timeoutInterval = 15; req.cachePolicy = .reloadIgnoringLocalCacheData
         guard let data = try? await URLSession.shared.data(for: req).0,
               let fc = try? JSONDecoder().decode(FC.self, from: data) else { return [] }
         return fc.features.compactMap { f in
@@ -278,7 +279,7 @@ enum StormFeed {
             }
             let features: [F]
         }
-        var req = URLRequest(url: url); req.timeoutInterval = 20
+        var req = URLRequest(url: url); req.timeoutInterval = 20; req.cachePolicy = .reloadIgnoringLocalCacheData
         guard let data = try? await URLSession.shared.data(for: req).0,
               let fc = try? JSONDecoder().decode(FC.self, from: data) else { return [] }
 
@@ -424,7 +425,7 @@ enum StormFeed {
             }
             let offices: [String: Office]?
         }
-        var req = URLRequest(url: url); req.timeoutInterval = 20
+        var req = URLRequest(url: url); req.timeoutInterval = 20; req.cachePolicy = .reloadIgnoringLocalCacheData
         guard let data = try? await URLSession.shared.data(for: req).0,
               let doc = try? JSONDecoder().decode(Doc.self, from: data),
               let offices = doc.offices else { return [] }
@@ -633,7 +634,7 @@ enum StormFeed {
                 group.addTask {
                     guard let url = URL(string: "https://mesonet.agron.iastate.edu/api/1/currents.geojson?network=\(st)_ASOS&minutes=120")
                     else { return [] }
-                    var req = URLRequest(url: url); req.timeoutInterval = 20
+                    var req = URLRequest(url: url); req.timeoutInterval = 20; req.cachePolicy = .reloadIgnoringLocalCacheData
                     guard let data = try? await URLSession.shared.data(for: req).0,
                           let fc = try? JSONDecoder().decode(FC.self, from: data) else { return [] }
                     return fc.features.compactMap { f -> Station? in
