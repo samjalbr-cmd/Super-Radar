@@ -335,6 +335,20 @@
   .flash-alert{ animation: alertFlash 1s ease-in-out 120; }
 
   /* Station value labels (replace dots): colored number on the map. */
+  /* Leaflet scales the marker pane through a zoom animation, so every label is
+     drawn at the wrong size for the whole of the zoom and then snaps when the
+     layers are rebuilt on moveend. Hiding them for the animation costs nothing,
+     because they are about to be replaced anyway, and what fades back in is
+     already at its final size and position. Vector panes are left alone — the
+     SVG scales correctly and should keep animating. */
+  /* No transition on the way back. Fading in is prettier, but it makes the
+     labels' visibility depend on a transition completing, and a transition that
+     stalls — a backgrounded tab, a throttled frame loop — leaves every marker
+     on the map invisible with nothing in the DOM to explain why. Observed
+     exactly that: no .zooming class, 875 markers, computed opacity 0. Hiding is
+     for the length of an animation, so it should be as cheap to undo as to do. */
+  .leaflet-container.zooming .leaflet-marker-pane{ opacity:0; }
+
   .stn-icon{ background:none; border:none; }
   /* Location pin for an item listed in the open Events feed. */
   /* A pin is a dot; the highest-ranked one in each screen cell also gets a
@@ -871,6 +885,25 @@ function initMap(){
   map.on('moveend', schedulePrecipRefresh);
   map.on('click', precipPointPopup);   // tap anywhere for the estimate at that point
   map.on('moveend', renderFeed);
+
+  // Registered after every render handler above, so the labels cannot come back
+  // before the rebuild that gives them their new positions. The timeout is only
+  // a guard: if a zoom is interrupted such that no moveend arrives, the labels
+  // must not stay hidden.
+  let labelsHidden = false, labelUnhideTimer = null;
+  map.on('zoomstart', () => {
+    labelsHidden = true;
+    map.getContainer().classList.add('zooming');
+    clearTimeout(labelUnhideTimer);
+    labelUnhideTimer = setTimeout(showLabels, 700);
+  });
+  map.on('moveend', showLabels);
+  function showLabels(){
+    if(!labelsHidden) return;
+    labelsHidden = false;
+    clearTimeout(labelUnhideTimer);
+    map.getContainer().classList.remove('zooming');
+  }
   // Keep Leaflet's idea of the container size correct. Without this the map can
   // load tiles for only part of the viewport (half-rendered), especially on
   // mobile where layout settles after first paint, and on fullscreen/rotate.
@@ -2290,9 +2323,13 @@ async function loadStations(){
   try{
     const res = await fetch('https://mesonet.agron.iastate.edu/api/1/currents.geojson?country=US&networkclass=ASOS&minutes=120');
     const data = await res.json();
+    // Sorted once, here. The score is a property of the station, not of the
+    // view, so re-sorting the whole national list on every pan and zoom was
+    // work that could never change the answer.
     stationData = (data.features || [])
       .filter(f => f.geometry && f.geometry.coordinates)
-      .map(f => ({lon: f.geometry.coordinates[0], lat: f.geometry.coordinates[1], p: f.properties}));
+      .map(f => ({lon: f.geometry.coordinates[0], lat: f.geometry.coordinates[1], p: f.properties}))
+      .sort((a, z) => stationScore(z.p) - stationScore(a.p));
     detectTempChanges();
     renderStations();
     renderFeed();
@@ -2359,9 +2396,7 @@ function renderStations(){
   const cell = PRECIP_METRICS.has(stationMetric) ? 52 : 40;
   const claimed = new Set();
   const placed = [];                   // drawn plot footprints, for the packer
-  const visible = stationData
-    .filter(s => b.contains([s.lat, s.lon]))
-    .sort((a, z) => stationScore(z.p) - stationScore(a.p));
+  const visible = stationData.filter(s => b.contains([s.lat, s.lon]));   // already in score order
 
   for(const s of visible){
     const pt = map.latLngToLayerPoint([s.lat, s.lon]);
@@ -2878,10 +2913,16 @@ function drawIsoLines(){
   const {vals, pts, cols, rows} = isoCache;
   isobarLayer.clearLayers();
   isobarMarkers.clearLayers();
-  const INTERVAL = 4;
   let mn = Infinity, mx = -Infinity;
   for(const v of vals){ if(v == null) continue; if(v < mn) mn = v; if(v > mx) mx = v; }
   if(!isFinite(mn)) return;
+  // Same rule as drawIsobars and the widget: 4 hPa is the national analysis
+  // interval, and across one state the field is often flatter than that. This
+  // is the path that draws the isobar layer itself, and it was left on a fixed
+  // 4 while the other two were adapting — so the layer people actually look at
+  // was the one still showing a single line.
+  const spread = mx - mn;
+  const INTERVAL = spread >= 16 ? 4 : spread >= 8 ? 2 : 1;
   const view = map.getBounds();
   const style = {color: '#DFE6F0', weight: 1.1, opacity: 0.7, interactive: false};
   for(let lvl = Math.ceil(mn / INTERVAL) * INTERVAL; lvl <= mx; lvl += INTERVAL){
