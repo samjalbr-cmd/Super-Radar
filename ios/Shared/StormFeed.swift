@@ -19,6 +19,7 @@ struct WatchLocation: Codable {
     var showFronts: Bool = true
     var stationModel: Bool = false
     var showIsobars: Bool = true
+    var showMarine: Bool = false
     var zoom: RadarZoom = .county
     /// Two-letter state, resolved by the app. The national station feed is
     /// 3.4 MB; one state's network is about 100 KB, and the API accepts only one.
@@ -30,6 +31,7 @@ struct WatchLocation: Codable {
                                         showReports: true, showTemps: true, showAlerts: true,
                                         showTracks: true, showDiscussion: true,
                                         showOutlook: true, showFronts: true, stationModel: false, showIsobars: true,
+                                        showMarine: false,
                                         zoom: .county, state: "MI")
 
     static func load() -> WatchLocation {
@@ -214,10 +216,30 @@ enum StormFeed {
         let rings: [[CLLocationCoordinate2D]]
         let color: UIColor
         let isWatch: Bool
+        let isMarine: Bool
+    }
+
+    /// Whether an event is a warning for boats rather than for land.
+    ///
+    /// These need separating because there are so many of them: a single gale
+    /// episode is issued zone by zone, and the Great Lakes carry dozens at once
+    /// — 44 were drawing over one view — so at land-warning weight they bury the
+    /// lakes and the radar under them.
+    static func isMarineEvent(_ event: String) -> Bool {
+        let e = event.lowercased()
+        return e.contains("gale") || e.contains("small craft") || e.contains("marine")
+            || e.contains("storm warning") && e.contains("marine")
+            || e.contains("hurricane force wind") || e.contains("freezing spray")
+            || e.contains("heavy freezing spray") || e.contains("squall")
+            || e.contains("beach hazard") || e.contains("rip current")
+            || e.contains("low water") || e.contains("waterspout")
     }
 
     static func alertColor(_ event: String) -> UIColor {
         let e = event.lowercased()
+        // Marine events matched none of the cases below and fell through to the
+        // generic purple, which read as a land warning.
+        if isMarineEvent(event) { return UIColor(red: 0.29, green: 0.58, blue: 0.85, alpha: 1) }
         if e.contains("tornado")      { return UIColor(red: 0.88, green: 0.02, blue: 0, alpha: 1) }
         if e.contains("thunderstorm") { return UIColor(red: 1.00, green: 0.83, blue: 0, alpha: 1) }
         if e.contains("flood")        { return UIColor(red: 0.18, green: 0.80, blue: 0.44, alpha: 1) }
@@ -261,7 +283,8 @@ enum StormFeed {
     /// Alerts without their own polygon are resolved through their zones — the
     /// dashboard does the same, and without it no watch is ever drawn, since
     /// watches are issued by zone and never carry geometry.
-    static func alerts(states: [String], sw: CLLocationCoordinate2D, ne: CLLocationCoordinate2D) async -> [AlertArea] {
+    static func alerts(states: [String], sw: CLLocationCoordinate2D, ne: CLLocationCoordinate2D,
+                       marine: Bool = true) async -> [AlertArea] {
         // No message_type filter. Restricting to "alert" drops every alert that
         // has since been updated, and an update is not a different kind of
         // thing — it is the same alert, revised. Nationally that filter hid 90
@@ -301,6 +324,10 @@ enum StormFeed {
                 let e = (f.properties.event ?? "").lowercased()
                 return e.contains("warning") || e.contains("watch")
             }
+            // Skipped before the zone fetches, not after: marine alerts were
+            // taking 77 of a 60-zone budget on the lakes, which both wasted the
+            // requests and pushed land warnings out of the cap entirely.
+            .filter { marine || !isMarineEvent($0.properties.event ?? "") }
             .sorted { rank($0.properties.event ?? "") < rank($1.properties.event ?? "") }
         for f in resolvable {
             for z in f.properties.affectedZones ?? [] where !needed.contains(z) { needed.append(z) }
@@ -318,6 +345,7 @@ enum StormFeed {
 
         return fc.features.compactMap { f -> AlertArea? in
             let event = f.properties.event ?? ""
+            if !marine && isMarineEvent(event) { return nil }
             var rings: [[CLLocationCoordinate2D]] = []
             if let g = f.geometry {
                 rings = g.coordinates.rings.map { ring in
@@ -332,7 +360,8 @@ enum StormFeed {
             rings = rings.filter { boxOverlaps($0, sw: sw, ne: ne) }
             guard !rings.isEmpty else { return nil }
             return AlertArea(rings: rings, color: alertColor(event),
-                             isWatch: event.lowercased().contains("watch"))
+                             isWatch: event.lowercased().contains("watch"),
+                             isMarine: isMarineEvent(event))
         }
     }
 

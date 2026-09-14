@@ -340,7 +340,7 @@ enum RadarSnapshot {
                         showReports: Bool, showTemps: Bool, showAlerts: Bool,
                         showTracks: Bool, showDiscussion: Bool,
                         showOutlook: Bool, showFronts: Bool, stationModel: Bool,
-                        showIsobars: Bool, state: String?) async -> (image: UIImage, hasEcho: Bool)? {
+                        showIsobars: Bool, showMarine: Bool, state: String?) async -> (image: UIImage, hasEcho: Bool)? {
         let half = zoom.halfDegrees
 
         // Framed as a projected rect, not a coordinate span. A degree of
@@ -392,8 +392,9 @@ enum RadarSnapshot {
         // Marine areas go in alongside the states, or warnings over water — a
         // gale on the lakes, say — never appear at all.
         let alertAreas = showAlerts
-            ? states + StormFeed.marineCovering(sw: sw, ne: ne) : []
-        let alerts = showAlerts ? await StormFeed.alerts(states: alertAreas, sw: sw, ne: ne) : []
+            ? states + (showMarine ? StormFeed.marineCovering(sw: sw, ne: ne) : []) : []
+        let alerts = showAlerts
+            ? await StormFeed.alerts(states: alertAreas, sw: sw, ne: ne, marine: showMarine) : []
         let afd = showDiscussion ? await StormFeed.afdAreas(sw: sw, ne: ne) : []
         let outlook = showOutlook ? await MapLayers.outlook(sw: sw, ne: ne) : []
         let mcds = showOutlook ? await MapLayers.mesoscaleDiscussions(sw: sw, ne: ne) : []
@@ -440,11 +441,24 @@ enum RadarSnapshot {
                         i == 0 ? path.move(to: p) : path.addLine(to: p)
                     }
                     path.close()
-                    a.color.withAlphaComponent(a.isWatch ? 0.10 : 0.22).setFill()
-                    path.fill()
-                    a.color.setStroke()
-                    path.lineWidth = a.isWatch ? 1.5 : 2.5
-                    if a.isWatch { path.setLineDash([6, 4], count: 2, phase: 0) }
+                    // Marine zones are drawn as outlines. A gale covers the open
+                    // water zone by zone, so filling them paints over the lake
+                    // and whatever radar is on it; the boundary is the useful
+                    // part, and a land warning should still read as the louder
+                    // thing on the map.
+                    if a.isMarine {
+                        a.color.withAlphaComponent(0.06).setFill()
+                        path.fill()
+                        a.color.withAlphaComponent(0.85).setStroke()
+                        path.lineWidth = 1
+                        if a.isWatch { path.setLineDash([5, 4], count: 2, phase: 0) }
+                    } else {
+                        a.color.withAlphaComponent(a.isWatch ? 0.10 : 0.22).setFill()
+                        path.fill()
+                        a.color.setStroke()
+                        path.lineWidth = a.isWatch ? 1.5 : 2.5
+                        if a.isWatch { path.setLineDash([6, 4], count: 2, phase: 0) }
+                    }
                     path.stroke()
                 }
             }

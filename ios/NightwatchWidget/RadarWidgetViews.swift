@@ -65,4 +65,9 @@ struct RadarConfig: WidgetConfigurationIntent {
 
     @Parameter(title: "Show isobars", default: true)
     var showIsobars: Bool
+
+    // Off by default: on the Great Lakes a single gale episode is issued zone by
+    // zone, and dozens of them bury the map.
+    @Parameter(title: "Show marine warnings", default: false)
+    var showMarine: Bool
 }
