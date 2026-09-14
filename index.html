@@ -430,6 +430,10 @@
   /* Caption on a discussion area or the office outline. */
   .afd-area-icon{ background:none; border:none; }
   .afd-area-lbl{
+    /* inline-block, so the box shrink-wraps the text. As a block it inherited
+       the marker's zero width, which made translateX(-50%) a no-op and left
+       every label starting at the centroid instead of centred on it. */
+    display:inline-block;
     transform:translate(-50%,-50%);text-align:center;font-family:sans-serif;
     text-shadow:0 0 3px #000, 0 0 2px #000, 0 1px 1px #000;
     white-space:nowrap;pointer-events:none;
@@ -449,6 +453,10 @@
   /* Mesoscale Discussion labels. */
   .mcd-icon{ background:none; border:none; }
   .mcd-label{
+    /* inline-block for the same reason as .afd-area-lbl: a block child of a
+       zero-size marker is itself zero-wide, which makes translateX(-50%) a
+       no-op and leaves the text starting at the point instead of centred. */
+    display:inline-block;
     transform:translate(-50%,-50%);text-align:center;font-family:sans-serif;
     color:#F2B705;text-shadow:0 0 3px #000, 0 0 2px #000, 0 1px 1px #000;
     white-space:nowrap;pointer-events:none;
@@ -516,6 +524,7 @@
   /* Warning detail label at the polygon center. */
   .alert-icon{ background:none; border:none; }
   .alert-label{
+    display:inline-block;    /* see .afd-area-lbl — zero-width box, dead translateX */
     transform:translate(-50%,-50%);text-align:center;font-family:sans-serif;
     font-weight:800;font-size:9px;letter-spacing:0.02em;
     text-shadow:0 0 3px #000, 0 0 2px #000, 0 1px 1px #000;white-space:nowrap;pointer-events:none;
@@ -594,8 +603,8 @@
       <div class="set-body">
         <label class="set-cap" for="radarSource">Source</label>
         <select id="radarSource" class="set-field" onchange="setRadarSource(this.value)">
-          <option value="noaa">NOAA — smooth, higher colour depth</option>
-          <option value="iem">Iowa Mesonet — tiled, supports the loop</option>
+          <option value="iem">Iowa Mesonet — freshest, tiled, supports the loop</option>
+          <option value="noaa">NOAA — smoother, but often 10-20 min behind</option>
         </select>
         <label class="set-cap" for="radarMode">Mode</label>
         <select id="radarMode" class="set-field" onchange="setRadarMode(this.value)">
@@ -898,14 +907,42 @@ function recenter(){
    sharpness for smoothness, not a straight upgrade. */
 const NOAA_RADAR = 'https://mapservices.weather.noaa.gov/eventdriven/rest/services/' +
                    'radar/radar_base_reflectivity_time/ImageServer';
-let radarSource = 'noaa';        // 'noaa' | 'iem'
+// IEM by default. NOAA's event-driven service is the smoother render, but it
+// runs badly behind its own clock — sampled at 8, 11, 13 and 20 minutes old in
+// one evening, and its newest slice went backwards between two of those checks.
+// IEM's N0Q composite was 4-5 minutes old across the same window.
+let radarSource = 'iem';         // 'noaa' | 'iem'
 let noaaLayer = null;
 let noaaSeq = 0;
 let noaaTimer = null;
 
+// The newest slice the radar service holds, in epoch ms.
+//
+// This service is time-enabled, and exportImage with no `time` renders the
+// WHOLE time extent mosaicked into one picture — roughly two hours of scans
+// piled on top of each other. That is not delayed radar, it is every position
+// a storm has held since the extent began, which reads as echoes sitting well
+// behind where the weather actually is. Pinning the instant is the difference
+// between a 119 KB smear and a 24 KB picture of now.
+let noaaSliceMs = 0, noaaSliceFetched = 0;
+async function noaaLatestSlice(){
+  if(noaaSliceMs && Date.now() - noaaSliceFetched < 60 * 1000) return noaaSliceMs;
+  try{
+    const r = await fetch(`${NOAA_RADAR}?f=json`, {cache: 'no-store'});
+    const extent = (await r.json())?.timeInfo?.timeExtent;
+    if(Array.isArray(extent) && extent.length === 2 && extent[1] > 0){
+      noaaSliceMs = extent[1];
+      noaaSliceFetched = Date.now();
+    }
+  }catch(e){ /* fall through to whatever we last knew */ }
+  return noaaSliceMs;
+}
+
 async function loadNoaaRadar(){
   if(radarMode !== 'national' || radarSource !== 'noaa' || !map) return;
   const seq = ++noaaSeq;
+  const slice = await noaaLatestSlice();
+  if(seq !== noaaSeq) return;               // a newer request overtook us
   const b = map.getBounds();
   const sw = L.CRS.EPSG3857.project(b.getSouthWest());
   const ne = L.CRS.EPSG3857.project(b.getNorthEast());
@@ -914,7 +951,9 @@ async function loadNoaaRadar(){
   const H = Math.min(1600, Math.max(240, Math.round(size.y)));
   const url = `${NOAA_RADAR}/exportImage?bbox=${sw.x},${sw.y},${ne.x},${ne.y}` +
               `&bboxSR=3857&imageSR=3857&size=${W},${H}&format=png32&transparent=true` +
-              `&interpolation=RSP_BilinearInterpolation&f=image&t=${Math.floor(Date.now() / 60000)}`;
+              `&interpolation=RSP_BilinearInterpolation&f=image` +
+              (slice ? `&time=${slice}` : '') +
+              `&t=${Math.floor(Date.now() / 60000)}`;
   // Swap only once the replacement has decoded, so panning never flashes empty.
   const ov = L.imageOverlay(url, b, {opacity: radarOpacityNow(), pane: 'radarPane', interactive: false});
   ov.on('load', () => {
@@ -922,7 +961,7 @@ async function loadNoaaRadar(){
     if(noaaLayer) map.removeLayer(noaaLayer);
     noaaLayer = ov;
     radarLabel = 'NOAA base reflectivity';
-    updateRadarStatus();
+    updateRadarStatus(slice ? new Date(slice) : undefined);
   });
   ov.on('error', () => map.removeLayer(ov));
   ov.addTo(map);
@@ -954,7 +993,22 @@ function setRadarSource(v){
   }
 }
 
-function loadRadar(){
+// When IEM's newest N0Q composite was measured, so the pill can report the scan
+// rather than the fetch. Cached briefly; a failure just leaves the time unknown.
+let iemSliceMs = 0, iemSliceFetched = 0;
+async function iemLatestSlice(){
+  if(iemSliceMs && Date.now() - iemSliceFetched < 60 * 1000) return iemSliceMs;
+  try{
+    const r = await fetch('https://mesonet.agron.iastate.edu/json/radar?operation=list&product=N0Q&radar=USCOMP',
+                          {cache: 'no-store'});
+    const scans = (await r.json())?.scans;
+    const ts = Array.isArray(scans) && scans.length ? Date.parse(scans[scans.length - 1].ts) : NaN;
+    if(isFinite(ts)){ iemSliceMs = ts; iemSliceFetched = Date.now(); }
+  }catch(e){ /* keep whatever we last knew */ }
+  return iemSliceMs;
+}
+
+async function loadRadar(){
   if(radarSource === 'noaa'){ loadNoaaRadar(); return; }
   if(radarMode !== 'national') return;  // single-radar mode manages its own overlay
   // Raw NWS NEXRAD base reflectivity (N0Q) national mosaic, served as XYZ tiles by the
@@ -965,13 +1019,19 @@ function loadRadar(){
   radarLayer.setUrl(`https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913/{z}/{x}/{y}.png?t=${ts}`);
   radarLabel = 'NEXRAD N0Q';
   updateRadarStatus();
+  // Tiles are already on their way; the scan time only relabels the pill.
+  const slice = await iemLatestSlice();
+  if(slice && radarSource === 'iem') updateRadarStatus(new Date(slice));
 }
 
-// Show when the radar mosaic was last pulled, and count the minutes since.
+// When the radar we are showing was MEASURED, not when we fetched it. Those are
+// five to ten minutes apart, and reporting the fetch made the pill say "just
+// now" over a scan that was already old — which is most of why the radar felt
+// stuck. Callers that genuinely have no slice time fall back to the fetch.
 let lastRadarUpdate = null;
 let radarLabel = 'NEXRAD N0Q';   // becomes 'BASE VELOCITY · SITE' in velocity mode
-function updateRadarStatus(){
-  lastRadarUpdate = new Date();
+function updateRadarStatus(dataTime){
+  lastRadarUpdate = dataTime instanceof Date && !isNaN(dataTime) ? dataTime : new Date();
   renderRadarStatus();
   document.getElementById('radarStatus').classList.add('show');
 }
@@ -2948,9 +3008,32 @@ function renderAfdAreas(){
       `<i>“${afdEsc(a.quote)}”</i><br>` +
       `<span style="color:#8A93A6">${wfo} discussion, ${afdEsc(afdIssuedText(off))}</span></div>`);
     poly.addTo(afdHazardLayer);
+  }
+  // Labels go in a second pass, most serious first, so the worst hazard keeps
+  // the true centre of its area and lesser ones are the ones that move.
+  const placed = [];
+  const lblScale = parseFloat(getComputedStyle(document.documentElement)
+                                .getPropertyValue('--lblscale')) || 1;
+  for(const {a, state, poly} of [...drawn].reverse()){
     try{
       const b = poly.getBounds();
-      const at = [b.getNorth() - (b.getNorth() - b.getSouth()) * 0.12, b.getCenter().lng];
+      // Centre of the outline, not its top edge: the label belongs over the
+      // area it names. getCenter() is the polygon centroid, which sits better
+      // inside an L-shaped area than the middle of its bounding box.
+      let at; try{ at = poly.getCenter(); }catch(e){ at = b.getCenter(); }
+      // Two areas that overlap have near-identical centres, which would stack
+      // their text on the same pixels. Nudge down until clear — overlap is a
+      // screen problem, so it is measured in screen space. The box is estimated
+      // from the character count rather than measured, which keeps this out of
+      // a layout read on every pan.
+      const w = Math.max(40, a.label.length * 5.4 * lblScale), h = 20 * lblScale;
+      let pt = map.latLngToContainerPoint(at);
+      for(let i = 0; i < 6 && placed.some(p => Math.abs(p.x - pt.x) < (p.w + w) / 2
+                                            && Math.abs(p.y - pt.y) < (p.h + h) / 2); i++)
+        pt = L.point(pt.x, pt.y + h);
+      placed.push({x: pt.x, y: pt.y, w, h});
+      at = map.containerPointToLatLng(pt);
+      const c = afdHazard(a.hazard).color;
       const html = `<div class="afd-area-lbl" style="color:${c}">` +
         `<div class="t">${afdEsc(a.label.toUpperCase())}</div>` +
         `<div class="s">${afdEsc(afdWhen(a, state))}</div></div>`;
@@ -3899,10 +3982,14 @@ const SET_KEY = 'nightwatch.settings.open';
 })();
 
 // A backgrounded tab has its timers throttled, so catch up on the way back.
+// The radar catch-up used to sit behind radarLoopOn, which is off by default —
+// so the one case this handler exists for, coming back to a stale tab, was the
+// case it skipped. The loop frames are still only refreshed when the loop is on.
 document.addEventListener('visibilitychange', () => {
   if(document.hidden) return;
   if(tracksOn && Date.now() - attrFetchedAt > 5 * 60 * 1000) loadStormTracks();
-  if(radarLoopOn && Date.now() - radarFrameStamp * 1000 > 5 * 60 * 1000){ refreshRadarFrames(); loadRadar(); }
+  if(!lastRadarUpdate || Date.now() - lastRadarUpdate.getTime() > 60 * 1000) loadRadar();
+  if(radarLoopOn && Date.now() - radarFrameStamp * 1000 > 5 * 60 * 1000) refreshRadarFrames();
 });
 
 boot();

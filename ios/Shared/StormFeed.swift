@@ -46,6 +46,11 @@ struct WatchLocation: Codable {
 enum StormFeed {
     static let attributesURL = URL(string: "https://mesonet.agron.iastate.edu/geojson/nexrad_attr.geojson")!
     static let radarService = "https://mapservices.weather.noaa.gov/eventdriven/rest/services/radar/radar_base_reflectivity_time/ImageServer"
+    /// IEM's N0Q national composite over WMS. Same NWS product and colour table
+    /// as the NOAA service, but current: sampled at 4-5 minutes old while the
+    /// NOAA event-driven service was 8-20 minutes behind and, once, moved its
+    /// newest slice backwards. This is the primary; NOAA is the fallback.
+    static let radarWMS = "https://mesonet.agron.iastate.edu/cgi-bin/wms/nexrad/n0q.cgi"
 
     private struct FeatureCollection: Decodable {
         struct Feature: Decodable {
@@ -107,7 +112,7 @@ enum StormFeed {
     /// register with the fronts, pressure centres and everything else.
     /// Matching the aspect brings it back to within a few metres.
     static func radarImageURL(sw: CLLocationCoordinate2D, ne: CLLocationCoordinate2D,
-                              pixelsWide: Int) -> (url: URL, width: Int, height: Int)? {
+                              pixelsWide: Int, sliceMs: Int? = nil) -> (url: URL, width: Int, height: Int)? {
         let (x0, y0) = mercator(sw.longitude, sw.latitude)
         let (x1, y1) = mercator(ne.longitude, ne.latitude)
         let bw = x1 - x0, bh = y1 - y0
@@ -116,11 +121,36 @@ enum StormFeed {
         let h = max(1, Int((Double(w) * bh / bw).rounded()))
         // Cache-bust per minute; the mosaic updates far more slowly than that.
         let stamp = Int(Date().timeIntervalSince1970 / 60)
+        // `time` pins the instant. Without it this time-enabled service renders
+        // its WHOLE extent — about two hours of scans mosaicked into one image,
+        // so every position a storm has held is painted at once and the weather
+        // appears to sit far behind where it really is. That is not latency, and
+        // no refresh interval fixes it.
+        let slice = sliceMs.map { "&time=\($0)" } ?? ""
         guard let url = URL(string:
             "\(radarService)/exportImage?bbox=\(Int(x0)),\(Int(y0)),\(Int(x1)),\(Int(y1))" +
             "&bboxSR=3857&imageSR=3857&size=\(w),\(h)&format=png32&transparent=true" +
-            "&interpolation=RSP_BilinearInterpolation&f=image&t=\(stamp)") else { return nil }
+            "&interpolation=RSP_BilinearInterpolation&f=image\(slice)&t=\(stamp)") else { return nil }
         return (url, w, h)
+    }
+
+    /// The newest slice the radar service holds, in epoch milliseconds, read
+    /// from its own time extent. Returns nil if the service will not say, in
+    /// which case the caller falls back to an unpinned request.
+    static func radarLatestSliceMs() async -> Int? {
+        guard let url = URL(string: "\(radarService)?f=json") else { return nil }
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 15
+        req.cachePolicy = .reloadIgnoringLocalCacheData
+        struct Doc: Decodable {
+            struct TimeInfo: Decodable { let timeExtent: [Double]? }
+            let timeInfo: TimeInfo?
+        }
+        guard let data = try? await URLSession.shared.data(for: req).0,
+              let doc = try? JSONDecoder().decode(Doc.self, from: data),
+              let extent = doc.timeInfo?.timeExtent, extent.count == 2, extent[1] > 0
+        else { return nil }
+        return Int(extent[1])
     }
 
     struct Report {
@@ -328,9 +358,31 @@ enum StormFeed {
     struct AfdArea {
         let ring: [CLLocationCoordinate2D]
         let label: String
+        let when: String        // the window, already formatted the way the dashboard writes it
         let color: UIColor
         let live: Bool          // inside its window now, rather than still ahead
         let rank: Int           // higher is more serious; drawn last so it sits on top
+    }
+
+    /// The time window as the dashboard's afdWhen() writes it: "NOW - TUE 8PM"
+    /// once the window is open, "MON 8PM - WED 2AM" while it is still ahead.
+    /// The weekday is dropped for today, since today is the common case and the
+    /// label has little room.
+    private static let afdHourFmt: DateFormatter = {
+        let f = DateFormatter(); f.setLocalizedDateFormatFromTemplate("j"); return f
+    }()
+    private static let afdDayFmt: DateFormatter = {
+        let f = DateFormatter(); f.setLocalizedDateFormatFromTemplate("E"); return f
+    }()
+    private static func afdWhen(start: Date, end: Date, live: Bool, now: Date) -> String {
+        func hh(_ d: Date) -> String {
+            afdHourFmt.string(from: d).replacingOccurrences(of: " ", with: "").uppercased()
+        }
+        func day(_ d: Date) -> String {
+            Calendar.current.isDate(d, inSameDayAs: now) ? "" : afdDayFmt.string(from: d).uppercased() + " "
+        }
+        return live ? "NOW \u{2013} \(day(end))\(hh(end))"
+                    : "\(day(start))\(hh(start)) \u{2013} \(day(end))\(hh(end))"
     }
 
     /// Colours and seriousness ranking, matching the dashboard's AFD_HAZARD table.
@@ -398,8 +450,10 @@ enum StormFeed {
                 guard ring.count >= 3, boxOverlaps(ring, sw: sw, ne: ne) else { continue }
                 let (color, rank) = afdHazards[(a.hazard ?? "").lowercased()]
                     ?? (UIColor(red: 0.54, green: 0.58, blue: 0.65, alpha: 1), 1)
+                let live = now >= t0
                 out.append(AfdArea(ring: ring, label: a.label ?? a.hazard ?? "",
-                                   color: color, live: now >= t0, rank: rank))
+                                   when: afdWhen(start: t0, end: t1, live: live, now: now),
+                                   color: color, live: live, rank: rank))
             }
         }
         // Least serious first, so the worst hazard ends up on top; live over ahead.
@@ -636,12 +690,49 @@ enum StormFeed {
     }
 
     static func radarImage(sw: CLLocationCoordinate2D, ne: CLLocationCoordinate2D, pixelsWide: Int) async -> RadarRender? {
-        guard let r = radarImageURL(sw: sw, ne: ne, pixelsWide: pixelsWide) else { return nil }
+        // IEM first, since it is the current one. Only if it fails does the
+        // slower NOAA service get asked, and that one must be pinned to an
+        // instant or it renders its whole two-hour extent at once.
+        if let r = radarWMSURL(sw: sw, ne: ne, pixelsWide: pixelsWide),
+           let render = await fetchRadar(r) {
+            return render
+        }
+        let sliceMs = await radarLatestSliceMs()
+        guard let r = radarImageURL(sw: sw, ne: ne, pixelsWide: pixelsWide, sliceMs: sliceMs)
+        else { return nil }
+        return await fetchRadar(r)
+    }
+
+    private static func fetchRadar(_ r: (url: URL, width: Int, height: Int)) async -> RadarRender? {
         var req = URLRequest(url: r.url)
         req.timeoutInterval = 20
-        guard let data = try? await URLSession.shared.data(for: req).0, !data.isEmpty else { return nil }
+        req.cachePolicy = .reloadIgnoringLocalCacheData
+        guard let (data, resp) = try? await URLSession.shared.data(for: req),
+              (resp as? HTTPURLResponse)?.statusCode == 200,
+              !data.isEmpty,
+              // A WMS error comes back as XML with a 200, so check it is a PNG.
+              data.starts(with: [0x89, 0x50, 0x4E, 0x47]) else { return nil }
         // Scaled by size: a blank 800px render is bigger than a blank 400px one.
         let blankCeiling = 12 * max(r.width, r.height)
         return RadarRender(data: data, hasEcho: data.count > blankCeiling)
+    }
+
+    /// The same box off IEM's WMS. Web Mercator metres in, one PNG out — no time
+    /// parameter needed, because this endpoint serves the newest composite only.
+    static func radarWMSURL(sw: CLLocationCoordinate2D, ne: CLLocationCoordinate2D,
+                            pixelsWide: Int) -> (url: URL, width: Int, height: Int)? {
+        let (x0, y0) = mercator(sw.longitude, sw.latitude)
+        let (x1, y1) = mercator(ne.longitude, ne.latitude)
+        let bw = x1 - x0, bh = y1 - y0
+        guard bw > 0, bh > 0 else { return nil }
+        let w = max(1, pixelsWide)
+        let h = max(1, Int((Double(w) * bh / bw).rounded()))
+        let stamp = Int(Date().timeIntervalSince1970 / 60)
+        guard let url = URL(string:
+            "\(radarWMS)?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=nexrad-n0q&STYLES=" +
+            "&SRS=EPSG:3857&BBOX=\(Int(x0)),\(Int(y0)),\(Int(x1)),\(Int(y1))" +
+            "&WIDTH=\(w)&HEIGHT=\(h)&FORMAT=image/png&TRANSPARENT=TRUE&t=\(stamp)")
+        else { return nil }
+        return (url, w, h)
     }
 }

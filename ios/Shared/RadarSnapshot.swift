@@ -331,8 +331,9 @@ private func drawStationModel(_ st: StormFeed.Station, at p: CGPoint) {
 }
 
 enum RadarSnapshot {
-    /// A dark basemap for the region, with radar drawn over it and a marker at
-    /// the watched point. Returns nil only if the map itself fails; a clear sky
+    /// A dark basemap for the region, with radar drawn over it. The watched
+    /// point frames the view but is not marked — the picture is the subject,
+    /// not the pin. Returns nil only if the map itself fails; a clear sky
     /// still yields a usable map, with `hasEcho` false.
     @MainActor
     static func compose(lat: Double, lon: Double, zoom: RadarZoom, size: CGSize,
@@ -560,6 +561,7 @@ enum RadarSnapshot {
                 }
             }
 
+            var afdLabels: [(bounds: CGRect, label: String, when: String, color: UIColor)] = []
             // Forecast-discussion areas sit above the radar, since the point is
             // the forecaster's outline against the echoes it refers to. Live
             // areas are solid, ones still ahead of their window are dashed —
@@ -578,22 +580,12 @@ enum RadarSnapshot {
                 if !a.live { path.setLineDash([7, 5], count: 2, phase: 0) }
                 path.stroke()
 
-                // Label the area at the top of its outline, where the dashboard
-                // puts it. Skipped when the shape is too small to read.
+                // The outline belongs here in the stack, but its text does not:
+                // it is the one label that has to survive whatever is drawn over
+                // the area, so it is held back and painted last.
                 let bounds = path.bounds
                 guard bounds.width > 44, bounds.height > 22, !a.label.isEmpty else { continue }
-                let text = a.label.uppercased() as NSString
-                let attrs: [NSAttributedString.Key: Any] = [
-                    .font: UIFont.systemFont(ofSize: 6.5, weight: .heavy),
-                    .foregroundColor: a.color,
-                    .strokeColor: UIColor.black, .strokeWidth: -3.0,
-                ]
-                let sz = text.size(withAttributes: attrs)
-                let at = CGPoint(x: bounds.midX - sz.width / 2,
-                                 y: bounds.minY + bounds.height * 0.12)
-                if at.x > 2, at.x + sz.width < size.width - 2, at.y > 2 {
-                    text.draw(at: at, withAttributes: attrs)
-                }
+                afdLabels.append((bounds, a.label, a.when, a.color))
             }
 
             for r in reports {
@@ -686,14 +678,37 @@ enum RadarSnapshot {
                 text.draw(at: CGPoint(x: x, y: y), withAttributes: attrs)
             }
 
-            // The watched point, so the picture has an anchor.
-            let c = snap.point(for: CLLocationCoordinate2D(latitude: lat, longitude: lon))
-            let ring = CGRect(x: c.x - 5, y: c.y - 5, width: 10, height: 10)
-            ctx.cgContext.setFillColor(UIColor(red: 0.95, green: 0.72, blue: 0.02, alpha: 1).cgColor)
-            ctx.cgContext.setStrokeColor(UIColor.black.cgColor)
-            ctx.cgContext.setLineWidth(1.5)
-            ctx.cgContext.addEllipse(in: ring)
-            ctx.cgContext.drawPath(using: .fillStroke)
+            // Discussion text last, over everything: the hazard over the window
+            // it applies to, as two centred lines in the middle of the outline.
+            // The window line is dropped before the hazard when only one fits.
+            for l in afdLabels {
+                let text = l.label.uppercased() as NSString
+                let attrs: [NSAttributedString.Key: Any] = [
+                    .font: UIFont.systemFont(ofSize: 6.5, weight: .heavy),
+                    .foregroundColor: l.color,
+                    .strokeColor: UIColor.black, .strokeWidth: -3.0,
+                ]
+                let whenAttrs: [NSAttributedString.Key: Any] = [
+                    .font: UIFont.systemFont(ofSize: 5.5, weight: .bold),
+                    .foregroundColor: UIColor.white.withAlphaComponent(0.92),
+                    .strokeColor: UIColor.black, .strokeWidth: -3.0,
+                ]
+                let sz = text.size(withAttributes: attrs)
+                let when = l.when.isEmpty ? nil : l.when as NSString
+                let wz = when?.size(withAttributes: whenAttrs) ?? .zero
+                let gap: CGFloat = 1
+                let showWhen = when != nil && l.bounds.height > sz.height + wz.height + gap + 8
+                let block = showWhen ? sz.height + gap + wz.height : sz.height
+                let top = l.bounds.midY - block / 2
+                let at = CGPoint(x: l.bounds.midX - sz.width / 2, y: top)
+                guard at.x > 2, at.x + sz.width < size.width - 2, at.y > 2 else { continue }
+                text.draw(at: at, withAttributes: attrs)
+                if showWhen, let when {
+                    when.draw(at: CGPoint(x: l.bounds.midX - wz.width / 2,
+                                          y: top + sz.height + gap),
+                              withAttributes: whenAttrs)
+                }
+            }
         }
         return (out, render?.hasEcho ?? false)
     }

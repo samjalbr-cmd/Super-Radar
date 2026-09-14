@@ -30,7 +30,7 @@ struct Provider: TimelineProvider {
             let e = await entry(for: context.family)
             // Ask for sooner when something is close. iOS grants what its budget
             // allows, so this is a request rather than a promise.
-            let mins = (e.approach?.minutes ?? 60) < 30 ? 10 : 20
+            let mins = (e.approach?.minutes ?? 60) < 30 ? 10 : 15
             let next = Calendar.current.date(byAdding: .minute, value: mins, to: Date()) ?? Date()
             completion(Timeline(entries: [e], policy: .after(next)))
         }
@@ -104,7 +104,7 @@ struct RadarProvider: AppIntentTimelineProvider {
     }
     func timeline(for config: RadarConfig, in context: Context) async -> Timeline<RadarEntry> {
         let e = await entry(config, context.displaySize)
-        let mins = (e.approach?.minutes ?? 60) < 30 ? 10 : 20
+        let mins = (e.approach?.minutes ?? 60) < 30 ? 10 : 15
         let next = Calendar.current.date(byAdding: .minute, value: mins, to: Date()) ?? Date()
         return Timeline(entries: [e], policy: .after(next))
     }
