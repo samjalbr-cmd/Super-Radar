@@ -601,6 +601,12 @@ enum RadarSnapshot {
                 afdLabels.append((bounds, a.label, a.when, a.color))
             }
 
+            // Every report keeps its dot; the labels are packed. On a busy day
+            // in the Plains 52 reports landed in one state-zoom view and 88% of
+            // the labels overlapped another, which reads as a smear rather than
+            // as data. Reports arrive worst-first, so what survives a contest is
+            // the tornado rather than whichever gust happened to be drawn last.
+            var labelBoxes: [CGRect] = []
             for r in reports {
                 let p = snap.point(for: CLLocationCoordinate2D(latitude: r.lat, longitude: r.lon))
                 guard size.width > 0, p.x.isFinite, p.y.isFinite else { continue }
@@ -610,8 +616,7 @@ enum RadarSnapshot {
                 ctx.cgContext.setLineWidth(1)
                 ctx.cgContext.addEllipse(in: dot)
                 ctx.cgContext.drawPath(using: .fillStroke)
-                // The value beside the dot, as the dashboard does it — a report
-                // is worth far more when you can see 62 mph rather than a dot.
+
                 guard !r.label.isEmpty, p.x > 2, p.y > 8, p.y < size.height - 8 else { continue }
                 let text = r.label as NSString
                 let attrs: [NSAttributedString.Key: Any] = [
@@ -621,6 +626,12 @@ enum RadarSnapshot {
                 ]
                 let sz = text.size(withAttributes: attrs)
                 let x = min(p.x + 5, size.width - sz.width - 1)
+                let box = CGRect(x: x - 1, y: p.y - sz.height / 2 - 1,
+                                 width: sz.width + 2, height: sz.height + 2)
+                // Clear of other labels, and of the dots themselves, so a number
+                // never sits on top of another report's marker.
+                if labelBoxes.contains(where: { $0.intersects(box) }) { continue }
+                labelBoxes.append(box)
                 text.draw(at: CGPoint(x: x, y: p.y - sz.height / 2), withAttributes: attrs)
             }
 

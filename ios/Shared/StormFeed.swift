@@ -160,6 +160,22 @@ enum StormFeed {
         let lon: Double
         let color: UIColor
         var label: String = ""      // "62 mph", "1.5\" hail"
+        var rank: Int = 0           // higher keeps its label when two collide
+    }
+
+    /// Which report keeps its label when two want the same patch of screen.
+    /// A tornado outranks a 41 mph gust; within a class, the bigger number wins.
+    static func reportRank(type: String, magnitude: Double?) -> Int {
+        let t = type.uppercased()
+        let base: Int
+        if t.contains("TORNADO") || t.contains("SPOUT") { base = 900 }
+        else if t.contains("DMG") || t.contains("DEBRIS") || t.contains("LANDSLIDE") { base = 700 }
+        else if t.contains("FLASH FLOOD") { base = 600 }
+        else if t.contains("HAIL") { base = 500 }
+        else if t.contains("WND") || t.contains("WIND") { base = 400 }
+        else if t.contains("FLOOD") { base = 300 }
+        else { base = 100 }
+        return base + Int(min(max(magnitude ?? 0, 0), 99))
     }
 
     /// How much of the storm-report feed is worth a pin.
@@ -270,7 +286,7 @@ enum StormFeed {
         var req = URLRequest(url: url); req.timeoutInterval = 15; req.cachePolicy = .reloadIgnoringLocalCacheData
         guard let data = try? await URLSession.shared.data(for: req).0,
               let fc = try? JSONDecoder().decode(FC.self, from: data) else { return [] }
-        return fc.features.compactMap { f in
+        let found: [Report] = fc.features.compactMap { f -> Report? in
             guard let c = f.geometry?.coordinates, c.count >= 2,
                   c[1] >= sw.latitude, c[1] <= ne.latitude,
                   c[0] >= sw.longitude, c[0] <= ne.longitude else { return nil }
@@ -284,8 +300,12 @@ enum StormFeed {
             else if t.contains("FLOOD") || t.contains("RAIN") { color = UIColor(red: 0.18, green: 0.80, blue: 0.44, alpha: 1) }
             else { color = UIColor(red: 0.72, green: 0.44, blue: 1, alpha: 1) }
             return Report(lat: c[1], lon: c[0], color: color,
-                          label: reportLabel(type: t, magnitude: mag, unit: f.properties.unit))
+                          label: reportLabel(type: t, magnitude: mag, unit: f.properties.unit),
+                          rank: reportRank(type: t, magnitude: mag))
         }
+        // Worst first, so when labels compete for the same patch of screen the
+        // packer keeps the tornado and drops the 41 mph gust.
+        return found.sorted { $0.rank > $1.rank }
     }
 
     /// A warning or watch polygon, in the dashboard's colours.
