@@ -1206,29 +1206,50 @@ async function zoneGeometry(zoneUrl){
 
 async function loadAlerts(){
   try{
-    const res = await fetch(`https://api.weather.gov/alerts/active`);
+    // Live, the active feed is what is in force now. While scrubbing it is the
+    // wrong question entirely — a warning that ran this morning and expired is
+    // exactly what the map needs — so the window query is used instead, scoped
+    // to the states in view to keep it small.
+    let url = 'https://api.weather.gov/alerts/active';
+    if(replayActive()){
+      const end = new Date(), start = new Date(end.getTime() - REPLAY_HOURS * 3600e3);
+      const area = replayStatesFor(map.getBounds()).join(',');
+      url = 'https://api.weather.gov/alerts?start=' + start.toISOString().slice(0, 19) + 'Z' +
+            '&end=' + end.toISOString().slice(0, 19) + 'Z' +
+            (area ? '&area=' + area : '');
+    }
+    const res = await fetch(url);
     const data = await res.json();
     const feats = data.features || [];
     let zoneFetches = 0;
-    const ZONE_FETCH_LIMIT = 60; // watches span many counties; cap per refresh, cache fills over time
+    const ZONE_FETCH_LIMIT = 120;   // watches span many counties and a replayed
+                                    // day spans more than one moment; the cache fills over time
 
-    // Resolve geometries up front (incl. zone lookups for watches/warnings)
+    // Resolve geometries up front, including the zone lookups for anything that
+    // does not carry its own polygon.
+    //
+    // Advisories used to be skipped here, which meant they could never draw at
+    // all: they are almost always zone-only, so an afternoon whose alerts are
+    // entirely wind and heat advisories showed an empty map while the settings
+    // claimed the layer was on. Resolved in severity order so that when the
+    // per-refresh cap bites it drops advisories rather than warnings.
+    const rankCls = c => c === 'warning' ? 0 : c === 'watch' ? 1 : 2;
     for(const f of feats){
-      const cls = classify(f.properties.event);
-      f._cls = cls;
+      f._cls = classify(f.properties.event);
       f._hazard = hazardOf(f.properties.event);
       f._geoms = [];
-      if(f.geometry){
-        f._geoms.push(f.geometry);
-      } else if(cls === 'warning' || cls === 'watch'){
-        for(const zoneUrl of (f.properties.affectedZones || [])){
-          if(zoneCache[zoneUrl] === undefined){
-            if(zoneFetches >= ZONE_FETCH_LIMIT) continue;
-            zoneFetches++;
-          }
-          const g = await zoneGeometry(zoneUrl);
-          if(g) f._geoms.push(g);
+      if(f.geometry) f._geoms.push(f.geometry);
+    }
+    const needGeom = feats.filter(f => !f._geoms.length && (f.properties.affectedZones || []).length)
+                          .sort((a, b) => rankCls(a._cls) - rankCls(b._cls));
+    for(const f of needGeom){
+      for(const zoneUrl of f.properties.affectedZones){
+        if(zoneCache[zoneUrl] === undefined){
+          if(zoneFetches >= ZONE_FETCH_LIMIT) continue;
+          zoneFetches++;
         }
+        const g = await zoneGeometry(zoneUrl);
+        if(g) f._geoms.push(g);
       }
     }
     // Record first-seen times. On the very first load, existing alerts are
@@ -1328,11 +1349,28 @@ function alertDetails(props){
   return bits.join(' · ');
 }
 
+// Was this alert in force at the time the map is showing?
+//
+// Live, the active feed has already answered that and everything it returns is
+// current. While scrubbing, the fetch covers the whole window instead, so each
+// one has to be placed against its own issue and expiry.
+function alertInWindow(f){
+  if(!replayActive()) return true;
+  const p = f.properties || {};
+  const t = mapNow();
+  const on = Date.parse(p.onset || p.effective || p.sent);
+  const off = Date.parse(p.ends || p.expires);
+  if(isFinite(on) && t < on) return false;
+  if(isFinite(off) && t > off) return false;
+  return true;
+}
+
 function renderAlerts(){
   alertLayerGroup.clearLayers();
 
   for(const f of lastAlertFeats){
     if(!f._geoms || !f._geoms.length) continue;
+    if(!alertInWindow(f)) continue;
     if(!hazardVisible[f._hazard]) continue;
     if(f._cls === 'watch' && !hazardVisible.watches) continue;
     if(f._cls === 'advisory' && !hazardVisible.watches) continue;
@@ -1529,13 +1567,35 @@ async function loadOutlook(){
 
 // Active SPC Mesoscale Discussions (short-fuse "something's developing" areas).
 let mcdData = [];
+// A mesoscale discussion is a short-fuse product; outside its window it is not
+// something the map should be showing.
+function mcdInWindow(p){
+  if(!replayActive()) return true;
+  const t = mapNow();
+  const on = Date.parse(p.issue), off = Date.parse(p.expire);
+  if(isFinite(on) && t < on) return false;
+  if(isFinite(off) && t > off) return false;
+  return true;
+}
+
 async function loadMCD(){
   try{
     const res = await fetch('https://mesonet.agron.iastate.edu/api/1/nws/spc_mcd.geojson');
     const data = await res.json();
     mcdData = data.features || [];
-    mcdLayer.clearLayers();
-    L.geoJSON(data, {
+    renderMCD();
+  }catch(e){ console.error('mcd error', e); }
+}
+
+// Split from the fetch so a scrub can redraw from the cached features. The
+// window filter used to be evaluated once at load, which left the discussion on
+// the map at every scrub position regardless of when it was issued.
+function renderMCD(){
+  if(!mcdLayer) return;
+  mcdLayer.clearLayers();
+  try{
+    L.geoJSON({type: 'FeatureCollection', features: mcdData}, {
+      filter: f => mcdInWindow(f.properties),
       style: {color:'#F2B705', weight:2, fillColor:'#F2B705', fillOpacity:0.06, dashArray:'4 3'},
       onEachFeature: (f, l) => {
         const p = f.properties;
@@ -2277,6 +2337,10 @@ const REPLAY_STEP_MIN = 10;     // one tick of the scrubber
 
 function replayActive(){ return replayAt != null; }
 
+// The time the map is showing. Every layer that decides what is current asks
+// this rather than Date.now(), so scrubbing moves all of them together.
+function mapNow(){ return replayAt != null ? replayAt : Date.now(); }
+
 // The states the view touches, reusing the same table the widget uses.
 function replayStatesFor(bounds){
   const S = bounds.getSouth(), N = bounds.getNorth(), W = bounds.getWest(), E = bounds.getEast();
@@ -2383,13 +2447,21 @@ function applyReplay(){
   }
   renderStations();
   renderLSR();
+  renderAlerts();
+  renderAfdAreas();
+  renderMCD();
+  loadSurfaceAnalysis();      // may cross a 3-hourly reissue
   renderFeed();
   renderReplayBar();
 }
 
 function setReplay(ms){
+  const wasReplaying = replayActive();
   replayAt = ms;
   if(ms != null && !histRows && !histLoading) loadHistory();
+  // Crossing between live and replay swaps which alert query is the right one,
+  // so refetch once on the transition rather than on every tick of the scrubber.
+  if(wasReplaying !== replayActive()){ loadAlerts(); loadMCD(); }
   applyReplay();
 }
 
@@ -3455,9 +3527,16 @@ async function loadAfdAreas(){
 
 // An area is "live" when now falls inside its window; upcoming ones are drawn
 // dashed and dimmer so the two read differently at a glance.
-function afdWindowState(a){
-  const now = Date.now(), t0 = Date.parse(a.start), t1 = Date.parse(a.end);
+function afdWindowState(a, office){
+  const now = mapNow(), t0 = Date.parse(a.start), t1 = Date.parse(a.end);
   if(!(t0 && t1)) return null;
+  // An area cannot be on the map before the forecaster wrote it. Scrubbing to
+  // last night used to show this morning's discussion as "ahead", which is the
+  // map claiming to know something nobody had said yet.
+  if(office && office.issued){
+    const issued = Date.parse(office.issued);
+    if(isFinite(issued) && now < issued) return null;
+  }
   if(now > t1) return null;                       // finished — don't draw it
   return now >= t0 ? 'live' : 'ahead';
 }
@@ -3475,7 +3554,7 @@ function afdFreshness(){
   const age = (Date.now() - Date.parse(afdAreas.generated)) / 3600e3;
   let current = 0, total = 0;
   for(const w in afdAreas.offices)
-    for(const a of (afdAreas.offices[w].areas || [])){ total++; if(afdWindowState(a)) current++; }
+    for(const a of (afdAreas.offices[w].areas || [])){ total++; if(afdWindowState(a, afdAreas.offices[w])) current++; }
   return {age, current, total, state: !isFinite(age) ? 'none' : age > 6 ? 'stale' : 'ok'};
 }
 function renderAfdStatus(){
@@ -3501,7 +3580,7 @@ function renderAfdAreas(){
   const drawn = [];
   for(const wfo in afdAreas.offices){
     for(const a of (afdAreas.offices[wfo].areas || [])){
-      const state = afdWindowState(a);
+      const state = afdWindowState(a, afdAreas.offices[wfo]);
       if(!state || !a.polygon || a.polygon.length < 3) continue;
       const poly = L.polygon(a.polygon, {interactive: true});
       if(!view.intersects(poly.getBounds())){ poly.remove(); continue; }
@@ -3661,15 +3740,30 @@ function sfcPush(cur, fronts, centers, hi){
   }
 }
 
+let sfcLoadedFor = null;    // product id currently parsed, so a scrub refetches only on change
+
 async function loadSurfaceAnalysis(){
   try{
     const list = await (await fetch(SFC_URL)).json();
     const g = list['@graph'] || [];
-    const pick = g.find(p => p.wmoCollectiveId === 'ASUS02') || g.find(p => p.wmoCollectiveId === 'ASUS01');
-    if(!pick) return;
+    // The analysis is reissued every three hours, so replaying a day needs the
+    // one that was valid at the scrub time, not the newest. Without this the
+    // fronts sat still while everything else moved.
+    const t = mapNow();
+    const usable = g.filter(p => (p.wmoCollectiveId === 'ASUS02' || p.wmoCollectiveId === 'ASUS01')
+                              && Date.parse(p.issuanceTime) <= t + 60e3);
+    usable.sort((a, b) => Date.parse(b.issuanceTime) - Date.parse(a.issuanceTime));
+    // Prefer the high-resolution bulletin from the same issuance.
+    const newest = usable[0];
+    if(!newest) return;
+    const stamp = Date.parse(newest.issuanceTime);
+    const pick = usable.find(p => p.wmoCollectiveId === 'ASUS02' && Math.abs(Date.parse(p.issuanceTime) - stamp) < 90 * 60e3)
+              || newest;
+    if(pick.id === sfcLoadedFor) return;          // already showing this one
     const prod = await (await fetch(`https://api.weather.gov/products/${pick.id}`)).json();
     sfcData = parseSfc(prod.productText || '', pick.wmoCollectiveId === 'ASUS02');
     sfcData.res = pick.wmoCollectiveId;
+    sfcLoadedFor = pick.id;
     renderSurface();
   }catch(e){ console.error('surface analysis', e); }
 }
