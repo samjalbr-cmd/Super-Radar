@@ -4696,6 +4696,10 @@ async function boot(){
   // on that meant staring at a splash while the map was ready to draw.
   await loadRadar();
   document.getElementById('loading').classList.add('hide');
+  // Saved preferences first, then the URL, so a link that says "no tracks" wins
+  // over what was last left switched on — a shared link should look the way the
+  // person sharing it meant, not the way the recipient last had the map.
+  restoreSettings();
   applyUrlOptions();
 
   loadNexradSites().then(populateSiteDropdown);
@@ -4730,6 +4734,72 @@ async function boot(){
 
 // Remember which settings groups were left open.
 const SET_KEY = 'nightwatch.settings.open';
+
+/* ---------------- Saved settings ----------------
+   The panel's own controls are the state, so they are what gets saved: a map of
+   control to value, restored by putting each control back and letting its own
+   change handler run. Nothing about what a setting means is duplicated here,
+   which is what keeps this from drifting out of step with the handlers.
+
+   The city box is deliberately excluded — where you are is a different thing
+   from how you like the map drawn, and it already arrives by URL. */
+const PREFS_KEY = 'nightwatch.settings.v1';
+let prefsReady = false;          // true once boot has restored, so we do not save mid-restore
+
+function prefControls(){
+  const panel = document.getElementById('settingsPanel');
+  if(!panel) return [];
+  return [...panel.querySelectorAll('input, select')].filter(el => el.id !== 'cityInput');
+}
+
+function prefKey(el){
+  if(el.dataset.hazard) return 'hz:' + el.dataset.hazard;
+  if(el.dataset.spc) return 'spc:' + el.dataset.spc;
+  return el.id || '';
+}
+
+function saveSettings(){
+  if(!prefsReady) return;
+  const out = {};
+  for(const el of prefControls()){
+    const k = prefKey(el);
+    if(!k) continue;
+    out[k] = (el.type === 'checkbox') ? el.checked : el.value;
+  }
+  try{ localStorage.setItem(PREFS_KEY, JSON.stringify(out)); }catch(e){}
+}
+
+function restoreSettings(){
+  let saved = null;
+  try{ saved = JSON.parse(localStorage.getItem(PREFS_KEY) || 'null'); }catch(e){}
+  if(saved){
+    for(const el of prefControls()){
+      const k = prefKey(el), v = saved[k];
+      if(v === undefined) continue;
+      if(el.type === 'checkbox'){
+        if(el.checked === !!v) continue;              // already right, nothing to fire
+        el.checked = !!v;
+      }else{
+        if(el.value === String(v)) continue;
+        // A select whose saved option no longer exists keeps its default.
+        if(el.tagName === 'SELECT' && ![...el.options].some(o => o.value === String(v))) continue;
+        el.value = String(v);
+      }
+      // Let the control's own handler do the work, so this file never has to
+      // know what any particular setting means.
+      el.dispatchEvent(new Event(el.tagName === 'SELECT' ? 'change' : 'change', {bubbles: true}));
+      if(el.type === 'range') el.dispatchEvent(new Event('input', {bubbles: true}));
+    }
+  }
+  prefsReady = true;
+  // One delegated listener covers every control, including any added later.
+  const panel = document.getElementById('settingsPanel');
+  if(panel){
+    panel.addEventListener('change', saveSettings);
+    panel.addEventListener('input', e => { if(e.target.type === 'range') saveSettings(); });
+  }
+}
+
 (function restoreSettingGroups(){
   let open = null;
   try{ open = JSON.parse(localStorage.getItem(SET_KEY) || 'null'); }catch(e){}
