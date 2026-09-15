@@ -673,14 +673,6 @@
           <label class="set-row"><input type="checkbox" data-spc="outlook" checked onchange="toggleSpc(this)"><span class="sw-t"></span>SPC convective outlook</label>
           <label class="set-row"><input type="checkbox" data-spc="mcd" checked onchange="toggleSpc(this)"><span class="sw-t"></span>Mesoscale discussions</label>
           <label class="set-row"><input type="checkbox" data-spc="lsr" checked onchange="toggleSpc(this)"><span class="sw-t"></span>Storm reports (24 h)</label>
-          <label class="set-row" style="gap:8px">
-            <span style="flex:1">Report threshold</span>
-            <select onchange="setLsrTier(this.value)" style="flex:0 0 auto">
-              <option value="all">All</option>
-              <option value="notable" selected>40 mph &middot; 1 in</option>
-              <option value="severe">58 mph &middot; 2 in</option>
-            </select>
-          </label>
         </div>
         <label class="set-row"><input type="checkbox" id="sfcChk" checked onchange="toggleSurface(this)"><span class="sw-t"></span>Surface fronts and pressure</label>
         <label class="set-row"><input type="checkbox" id="isobarChk" checked onchange="toggleIsobars(this)"><span class="sw-t"></span>Isobars</label>
@@ -1602,15 +1594,16 @@ function renderLSR(){
 
 // Short value label for a storm report, formatted by type/unit.
 /* ---------------- Storm report filtering ----------------
-   The national feed carries everything a spotter phoned in, and most of it is
-   not news on a radar map: a week's worth is about 1,500 reports, a quarter of
-   them rain totals starting at 0.07 inches. These tiers cut that down.
+   The national feed carries everything a spotter phoned in, and the station
+   feeds add every measured gust and rain total on top: about 1,500 spotter
+   reports a week, a quarter of them rain starting at 0.07 inches, plus gusts
+   from 30 mph. Most of it is not news on a radar map.
 
-   The thresholds sit where they do because the service only bothers reporting
-   significant values in the first place — over a week the median rain report is
-   1.98 inches and the median thunderstorm gust 59 mph — so a 40 mph / 1 inch cut
-   trims only about a tenth. 'severe' uses the NWS severe-thunderstorm criteria,
-   58 mph and one inch of hail, which is the line forecasters themselves draw. */
+   A gust needs 40 mph, rain an inch in a day, hail three quarters of an inch,
+   snow two inches. Reports carrying no magnitude are judged by type instead:
+   a tornado or a flash flood is the news whatever number is attached, while
+   lightning and rip currents are real but not worth a pin over the radar. */
+const LSR_MIN = {wind: 40, rain: 1.0, hail: 0.75, snow: 2.0};
 const LSR_WIND = new Set(['TSTM WND GST','NON-TSTM WND GST','MARINE TSTM WIND',
                           'MARINE HIGH WIND','HIGH SUST WINDS']);
 // No magnitude to threshold, but the event itself is the report.
@@ -1618,47 +1611,21 @@ const LSR_DAMAGE = new Set(['TORNADO','WATERSPOUT','LANDSPOUT','FLASH FLOOD','TS
                             'NON-TSTM WND DMG','FLOOD','DEBRIS FLOW','LANDSLIDE','AVALANCHE',
                             'STORM SURGE','TROPICAL CYCLONE','WILDFIRE','FREEZING RAIN',
                             'ICE STORM','BLIZZARD','SNOW SQUALL','DUST STORM']);
-const LSR_DAMAGE_SEVERE = new Set(['TORNADO','WATERSPOUT','LANDSPOUT','FLASH FLOOD','TSTM WND DMG',
-                                   'NON-TSTM WND DMG','DEBRIS FLOW','LANDSLIDE','STORM SURGE',
-                                   'TROPICAL CYCLONE','ICE STORM','BLIZZARD']);
 // Real reports, but not ones worth a pin over the radar.
 const LSR_MINOR = new Set(['LIGHTNING','RIP CURRENTS','HIGH SURF','COASTAL FLOOD',
                            'ASTRONOMICAL LOW TIDE','DENSE FOG','SEICHE','FUNNEL CLOUD']);
-const LSR_TIERS = {
-  all: null,
-  notable: {wind: 40, rain: 1.0, hail: 0.75, snow: 2.0, damage: LSR_DAMAGE, minor: LSR_MINOR},
-  severe:  {wind: 58, rain: 2.0, hail: 1.0, snow: 6.0, damage: LSR_DAMAGE_SEVERE,
-            minor: new Set([...LSR_MINOR, ...[...LSR_DAMAGE].filter(t => !LSR_DAMAGE_SEVERE.has(t))])},
-};
-let lsrTier = 'notable';
-
-// The same thresholds, for the station observations in the feed. 'all' keeps
-// the old behaviour: any measurable rain, and gusts from 30 mph.
-function obsFloor(kind){
-  const cfg = LSR_TIERS[lsrTier];
-  if(!cfg) return kind === 'wind' ? 30 : 0.01;
-  return cfg[kind];
-}
 
 function lsrKeep(p){
-  const cfg = LSR_TIERS[lsrTier];
-  if(!cfg) return true;
   const t = String(p.typetext || '').toUpperCase().trim();
-  if(cfg.minor.has(t)) return false;
+  if(LSR_MINOR.has(t)) return false;
   const raw = p.magnitude;
   const m = (raw == null || raw === '') ? null : Number(raw);
   const has = m != null && isFinite(m);
-  if(LSR_WIND.has(t)) return has && m >= cfg.wind;
-  if(t === 'RAIN')    return has && m >= cfg.rain;
-  if(t === 'HAIL')    return has && m >= cfg.hail;
-  if(t.includes('SNOW') || t === 'SLEET') return !has || m >= cfg.snow;
-  return cfg.damage.has(t);
-}
-
-function setLsrTier(v){
-  lsrTier = LSR_TIERS[v] !== undefined ? v : 'notable';
-  renderLSR();
-  renderFeed();
+  if(LSR_WIND.has(t)) return has && m >= LSR_MIN.wind;
+  if(t === 'RAIN')    return has && m >= LSR_MIN.rain;
+  if(t === 'HAIL')    return has && m >= LSR_MIN.hail;
+  if(t.includes('SNOW') || t === 'SLEET') return !has || m >= LSR_MIN.snow;
+  return LSR_DAMAGE.has(t);
 }
 
 function lsrValue(p){
@@ -1726,7 +1693,6 @@ function syncAppSettings(){
         showFronts: !!sfcOn,
         stationModel: !!windBarbsOn,
         showIsobars: !!isobarsOn,
-        reportTier: lsrTier,
       });
     }catch(e){}
   }, 400);
@@ -4062,7 +4028,7 @@ function collectEvents(){
     // are a separate feed — measured at an ASOS site rather than phoned in by a
     // spotter — but on the map they are indistinguishable from a storm report,
     // so a 30 mph floor here quietly undid a 40 mph filter over there.
-    if(mph < obsFloor('wind')) continue;
+    if(mph < LSR_MIN.wind) continue;
     ev.push({cat: 'obs', rank: mph >= 58 ? 50 : 40, key: 'g' + s.p.station, t: feedTimeMs(s.p.utc_max_gust_ts || s.p.utc_valid),
       color: windColor(kt), main: `${Math.round(mph)} mph gust`, pin: `${Math.round(mph)} MPH`,
       sub: s.p.name || s.p.station, lat: s.lat, lon: s.lon});
@@ -4076,7 +4042,7 @@ function collectEvents(){
     if(p.pday > 0 || p.phour > 0){
       const day = (p.pday > 0) ? p.pday : null;
       const amt = (day != null) ? day : p.phour;
-      if(amt < obsFloor('rain')) continue;
+      if(amt < LSR_MIN.rain) continue;
       rainObs.push({cat: 'obs', rank: 25, key: 'r' + p.station, amt, t, color: rainColor(amt) || '#00ECEC', lat: s.lat, lon: s.lon,
         main: (day != null) ? `Rain ${inStr(day)} · since midnight` : `Rain ${inStr(p.phour)} · past 1 h`,
         pin: `${inStr(amt)} RAIN`,
@@ -4085,7 +4051,7 @@ function collectEvents(){
     if(p.snow > 0 || p.snowd > 0){
       const sf = (p.snow > 0) ? p.snow : null;
       const amt = (sf != null) ? sf : p.snowd;
-      if(amt < obsFloor('snow')) continue;
+      if(amt < LSR_MIN.snow) continue;
       snowObs.push({cat: 'obs', rank: 25, key: 's' + p.station, amt, t, color: snowColor(amt) || '#EAF4FF', lat: s.lat, lon: s.lon,
         main: (sf != null) ? `Snow ${inStr(sf)} · since midnight` : `Snow depth ${inStr(p.snowd)} · on ground now`,
         pin: `${inStr(amt)} SNOW`,

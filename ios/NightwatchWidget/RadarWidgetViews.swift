@@ -32,19 +32,6 @@ enum RadarZoomOption: String, AppEnum {
     }
 }
 
-enum ReportTierOption: String, AppEnum {
-    case all, notable, severe
-
-    static var typeDisplayRepresentation = TypeDisplayRepresentation(name: "Report threshold")
-    static var caseDisplayRepresentations: [ReportTierOption: DisplayRepresentation] = [
-        .all:     "All reports",
-        .notable: "40 mph · 1 in",
-        .severe:  "58 mph · 2 in",
-    ]
-
-    var tier: StormFeed.ReportTier { StormFeed.ReportTier(rawValue: rawValue) ?? .notable }
-}
-
 struct RadarConfig: WidgetConfigurationIntent {
     static var title: LocalizedStringResource = "Radar"
     static var description = IntentDescription("Live radar around your location.")
@@ -83,7 +70,4 @@ struct RadarConfig: WidgetConfigurationIntent {
     // zone, and dozens of them bury the map.
     @Parameter(title: "Show marine warnings", default: false)
     var showMarine: Bool
-
-    @Parameter(title: "Report threshold", default: .notable)
-    var reportTier: ReportTierOption
 }
