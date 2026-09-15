@@ -240,7 +240,9 @@ enum StormFeed {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd'T'HH:mm'Z'"
         f.timeZone = TimeZone(identifier: "UTC")
-        let ets = f.string(from: Date()), sts = f.string(from: Date().addingTimeInterval(-6 * 3600))
+        // 24 hours, matching the dashboard. At six the widget quietly showed a
+        // different set of reports from the site for the same place and moment.
+        let ets = f.string(from: Date()), sts = f.string(from: Date().addingTimeInterval(-24 * 3600))
         guard let url = URL(string: "https://mesonet.agron.iastate.edu/geojson/lsr.geojson?sts=\(sts)&ets=\(ets)")
         else { return [] }
         struct FC: Decodable {
