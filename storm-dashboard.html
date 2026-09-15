@@ -1139,6 +1139,7 @@ let lastAlertFeats = [];
 const alertFirstSeen = {};       // alert id -> first-seen time (ms), or 0 if pre-existing on load
 let alertsInitialized = false;   // alerts already active on first load must not flash
 const ALERT_FLASH_MS = 2 * 60 * 1000;
+let alertsNextTry = 0;    // set after a refused request, so it is not retried at once
 const TOAST_MS = 12000;   // how long an alert toast stays on screen
 
 function hazardOf(event){
@@ -1218,7 +1219,10 @@ async function loadAlerts(){
             '&end=' + end.toISOString().slice(0, 19) + 'Z' +
             (area ? '&area=' + area : '');
     }
+    if(Date.now() < alertsNextTry) return;
     const res = await fetch(url);
+    if(!res.ok) throw new Error('alerts HTTP ' + res.status);
+    alertsNextTry = 0;
     const data = await res.json();
     const feats = data.features || [];
     let zoneFetches = 0;
@@ -1283,6 +1287,10 @@ async function loadAlerts(){
     renderAlerts();
     renderFeed();
   }catch(e){
+    // Back off rather than retrying at once. Progressive loading calls this
+    // once per state as each arrives, so a refused request became several more
+    // within seconds — which is how a transient failure turns into a rate limit.
+    alertsNextTry = Date.now() + 30e3;
     console.error('alerts error', e);
   }
 }
@@ -2439,6 +2447,22 @@ async function loadHistory(){
 }
 
 // station -> [{t, p}] ascending, so a scrub is a binary search rather than a fetch.
+//
+// The archive interleaves two streams and this is the whole reason the stations
+// looked empty. Five-minute observations carry wind and sky but no temperature;
+// the full METAR with temperature, dew point and pressure comes about hourly. So
+// a station has eighty rows in six hours and only a dozen with a temperature,
+// and taking the newest row at a scrub time gave a blank plot six times out of
+// seven.
+//
+// Each field is therefore carried forward from its last real reading — the
+// standard treatment for an irregular series — bounded by a maximum age so a
+// station that stops reporting goes blank rather than holding its last value on
+// screen all day. The bound is generous enough to span the hourly METAR cadence
+// and no more.
+const OB_MAX_AGE = {tmpf: 95 * 60e3, dwpf: 95 * 60e3, mslp: 95 * 60e3, skyc1: 95 * 60e3,
+                    sknt: 40 * 60e3, drct: 40 * 60e3, phour: 95 * 60e3};
+
 function parseHistory(text){
   const by = {};
   for(const line of text.split('\n')){
@@ -2448,14 +2472,28 @@ function parseHistory(text){
     const t = Date.parse(f[1].replace(' ', 'T') + 'Z');
     const lat = +f[3], lon = +f[2];
     if(!isFinite(t) || !isFinite(lat) || !isFinite(lon)) continue;
-    const num = v => (v === '' || v == null) ? null : (isFinite(+v) ? +v : null);
-    (by[f[0]] ||= []).push({t, lat, lon, p: {
-      station: f[0], name: f[0], utc_valid: f[1].replace(' ', 'T') + 'Z',
+    const num = v => (v === '' || v == null || !isFinite(+v)) ? null : +v;
+    (by[f[0]] ||= []).push({t, lat, lon, raw: {
       tmpf: num(f[4]), dwpf: num(f[5]), sknt: num(f[6]), drct: num(f[7]),
       mslp: num(f[8]), skyc1: f[9] || null, phour: num(f[10]),
     }});
   }
-  for(const k in by) by[k].sort((a, z) => a.t - z.t);
+  for(const station in by){
+    const arr = by[station];
+    arr.sort((a, z) => a.t - z.t);
+    const last = {};                       // field -> {v, t} of its last real reading
+    for(const row of arr){
+      const p = {station, name: station, utc_valid: new Date(row.t).toISOString()};
+      for(const k in row.raw){
+        const v = row.raw[k];
+        if(v != null) last[k] = {v, t: row.t};
+        const held = last[k];
+        p[k] = (held && row.t - held.t <= OB_MAX_AGE[k]) ? held.v : null;
+      }
+      row.p = p;
+      delete row.raw;
+    }
+  }
   return by;
 }
 
@@ -3816,7 +3854,7 @@ function sfcPush(cur, fronts, centers, hi){
 
 let sfcLoadedFor = null;    // product id currently parsed, so a scrub refetches only on change
 
-let sfcIndex = null, sfcIndexAt = 0;
+let sfcIndex = null, sfcIndexAt = 0, sfcNextTry = 0;
 
 async function loadSurfaceAnalysis(){
   try{
@@ -3824,8 +3862,17 @@ async function loadSurfaceAnalysis(){
     // refetched on every scrub tick, which put a network round trip inside the
     // playback loop just to rediscover the same list.
     if(!sfcIndex || Date.now() - sfcIndexAt > 10 * 60e3){
-      sfcIndex = await (await fetch(SFC_URL)).json();
-      sfcIndexAt = Date.now();
+      // A failure backs off. Progressive loading calls this once per state as
+      // each arrives, so a refused request became five more within eleven
+      // seconds — which is how a transient failure turns into a rate limit.
+      if(Date.now() < sfcNextTry) return;
+      let fetched = null;
+      try{
+        const res = await fetch(SFC_URL);
+        if(res.ok) fetched = await res.json();
+      }catch(e){ /* handled just below */ }
+      if(!fetched){ sfcNextTry = Date.now() + 60e3; return; }
+      sfcIndex = fetched; sfcIndexAt = Date.now(); sfcNextTry = 0;
     }
     const g = sfcIndex['@graph'] || [];
     // The analysis is reissued every three hours, so replaying a day needs the
