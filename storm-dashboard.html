@@ -1587,20 +1587,34 @@ function renderLSR(){
   if(!lsrLayer) return;
   lsrLayer.clearLayers();
   try{
-    for(const f of lsrData){
-      if(!lsrKeep(f.properties)) continue;
-      if(!reportAtOrBefore(f.properties)) continue;
-      const c = f.geometry && f.geometry.coordinates;
-      if(!c) continue;
+    // Worst first, so when two labels want the same patch of screen the one
+    // that survives is the tornado rather than whichever was fetched last.
+    const view = map.getBounds().pad(0.15);
+    const shown = lsrData
+      .filter(f => f.geometry && lsrKeep(f.properties) && reportAtOrBefore(f.properties))
+      .filter(f => view.contains([f.geometry.coordinates[1], f.geometry.coordinates[0]]))
+      .sort((a, z) => lsrRank(z.properties.typetext) - lsrRank(a.properties.typetext)
+                   || (parseFloat(z.properties.magnitude) || 0) - (parseFloat(a.properties.magnitude) || 0));
+    const boxes = [];
+    for(const f of shown){
+      const c = f.geometry.coordinates;
       const p = f.properties;
       const color = lsrColor(p.typetext);
       const magFull = p.magnitude ? ` ${p.magnitude} ${p.unit || ''}`.trimEnd() : '';
       const popup = `<div class="alert-popup"><b>${p.typetext || 'Report'}${magFull}</b>${p.city || ''}, ${p.state || ''}<br>${fmtTime(p.valid)}<br>${p.remark || ''}</div>`;
-      // Original circle marker (distinct from stations) ...
+      // Every report keeps its dot, so nothing vanishes from the map.
       L.circleMarker([c[1], c[0]], {radius: 4, color: color, weight: 1, fillColor: color, fillOpacity: 0.9})
         .bindPopup(popup).addTo(lsrLayer);
-      // ... plus the value label beside it, in the same color.
-      const label = L.divIcon({className: 'lsr-icon', html: `<span class="lsr-val" style="color:${color}">${lsrValue(p)}</span>`, iconSize: [0, 0], iconAnchor: [0, 0]});
+      // The value only draws where it has room. Labelling all of them turned a
+      // busy afternoon into a wall of overlapping text.
+      const text = lsrValue(p);
+      if(!text) continue;
+      const pt = map.latLngToLayerPoint([c[1], c[0]]);
+      const w = text.length * 6.2 + 10, h = 13;
+      const box = {l: pt.x + 4, t: pt.y - h / 2, r: pt.x + 4 + w, b: pt.y + h / 2};
+      if(boxes.some(q => !(box.r <= q.l || box.l >= q.r || box.b <= q.t || box.t >= q.b))) continue;
+      boxes.push(box);
+      const label = L.divIcon({className: 'lsr-icon', html: `<span class="lsr-val" style="color:${color}">${text}</span>`, iconSize: [0, 0], iconAnchor: [0, 0]});
       L.marker([c[1], c[0]], {icon: label, keyboard: false}).bindPopup(popup).addTo(lsrLayer);
     }
   }catch(e){ console.error('lsr render', e); }
@@ -4329,6 +4343,10 @@ function renderFeedPins(list){
   const claimed = new Set();
   for(const e of list){
     if(e.lat == null || e.lon == null) continue;
+    // Storm reports already have a pin and a label from the reports layer.
+    // Drawing them again here put two labels on every report — "2x RAIN" from
+    // the feed sitting on top of "1.63\" rain" from the layer.
+    if(e.cat === 'report') continue;
     const pt = map.latLngToLayerPoint([e.lat, e.lon]);
     const cell = Math.round(pt.x / 96) + ':' + Math.round(pt.y / 34);
     // Rank 40 is the line for carrying a visible value. Rain and snow totals
