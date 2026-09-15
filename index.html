@@ -1264,7 +1264,7 @@ async function loadAlerts(){
       if(alertFirstSeen[id] === undefined){
         const isNew = alertsInitialized;   // false on first load, so no toast storm at startup
         alertFirstSeen[id] = isNew ? now : 0;
-        if(isNew && alertToastVisible(f) && alertInView(f)) showAlertToast(f);
+        if(isNew && !replayActive() && alertToastVisible(f) && alertInView(f)) showAlertToast(f);
       }
     }
     for(const id in alertFirstSeen){ if(!seenNow[id]) delete alertFirstSeen[id]; }
@@ -1365,10 +1365,23 @@ function alertInWindow(f){
   return true;
 }
 
+// Rebuilding every layer on every tick was half the frame budget: 173 ms of a
+// 342 ms scrub, for a set of alerts that changes every few steps at most. These
+// signatures are what each layer is currently showing, so an unchanged set is a
+// no-op and the work happens only when the map would actually look different.
+let sigAlerts = null, sigLSR = null, sigAfd = null, sigMCD = null;
+function invalidateTimeLayers(){ sigAlerts = sigLSR = sigAfd = sigMCD = null; }
+
 function renderAlerts(){
+  const visible = lastAlertFeats.filter(f =>
+    f._geoms && f._geoms.length && alertInWindow(f) && hazardVisible[f._hazard] &&
+    !((f._cls === 'watch' || f._cls === 'advisory') && !hazardVisible.watches));
+  const sig = visible.map(f => f.id || f.properties.id).join('|');
+  if(sig === sigAlerts) return;
+  sigAlerts = sig;
   alertLayerGroup.clearLayers();
 
-  for(const f of lastAlertFeats){
+  for(const f of visible){
     if(!f._geoms || !f._geoms.length) continue;
     if(!alertInWindow(f)) continue;
     if(!hazardVisible[f._hazard]) continue;
@@ -1378,7 +1391,10 @@ function renderAlerts(){
     const color = alertColor(f.properties.event, f._cls);
     const isWatch = f._cls === 'watch';
     const id = f.id || (f.properties && f.properties.id);
-    const isNew = id && (Date.now() - (alertFirstSeen[id] || 0) < ALERT_FLASH_MS);
+    // Nothing flashes in replay. A warning issued at 9am is not breaking news
+    // when you have deliberately scrubbed back to 9am to look at it.
+    const isNew = !replayActive() && id &&
+                  (Date.now() - (alertFirstSeen[id] || 0) < ALERT_FLASH_MS);
     for(const g of f._geoms){
       const layer = L.geoJSON(g, {
         style: {color: color, weight: isWatch ? 1.5 : 2.5, fillColor: color, fillOpacity: isWatch ? 0.10 : 0.22, dashArray: isWatch ? '6 4' : null, className: isNew ? 'flash-alert' : undefined}
@@ -1592,6 +1608,9 @@ async function loadMCD(){
 // the map at every scrub position regardless of when it was issued.
 function renderMCD(){
   if(!mcdLayer) return;
+  const vis = mcdData.filter(f => mcdInWindow(f.properties)).map(f => f.properties.num).join('|');
+  if(vis === sigMCD) return;
+  sigMCD = vis;
   mcdLayer.clearLayers();
   try{
     L.geoJSON({type: 'FeatureCollection', features: mcdData}, {
@@ -1645,7 +1664,6 @@ async function loadLSR(){
 
 function renderLSR(){
   if(!lsrLayer) return;
-  lsrLayer.clearLayers();
   try{
     // Worst first, so when two labels want the same patch of screen the one
     // that survives is the tornado rather than whichever was fetched last.
@@ -1655,6 +1673,11 @@ function renderLSR(){
       .filter(f => view.contains([f.geometry.coordinates[1], f.geometry.coordinates[0]]))
       .sort((a, z) => lsrRank(z.properties.typetext) - lsrRank(a.properties.typetext)
                    || (parseFloat(z.properties.magnitude) || 0) - (parseFloat(a.properties.magnitude) || 0));
+    const sig = shown.map(f => f.properties.valid + f.properties.typetext).join('|')
+              + '@' + map.getZoom() + ',' + Math.round(map.getCenter().lat * 50);
+    if(sig === sigLSR) return;
+    sigLSR = sig;
+    lsrLayer.clearLayers();
     const boxes = [];
     for(const f of shown){
       const c = f.geometry.coordinates;
@@ -2372,8 +2395,13 @@ async function loadHistory(){
   // query for IEM to run, and four at once reliably draws a 503 — which used to
   // fail silently and leave a partial map with no hint that three quarters of
   // the stations were missing. One retry covers a transient refusal.
+  // Rendered as each state arrives rather than after all of them. The states
+  // are ordered by how much of the view they cover, so the first one back is
+  // the one under the middle of the screen: the map fills in after about two
+  // seconds instead of staying empty for twelve.
   const parts = [];
   histFailed = [];
+  histRows = histRows && histStates === key ? histRows : null;
   for(const st of states){
     const u = 'https://mesonet.agron.iastate.edu/cgi-bin/request/asos.py?network=' + st + '_ASOS' +
       '&data=tmpf&data=dwpf&data=sknt&data=drct&data=mslp&data=skyc1&data=p01i' +
@@ -2387,13 +2415,14 @@ async function loadHistory(){
         if(res.ok) text = await res.text();
       }catch(e){ /* retried below */ }
     }
-    if(text) parts.push(text); else histFailed.push(st);
+    if(text){
+      parts.push(text);
+      histRows = parseHistory(parts.join('\n'));
+      histStates = key;
+      if(replayActive()) applyReplay();          // show what has arrived
+    }else histFailed.push(st);
     renderReplayBar();
     await new Promise(r => setTimeout(r, 400));
-  }
-  if(parts.length){
-    histRows = parseHistory(parts.join('\n'));
-    histStates = key;
   }
   histLoading = false;
   renderReplayBar();
@@ -2450,10 +2479,12 @@ function applyReplay(){
   renderAlerts();
   renderAfdAreas();
   renderMCD();
-  loadSurfaceAnalysis();      // may cross a 3-hourly reissue
   renderFeed();
+  loadSurfaceAnalysis();      // async; may cross a 3-hourly reissue
   renderReplayBar();
 }
+
+let replayFrame = null;
 
 function setReplay(ms){
   const wasReplaying = replayActive();
@@ -2461,8 +2492,12 @@ function setReplay(ms){
   if(ms != null && !histRows && !histLoading) loadHistory();
   // Crossing between live and replay swaps which alert query is the right one,
   // so refetch once on the transition rather than on every tick of the scrubber.
-  if(wasReplaying !== replayActive()){ loadAlerts(); loadMCD(); }
-  applyReplay();
+  if(wasReplaying !== replayActive()){ invalidateTimeLayers(); loadAlerts(); loadMCD(); }
+  // Dragging the slider fires an event per pixel. Coalescing to one render per
+  // frame means a fast drag costs one redraw, not forty.
+  renderReplayBar();
+  if(replayFrame) return;
+  replayFrame = requestAnimationFrame(() => { replayFrame = null; applyReplay(); });
 }
 
 function replayPlayPause(){
@@ -2742,7 +2777,25 @@ const MAJOR_HUBS = new Set(('ATL DFW DEN ORD LAX JFK LAS MCO MIA CLT SEA PHX EWR
   'GSP CHS SAV MOB PNS TLH GNV CID FAR FSD RAP BIL GTF MSO PIH TWF LAN FWA SBN GRB MSN ' +
   'CRW LEX EVV DAY TOL AKR ERI HAR ABE PWM BGR MHT BTV').split(/\s+/));
 function stationScore(p){
-  return (MAJOR_HUBS.has(p.station) ? 100 : 0) + (p.mslp != null ? 2 : 0) + (p.tmpf != null ? 1 : 0);
+  return (MAJOR_HUBS.has(p.station) ? 100 : 0) + (p.mslp != null ? 2 : 0) + (p.tmpf != null ? 1 : 0)
+         + stationTieBreak(p.station);
+}
+
+// A stable tiebreak drawn from the station id.
+//
+// The score above depends on which fields an observation happens to carry, and
+// in replay that changes from hour to hour — a site reporting pressure at 10am
+// and not at 11am changed its own priority, so a different station won the
+// declutter cell and the map appeared to drop and restore stations as you
+// scrubbed. Deriving the last fraction from the identity instead keeps the same
+// site winning the same cell all day.
+const stationTieCache = {};
+function stationTieBreak(id){
+  if(!id) return 0;
+  if(stationTieCache[id] != null) return stationTieCache[id];
+  let h = 0;
+  for(let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return (stationTieCache[id] = (h % 1000) / 1000);
 }
 
 function renderStations(){
@@ -3573,9 +3626,15 @@ function renderAfdStatus(){
 
 function renderAfdAreas(){
   if(!afdHazardLayer) return;
-  afdHazardLayer.clearLayers();
   renderAfdStatus();
-  if(!afdAreasOn || !afdAreas || !afdAreas.offices) return;
+  if(!afdAreasOn || !afdAreas || !afdAreas.offices){ afdHazardLayer.clearLayers(); sigAfd = null; return; }
+  let sig = '' + map.getZoom() + Math.round(map.getCenter().lat * 50);
+  for(const w in afdAreas.offices)
+    for(const a of (afdAreas.offices[w].areas || []))
+      sig += '|' + (afdWindowState(a, afdAreas.offices[w]) || '-');
+  if(sig === sigAfd) return;
+  sigAfd = sig;
+  afdHazardLayer.clearLayers();
   const view = map.getBounds();
   const drawn = [];
   for(const wfo in afdAreas.offices){
@@ -3742,10 +3801,18 @@ function sfcPush(cur, fronts, centers, hi){
 
 let sfcLoadedFor = null;    // product id currently parsed, so a scrub refetches only on change
 
+let sfcIndex = null, sfcIndexAt = 0;
+
 async function loadSurfaceAnalysis(){
   try{
-    const list = await (await fetch(SFC_URL)).json();
-    const g = list['@graph'] || [];
+    // The product index is fetched at most every ten minutes. It used to be
+    // refetched on every scrub tick, which put a network round trip inside the
+    // playback loop just to rediscover the same list.
+    if(!sfcIndex || Date.now() - sfcIndexAt > 10 * 60e3){
+      sfcIndex = await (await fetch(SFC_URL)).json();
+      sfcIndexAt = Date.now();
+    }
+    const g = sfcIndex['@graph'] || [];
     // The analysis is reissued every three hours, so replaying a day needs the
     // one that was valid at the scrub time, not the newest. Without this the
     // fronts sat still while everything else moved.
@@ -4480,7 +4547,15 @@ function toggleFeedCat(k){
   renderFeed();
 }
 
+let feedLastBuilt = 0;
+
 function renderFeed(){
+  // While playing, the feed is rebuilt at most twice a second. It scans every
+  // station and every report to assemble itself, which is 20-30 ms, and a list
+  // of recent events does not need to be recomputed for every ten-minute step
+  // of a fast playback. Manual scrubbing and live updates are unaffected.
+  if(replayPlaying && Date.now() - feedLastBuilt < 500) return;
+  feedLastBuilt = Date.now();
   const list = feedEvents();
   renderFeedPins(list);
   updateFeedBadge(list);
