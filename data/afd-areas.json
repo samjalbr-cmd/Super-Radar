@@ -1,369 +1,441 @@
 {
- "generated": "2026-09-15T14:06:15.081Z",
+ "generated": "2026-09-15T23:22:39.464Z",
  "offices": {
   "GRR": {
-   "product": "3e1b2766-fd3a-4330-bb1c-fcfd7ad19025",
-   "issued": "2026-09-15T10:46:00+00:00",
+   "product": "db286aa7-9373-4c0e-b171-a74c28f4e590",
+   "issued": "2026-09-15T18:40:00+00:00",
    "office": "Grand Rapids MI",
-   "headline": "Wet microburst threat south of I-94 Tuesday PM; lakeshore gales",
+   "headline": "Heavy rain chances for far southern Michigan; Slight risk Saturday",
    "areas": [
     {
-     "hazard": "damaging wind",
-     "label": "Wet microburst threat south of I-94",
+     "hazard": "heavy rain",
+     "label": "Overnight showers/storms, far south",
      "confidence": "high",
-     "start": "2026-09-15T18:00:00.000Z",
-     "end": "2026-09-16T04:00:00.000Z",
-     "quote": "However, there may be just enough surface based instability, enhanced shear from the westerly flow, and PWATs aoa 2\" to support a wet microburst threat south of I94.",
+     "start": "2026-09-16T02:00:00.000Z",
+     "end": "2026-09-16T12:00:00.000Z",
+     "quote": "The exception to this will be areas across the far southern portion of the area overnight.",
      "polygon": [
       [
-       42.3,
-       -86.3
+       42.074,
+       -86.223
       ],
       [
-       42.3,
-       -85.6
+       42.6,
+       -86.227
       ],
       [
-       42.25,
-       -84.95
+       42.6,
+       -84.14
       ],
       [
-       42.3,
-       -84.15
-      ],
-      [
-       42.07,
-       -84.13
-      ],
-      [
-       42.07,
-       -86.22
-      ],
-      [
-       42.24,
-       -86.24
-      ]
-     ]
-    },
-    {
-     "hazard": "marine",
-     "label": "Gales, hazardous waves near/N of Holland",
-     "confidence": "high",
-     "start": "2026-09-15T10:46:00.000Z",
-     "end": "2026-09-16T01:00:00.000Z",
-     "quote": "Marine observations show winds increasing in southerly flow as expected, with the threat for gusts to gales peaking in the coming hours near and north of Holland.",
-     "polygon": [
-      [
-       44.18,
-       -86.39
-      ],
-      [
-       44.06,
-       -86.52
-      ],
-      [
-       43.63,
-       -86.54
-      ],
-      [
-       42.99,
-       -86.23
-      ],
-      [
-       42.79,
-       -86.21
-      ],
-      [
-       42.79,
-       -86.45
-      ],
-      [
-       43.6,
-       -86.85
-      ],
-      [
-       44.18,
-       -86.8
+       42.074,
+       -84.131
       ]
      ]
     },
     {
      "hazard": "heavy rain",
-     "label": "Periods of heavy rainfall possible",
-     "confidence": "low",
-     "start": "2026-09-15T10:46:00.000Z",
-     "end": "2026-09-18T12:00:00.000Z",
-     "quote": "Given continuing high PWATs in place across the area, periods of heavy rainfall are possible.",
+     "label": "Localized heavy rain south of I-96",
+     "confidence": "high",
+     "start": "2026-09-17T00:00:00.000Z",
+     "end": "2026-09-17T12:00:00.000Z",
+     "quote": "A better consensus has developed, with the nose of the low level jet likely along I-94, and bringing rain mostly south of I-96.",
      "polygon": [
       [
-       44.17,
-       -86.38
+       42.074,
+       -86.223
       ],
       [
-       43.63,
-       -86.54
+       42.9,
+       -86.23
       ],
       [
-       42.45,
-       -86.26
+       42.9,
+       -84.15
       ],
       [
-       42.07,
-       -86.22
-      ],
-      [
-       42.07,
-       -84.13
-      ],
-      [
-       42.78,
+       42.777,
        -84.16
       ],
       [
-       43.47,
-       -84.61
+       42.074,
+       -84.131
+      ]
+     ]
+    },
+    {
+     "hazard": "heavy rain",
+     "label": "Heavy rain potential, Slight risk",
+     "confidence": "medium",
+     "start": "2026-09-19T06:00:00.000Z",
+     "end": "2026-09-20T06:00:00.000Z",
+     "quote": "WPC has our area placed under a Slight risk for Saturday, which we agree with strongly at this time.",
+     "polygon": [
+      [
+       44.179,
+       -86.386
+      ],
+      [
+       43.631,
+       -86.541
+      ],
+      [
+       42.99,
+       -86.226
+      ],
+      [
+       42.243,
+       -86.365
+      ],
+      [
+       42.072,
+       -86.223
+      ],
+      [
+       42.074,
+       -84.131
+      ],
+      [
+       42.777,
+       -84.158
+      ],
+      [
+       43.466,
+       -84.608
       ],
       [
        44.16,
-       -84.61
+       -84.608
+      ]
+     ]
+    },
+    {
+     "hazard": "marine",
+     "label": "Waves over 4 ft, beach hazards",
+     "confidence": "medium",
+     "start": "2026-09-15T18:40:00.000Z",
+     "end": "2026-09-16T03:00:00.000Z",
+     "quote": "Waves will take a bit longer to drop below 4 ft, but should at all areas by later this evening.",
+     "polygon": [
+      [
+       44.179,
+       -86.386
+      ],
+      [
+       43.631,
+       -86.541
+      ],
+      [
+       42.99,
+       -86.226
+      ],
+      [
+       42.45,
+       -86.259
+      ],
+      [
+       42.072,
+       -86.223
+      ],
+      [
+       42.072,
+       -86.05
+      ],
+      [
+       42.99,
+       -86.05
+      ],
+      [
+       43.7,
+       -86.35
+      ],
+      [
+       44.16,
+       -86.2
       ]
      ]
     }
    ]
   },
   "DTX": {
-   "product": "981647cb-1e83-40a8-a5bc-5e86b81b9ae4",
-   "issued": "2026-09-15T10:32:00+00:00",
+   "product": "0d047895-239b-4ea2-8582-5098087b027f",
+   "issued": "2026-09-15T19:53:00+00:00",
    "office": "Detroit/Pontiac MI",
-   "headline": "Storms with heavy rain south of I-69 this evening; Lake Huron gales",
+   "headline": "Isolated strong to severe storms and locally heavy rain south of M59 tonight",
    "areas": [
     {
-     "hazard": "flash flooding",
-     "label": "Heavy rain, localized flooding",
+     "hazard": "damaging wind",
+     "label": "Isolated severe storms, gusty winds",
      "confidence": "high",
-     "start": "2026-09-15T21:00:00.000Z",
-     "end": "2026-09-16T12:00:00.000Z",
-     "quote": "In the near-term, the best opportunity for heavy rain will be south of I-69 this evening where thunderstorm development may enhance rainfall rates to over an inch per hour.",
+     "start": "2026-09-15T23:00:00.000Z",
+     "end": "2026-09-16T06:00:00.000Z",
+     "quote": "For tonight, expansion of renewed showers and isolated thunderstorms will be more favorable around and south of M59.",
      "polygon": [
       [
-       43,
-       -84.3
+       42.67,
+       -84.28
       ],
       [
-       43,
-       -82.6
+       42.67,
+       -82.75
       ],
       [
        42.3,
-       -82.4
+       -82.55
+      ],
+      [
+       41.74,
+       -83.42
       ],
       [
        41.72,
-       -83.45
-      ],
-      [
-       41.72,
-       -84.36
-      ],
-      [
-       42.5,
-       -84.3
+       -84.33
       ]
      ]
     },
     {
-     "hazard": "damaging wind",
-     "label": "Isolated damaging gusts near I-94",
+     "hazard": "flash flooding",
+     "label": "Localized urban/road flooding",
      "confidence": "medium",
-     "start": "2026-09-15T21:00:00.000Z",
-     "end": "2026-09-16T05:00:00.000Z",
-     "quote": "The updated SPC Marginal Risk up toward the I-94 corridor looks good in that regard, and which highlights an isolated storm capable of some entry level wind organization, or a precip-loaded gust, until the line exits south and east after midnight.",
+     "start": "2026-09-15T22:00:00.000Z",
+     "end": "2026-09-16T16:00:00.000Z",
+     "quote": "This will bring a low chance for localized road flooding or minor flooding of low-lying and urban area through tomorrow.",
      "polygon": [
       [
-       42.45,
-       -84.3
+       42.67,
+       -84.28
       ],
       [
-       42.4,
-       -83
-      ],
-      [
-       42.2,
+       42.67,
        -82.75
       ],
       [
-       41.72,
-       -83.45
+       42.3,
+       -82.55
+      ],
+      [
+       41.74,
+       -83.42
       ],
       [
        41.72,
-       -84.36
+       -84.33
       ]
      ]
     },
     {
      "hazard": "marine",
-     "label": "Gale Warning northern Lake Huron",
-     "confidence": "high",
-     "start": "2026-09-15T10:32:00.000Z",
-     "end": "2026-09-15T20:00:00.000Z",
-     "quote": "A Gale Warning remains in effect for Lake Huron north of Alabaster through 4 PM where gales of 35 to 40 kt are forecast.",
+     "label": "Storms with gusts over 34 kt",
+     "confidence": "medium",
+     "start": "2026-09-15T22:00:00.000Z",
+     "end": "2026-09-16T10:00:00.000Z",
+     "quote": "Ahead of the front this evening and overnight, additional scattered showers and a few thunderstorms will be possible mainly for Lake St. Clair and western Lake Erie.",
      "polygon": [
       [
-       44.07,
-       -82.92
+       42.63,
+       -82.85
       ],
       [
-       44,
-       -83.35
+       42.63,
+       -82.52
       ],
       [
-       43.7,
-       -83.5
+       42.25,
+       -82.55
       ],
       [
-       43.6,
-       -83.05
+       41.75,
+       -83.1
       ],
       [
-       43.85,
-       -82.7
+       41.72,
+       -83.45
+      ],
+      [
+       42.1,
+       -83.15
       ]
      ]
     }
    ]
   },
   "APX": {
-   "product": "862d4a8d-9d0f-4686-a461-260a9294fb36",
-   "issued": "2026-09-15T09:05:00+00:00",
+   "product": "6e89b1ad-cf97-4bbd-b965-8bedd5ba01f4",
+   "issued": "2026-09-15T18:14:00+00:00",
    "office": "Gaylord MI",
-   "headline": "Windy wind-driven rain this morning; gales on the lakes",
+   "headline": "Cold front exits with gusty winds; gales on the lakes into evening",
    "areas": [
     {
      "hazard": "marine",
-     "label": "Gale warning, beach hazards",
+     "label": "Gales, then small craft advisory",
      "confidence": "high",
-     "start": "2026-09-15T09:05:00.000Z",
-     "end": "2026-09-15T21:00:00.000Z",
+     "start": "2026-09-15T18:14:00.000Z",
+     "end": "2026-09-16T02:00:00.000Z",
+     "quote": "Gale Warning until 5 PM EDT this afternoon for LMZ323-341-342-344>346.",
+     "polygon": [
+      [
+       45.85,
+       -85.6
+      ],
+      [
+       45.2,
+       -86.4
+      ],
+      [
+       44.5,
+       -86.35
+      ],
+      [
+       44.2,
+       -86.1
+      ],
+      [
+       44.6,
+       -85.6
+      ],
+      [
+       45.3,
+       -85.3
+      ],
+      [
+       45.75,
+       -85.3
+      ]
+     ]
+    },
+    {
+     "hazard": "marine",
+     "label": "Lake Huron gales, small craft",
+     "confidence": "high",
+     "start": "2026-09-15T18:14:00.000Z",
+     "end": "2026-09-16T02:00:00.000Z",
      "quote": "Gale Warning until 5 PM EDT this afternoon for LHZ345>349.",
      "polygon": [
       [
        45.9,
-       -86.3
+       -84.3
       ],
       [
-       45.9,
-       -84.8
-      ],
-      [
-       45.2,
-       -85.3
-      ],
-      [
-       44.6,
-       -86.2
-      ],
-      [
-       44.2,
-       -86.4
-      ],
-      [
-       44.4,
-       -86.6
-      ],
-      [
-       45.2,
-       -86.5
-      ]
-     ]
-    },
-    {
-     "hazard": "high wind",
-     "label": "Gusts to 40 mph, wind-driven rain",
-     "confidence": "high",
-     "start": "2026-09-15T09:05:00.000Z",
-     "end": "2026-09-15T22:00:00.000Z",
-     "quote": "In addition, pressure gradient most pinched overhead this morning will likely lead to quite a wind-driven rain for the most part... with some gusts pushing 40mph on the lakeshores and the highest of interior terrain, generally 25-35mph elsewhere.",
-     "polygon": [
-      [
-       45.78,
-       -84.75
-      ],
-      [
-       45.5,
+       45.75,
        -83.4
       ],
       [
-       44.05,
-       -83.58
-      ],
-      [
-       44.18,
-       -86.39
-      ],
-      [
-       45.4,
-       -85.7
-      ]
-     ]
-    },
-    {
-     "hazard": "heavy rain",
-     "label": "Isolated afternoon downpours",
-     "confidence": "medium",
-     "start": "2026-09-15T16:00:00.000Z",
-     "end": "2026-09-15T23:00:00.000Z",
-     "quote": "These should be on a localized scale and quite transient when considering the flow, but with the zenith of moisture concentration overhead, an isolated downpour is possible... primarily favoring spots along and NORTH of a Cadillac to Alpena line.",
-     "polygon": [
-      [
-       45.78,
-       -84.75
-      ],
-      [
-       45.5,
-       -83.4
-      ],
-      [
-       44.45,
-       -83.45
+       45,
+       -83.1
       ],
       [
        44.3,
-       -85.5
+       -83.2
+      ],
+      [
+       44.05,
+       -83.5
       ],
       [
        44.4,
-       -86
+       -83.7
       ],
       [
        45.2,
-       -85.8
+       -83.8
+      ],
+      [
+       45.6,
+       -84.4
+      ]
+     ]
+    },
+    {
+     "hazard": "other",
+     "label": "Beach hazards along Great Lakes shores",
+     "confidence": "medium",
+     "start": "2026-09-15T18:14:00.000Z",
+     "end": "2026-09-16T01:00:00.000Z",
+     "quote": "MI...Beach Hazards Statement until 9 PM EDT this evening for MIZ016-\n     018-020-024-025-030-031-036-042-088-095-096-098-099.",
+     "polygon": [
+      [
+       45.8,
+       -85.7
+      ],
+      [
+       45.75,
+       -84
+      ],
+      [
+       45.1,
+       -83.3
+      ],
+      [
+       44.3,
+       -83.3
+      ],
+      [
+       44.15,
+       -86.2
+      ],
+      [
+       45.1,
+       -86.1
+      ]
+     ]
+    },
+    {
+     "hazard": "dense fog",
+     "label": "Patchy interior fog overnight",
+     "confidence": "low",
+     "start": "2026-09-16T04:00:00.000Z",
+     "end": "2026-09-16T12:00:00.000Z",
+     "quote": "Only concerns overnight will be BR/FG, which could be patchy in nature, with\nsignals across the interior locations at this time.",
+     "polygon": [
+      [
+       45.6,
+       -85.2
+      ],
+      [
+       45.5,
+       -83.9
+      ],
+      [
+       44.6,
+       -83.8
+      ],
+      [
+       44.4,
+       -84.5
+      ],
+      [
+       44.5,
+       -85.4
+      ],
+      [
+       45.1,
+       -85.5
       ]
      ]
     }
    ]
   },
   "MQT": {
-   "product": "de8890c6-19e6-48b8-9615-7d5a7dfa8542",
-   "issued": "2026-09-15T11:17:00+00:00",
+   "product": "2e07c1a1-23d7-44f2-b929-95a02c55b0f5",
+   "issued": "2026-09-15T18:36:00+00:00",
    "office": "Marquette MI",
-   "headline": "Wind Advisory for Keweenaw; gales and beach hazards through evening",
+   "headline": "Wind Advisory and Gales through this evening; quieter midweek",
    "areas": [
     {
      "hazard": "high wind",
-     "label": "Wind gusts 45-55 mph",
+     "label": "Westerly gusts >45 mph Keweenaw",
      "confidence": "high",
-     "start": "2026-09-15T15:00:00.000Z",
+     "start": "2026-09-15T18:36:00.000Z",
      "end": "2026-09-16T00:00:00.000Z",
-     "quote": "A Wind Advisory is in effect for Northern Houghton and Keweenaw Counties this afternoon.",
+     "quote": "A Wind Advisory remains in effect for Northern Houghton and\n  Keweenaw Counties through this evening for strong westerly\n  winds producing wind gusts >45 mph.",
      "polygon": [
       [
        47.48,
-       -88
+       -88.5
       ],
       [
-       47.2,
-       -88.65
+       47.1,
+       -88.7
       ],
       [
        46.95,
@@ -376,116 +448,124 @@
       [
        47.25,
        -87.9
+      ],
+      [
+       47.48,
+       -87.98
       ]
      ]
     },
     {
      "hazard": "marine",
-     "label": "Gales 35-45 kt, storm gusts 50 kt",
+     "label": "Gales, gusts 40-45 kt Lake Superior",
      "confidence": "high",
-     "start": "2026-09-15T11:17:00.000Z",
+     "start": "2026-09-15T18:36:00.000Z",
      "end": "2026-09-16T00:00:00.000Z",
-     "quote": "Gale Warnings remain in effect for the Upper Great Lakes through the early evening.",
+     "quote": "Gale Warnings remain in effect for the Upper Great Lakes\n  through this evening. Westerly gusts 40-45 kts continue with a\n  few Storm force gusts to 50 kts possible (up to 50% chance)\n  near the Keweenaw Peninsula.",
      "polygon": [
-      [
-       46.8,
-       -90.4
-      ],
       [
        47.9,
        -89.2
       ],
       [
-       48.1,
+       48.15,
        -88.5
       ],
       [
-       47.5,
-       -87.5
+       47.6,
+       -87.7
       ],
       [
-       46.9,
+       47.2,
+       -86.7
+      ],
+      [
+       46.7,
        -85.3
       ],
       [
-       46.4,
-       -86.5
+       46.6,
+       -85.9
       ],
       [
-       46.6,
-       -88.4
+       46.9,
+       -87.4
       ],
       [
-       46.6,
-       -90
+       47.3,
+       -88.6
+      ],
+      [
+       47.5,
+       -90.4
       ]
      ]
     },
     {
-     "hazard": "marine",
-     "label": "Dangerous swimming conditions",
-     "confidence": "high",
-     "start": "2026-09-15T11:17:00.000Z",
-     "end": "2026-09-16T02:00:00.000Z",
-     "quote": "Strong winds create dangerous swimming conditions along the Schoolcraft and Alger County shorelines through this evening.",
+     "hazard": "dense fog",
+     "label": "Patchy fog interior overnight",
+     "confidence": "medium",
+     "start": "2026-09-16T04:00:00.000Z",
+     "end": "2026-09-16T12:00:00.000Z",
+     "quote": "Under mostly clear skies and decoupling winds from the boundary layer, \nsome patchy fog is possible across area of the interior.",
      "polygon": [
       [
        46.7,
-       -87
+       -89.7
       ],
       [
-       46.7,
-       -86
-      ],
-      [
-       46.3,
-       -86
+       46.75,
+       -87.5
       ],
       [
        46.3,
        -86.3
       ],
       [
-       45.85,
-       -86.3
+       45.9,
+       -87.3
       ],
       [
-       45.85,
-       -86.9
+       46.1,
+       -88.6
       ],
       [
-       46.3,
-       -86.9
+       46.4,
+       -89.5
       ]
      ]
     },
     {
      "hazard": "heavy rain",
-     "label": "Additional rain 0.10-0.50 in",
+     "label": "Fri-Sat rain, 50% chance >0.5\"",
      "confidence": "medium",
-     "start": "2026-09-15T11:17:00.000Z",
-     "end": "2026-09-15T14:00:00.000Z",
-     "quote": "Widespread rain showers continue across the eastern half of the UP \nthis morning.",
+     "start": "2026-09-19T00:00:00.000Z",
+     "end": "2026-09-20T06:00:00.000Z",
+     "quote": "At this \ntime, most deterministic models suggest the bulk of the rain remains \nsouth across WI and their ensembles counterparts / the NBM point \ntowards potentially meaningful rain (50% chance for >0.5\") across \nthe south half of the UP.",
      "polygon": [
       [
-       46.76,
-       -87.2
+       46.4,
+       -90
       ],
       [
-       46.6,
-       -85.4
-      ],
-      [
-       46.25,
-       -85.25
-      ],
-      [
-       45.95,
-       -86.4
+       46.4,
+       -85.3
       ],
       [
        46,
-       -87.2
+       -85.4
+      ],
+      [
+       45.6,
+       -86.6
+      ],
+      [
+       45.1,
+       -87.6
+      ],
+      [
+       45.9,
+       -88.1
       ]
      ]
     }
