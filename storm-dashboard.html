@@ -1628,23 +1628,33 @@ function lsrKeep(p){
   return LSR_DAMAGE.has(t);
 }
 
+// Short names for reports that carry no magnitude, where the type is the whole
+// message. WATERSPOUT used to fall through a `WATER` test and label itself
+// "flood"; it is a tornado over water.
+const LSR_NAMES = {
+  'TORNADO': 'TOR', 'WATERSPOUT': 'waterspout', 'LANDSPOUT': 'landspout',
+  'FUNNEL CLOUD': 'funnel', 'FLASH FLOOD': 'flash flood', 'FLOOD': 'flood',
+  'TSTM WND DMG': 'wind damage', 'NON-TSTM WND DMG': 'wind damage',
+  'DEBRIS FLOW': 'debris flow', 'LANDSLIDE': 'landslide', 'AVALANCHE': 'avalanche',
+  'STORM SURGE': 'surge', 'TROPICAL CYCLONE': 'cyclone', 'WILDFIRE': 'wildfire',
+  'FREEZING RAIN': 'freezing rain', 'ICE STORM': 'ice storm', 'BLIZZARD': 'blizzard',
+  'SNOW SQUALL': 'snow squall', 'DUST STORM': 'dust storm',
+};
 function lsrValue(p){
-  const t = (p.typetext || '').toUpperCase();
-  const u = (p.unit || '').toUpperCase();
+  const t = String(p.typetext || '').toUpperCase().trim();
+  const u = String(p.unit || '').toUpperCase();
   const mag = Number(p.magnitude);
-  if(p.magnitude != null && p.magnitude !== '' && mag > 0){
-    if(u.includes('MPH') || t.includes('WND') || t.includes('WIND') || t.includes('GUST')) return `${Math.round(mag)} mph`;
-    if(t.includes('HAIL')) return `${p.magnitude}" hail`;
-    if(t.includes('SNOW')) return `${p.magnitude}" snow`;
-    if(t.includes('RAIN') || t.includes('FLOOD')) return `${p.magnitude}" rain`;
-    if(u.includes('INCH')) return `${p.magnitude} in`;
-    return `${p.magnitude}${u ? ' ' + u.toLowerCase() : ''}`;
+  if(p.magnitude != null && p.magnitude !== '' && isFinite(mag) && mag > 0){
+    if(u.includes('MPH') || t.includes('WND') || t.includes('WIND')) return `${Math.round(mag)} mph`;
+    if(t.includes('HAIL')) return `${lsrNum(mag)}" hail`;
+    if(t.includes('SNOW')) return `${lsrNum(mag)}" snow`;
+    if(t.includes('RAIN')) return `${lsrNum(mag)}" rain`;
+    return lsrNum(mag);
   }
-  if(t.includes('TORNADO')) return 'TOR';
-  if(t.includes('FUNNEL')) return 'funnel';
-  if(t.includes('FLOOD') || t.includes('WATER')) return 'flood';
-  return t ? t.toLowerCase() : '•';
+  return LSR_NAMES[t] || (t ? t.toLowerCase() : '\u2022');
 }
+// 1.5 stays 1.5, 2.0 becomes 2 — the trailing zero reads as false precision.
+function lsrNum(v){ return v === Math.round(v) ? String(Math.round(v)) : String(v); }
 
 /* ---------------- Native bridge ----------------
    When the dashboard is running inside the iOS app it posts its settings out,

@@ -199,26 +199,41 @@ enum StormFeed {
         return reportDamage.contains(t)
     }
 
-    /// The value a report is worth showing, matching the dashboard's wording.
+    /// Short names for reports that carry no magnitude, where the type is the
+    /// whole message. Without these the widget drew an unlabelled dot for a
+    /// storm surge, a landspout, a waterspout or a wildfire.
+    private static let reportNames: [String: String] = [
+        "TORNADO": "TOR", "WATERSPOUT": "waterspout", "LANDSPOUT": "landspout",
+        "FUNNEL CLOUD": "funnel", "FLASH FLOOD": "flash flood", "FLOOD": "flood",
+        "TSTM WND DMG": "wind damage", "NON-TSTM WND DMG": "wind damage",
+        "DEBRIS FLOW": "debris flow", "LANDSLIDE": "landslide", "AVALANCHE": "avalanche",
+        "STORM SURGE": "surge", "TROPICAL CYCLONE": "cyclone", "WILDFIRE": "wildfire",
+        "FREEZING RAIN": "freezing rain", "ICE STORM": "ice storm", "BLIZZARD": "blizzard",
+        "SNOW SQUALL": "snow squall", "DUST STORM": "dust storm",
+    ]
+
+    /// The value a report is worth showing, matching the dashboard's wording
+    /// exactly — the two are checked against each other over the whole feed.
     static func reportLabel(type: String, magnitude: Double?, unit: String?) -> String {
-        let t = type.uppercased()
-        if let m = magnitude, m > 0 {
-            let u = (unit ?? "").uppercased()
-            if u.contains("MPH") || t.contains("WND") || t.contains("WIND") { return "\(Int(m.rounded())) mph" }
+        let t = type.uppercased().trimmingCharacters(in: .whitespaces)
+        let u = (unit ?? "").uppercased()
+        if let m = magnitude, m > 0, m.isFinite {
+            if u.contains("MPH") || t.contains("WND") || t.contains("WIND") {
+                return "\(Int(m.rounded())) mph"
+            }
             if t.contains("HAIL") { return "\(trimmed(m))\" hail" }
             if t.contains("SNOW") { return "\(trimmed(m))\" snow" }
             if t.contains("RAIN") { return "\(trimmed(m))\" rain" }
             return trimmed(m)
         }
-        if t.contains("TORNADO") { return "TOR" }
-        if t.contains("FLOOD") { return "flood" }
-        if t.contains("DMG") { return "damage" }
-        return ""
+        return reportNames[t] ?? (t.isEmpty ? "\u{2022}" : t.lowercased())
     }
 
+    /// 1.5 stays 1.5, 2.0 becomes 2 — the trailing zero reads as false precision.
     private static func trimmed(_ v: Double) -> String {
-        v == v.rounded() ? String(Int(v)) : String(format: "%g", v)
+        v == v.rounded() ? String(Int(v)) : String(v)
     }
+
 
     /// Local storm reports in the last few hours, inside the given box. Same
     /// feed and colours the dashboard uses.
