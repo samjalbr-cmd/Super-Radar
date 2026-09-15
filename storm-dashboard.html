@@ -267,6 +267,26 @@
   .arr-clock{font-family:monospace;font-size:11px;font-weight:400;color:var(--dim);}
 
   /* Loop transport. Sits above the lightning badge, out of the map's way. */
+  #replayBar{
+    position:absolute;bottom:72px;left:50%;transform:translateX(-50%);z-index:560;
+    width:min(470px, calc(100vw - 40px));display:flex;align-items:center;gap:9px;
+    padding:8px 12px;background:var(--panel);border:1px solid var(--border);border-radius:12px;
+    backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+    font-family:monospace;font-size:11px;color:#F5F3EC;
+  }
+  #replayBar.live{ opacity:0.82; }
+  #replayBar input[type=range]{ flex:1; accent-color:var(--amber); min-width:80px; }
+  #replayBar button{
+    background:rgba(255,255,255,0.06);border:1px solid var(--border);color:#F5F3EC;
+    border-radius:7px;padding:4px 9px;font-family:monospace;font-size:11px;cursor:pointer;
+    min-width:34px;
+  }
+  #replayBar button.on{ border-color:var(--amber);color:var(--amber); }
+  #replayBar .rp-t{ min-width:104px; text-align:right; letter-spacing:0.02em; }
+  @media (max-width: 560px){
+    #replayBar{ bottom:calc(env(safe-area-inset-bottom, 0px) + 64px); width:calc(100vw - 24px); }
+  }
+
   #radarLoop{
     position:absolute;bottom:24px;left:50%;transform:translateX(-50%);z-index:560;
     width:min(430px, calc(100vw - 40px));display:none;align-items:center;gap:8px;
@@ -574,6 +594,13 @@
   <div id="isoStatus"><span class="sw" style="background:#9FB3C8"></span><span id="isoStatusText"></span></div>
   <div id="arrival"></div>
 </div>
+<div id="replayBar" class="live">
+  <button id="rpPlay" onclick="replayPlayPause()" title="Play the last 24 hours">&#9654;</button>
+  <input type="range" id="rpRange" min="0" max="144" value="144" step="1"
+         oninput="onReplayScrub(this.value)" title="Scrub back 24 hours">
+  <span class="rp-t" id="rpTime">LIVE</span>
+  <button id="rpLive" onclick="replayGoLive()" title="Back to now">NOW</button>
+</div>
 <div id="radarLoop">
   <button onclick="stepRadarFrame(-1)" title="Previous frame">◀</button>
   <button id="radarPlayBtn" onclick="toggleRadarPlay()" title="Play / pause">▶</button>
@@ -877,7 +904,7 @@ function initMap(){
   const MOVE_TASKS = [renderStations, drawIsoLines, renderSurface,
                       renderFeed, scheduleAfdRefresh, scheduleModelRefresh,
                       scheduleIsobarRefresh, scheduleNoaaRadar, schedulePrecipRefresh,
-                      syncAppSettings];
+                      syncAppSettings, scheduleHistoryRefresh];
   const FRAME_BUDGET_MS = 8;          // leaves room in a 16 ms frame to paint
   let movePass = false, moveAgain = false;
   function runMoveTasks(){
@@ -1562,6 +1589,7 @@ function renderLSR(){
   try{
     for(const f of lsrData){
       if(!lsrKeep(f.properties)) continue;
+      if(!reportAtOrBefore(f.properties)) continue;
       const c = f.geometry && f.geometry.coordinates;
       if(!c) continue;
       const p = f.properties;
@@ -1600,6 +1628,13 @@ const LSR_DAMAGE = new Set(['TORNADO','WATERSPOUT','LANDSPOUT','FLASH FLOOD','TS
 // Real reports, but not ones worth a pin over the radar.
 const LSR_MINOR = new Set(['LIGHTNING','RIP CURRENTS','HIGH SURF','COASTAL FLOOD',
                            'ASTRONOMICAL LOW TIDE','DENSE FOG','SEICHE','FUNNEL CLOUD']);
+
+// While scrubbing, a report that has not happened yet must not be on the map.
+function reportAtOrBefore(p){
+  if(!replayActive()) return true;
+  const t = Date.parse(p.valid);
+  return !isFinite(t) || t <= replayAt;
+}
 
 function lsrKeep(p){
   const t = String(p.typetext || '').toUpperCase().trim();
@@ -2149,6 +2184,259 @@ function onProductChange(p){ singleProduct = p; updateSingleRadar(); }
    meets the threshold pulses red and is tallied in the wind-alert badge. */
 let stationsOn = true;
 let stationData = [];        // {lat, lon, p} cached from last fetch
+
+// Where each state's ASOS network sits, so a view can be turned into the set of
+// bulk requests that covers it. Same table the widget uses.
+const US_STATE_BOX = {
+  AK: [52.22, -174.21, 71.28, 174.12],
+  AL: [30.29, -88.25, 34.86, -85.13],
+  AR: [33.22, -94.49, 36.40, -89.83],
+  AZ: [31.42, -114.61, 36.96, -109.06],
+  CA: [32.56, -124.24, 41.78, -114.62],
+  CO: [37.15, -108.76, 40.75, -102.24],
+  CT: [41.16, -73.48, 41.94, -72.05],
+  DE: [38.69, -75.60, 39.67, -75.36],
+  FL: [24.56, -87.32, 30.84, -80.08],
+  GA: [30.78, -85.29, 34.85, -81.15],
+  HI: [19.72, -177.38, 28.21, -155.05],
+  IA: [40.63, -96.38, 43.40, -90.33],
+  ID: [42.25, -117.02, 48.73, -111.10],
+  IL: [37.06, -91.19, 42.43, -87.53],
+  IN: [38.04, -87.52, 41.72, -84.84],
+  KS: [37.00, -101.88, 39.90, -94.73],
+  KY: [36.61, -88.77, 39.04, -82.57],
+  LA: [26.93, -93.82, 32.76, -87.78],
+  MA: [41.25, -73.29, 42.72, -69.99],
+  MD: [38.15, -79.34, 39.71, -75.12],
+  ME: [43.39, -70.95, 47.29, -67.79],
+  MI: [41.74, -90.13, 47.47, -82.53],
+  MN: [43.62, -96.94, 49.32, -90.35],
+  MO: [36.23, -94.92, 40.35, -89.56],
+  MS: [30.37, -91.30, 34.98, -88.17],
+  MT: [44.69, -114.91, 48.81, -104.19],
+  NC: [33.93, -83.86, 36.46, -75.62],
+  ND: [46.01, -103.98, 48.94, -96.61],
+  NE: [40.08, -104.00, 42.86, -95.59],
+  NH: [42.78, -72.30, 44.58, -70.82],
+  NJ: [39.01, -75.08, 41.01, -74.06],
+  NM: [31.88, -108.93, 36.80, -103.08],
+  NV: [35.95, -119.88, 41.95, -114.85],
+  NY: [40.64, -79.27, 44.93, -71.92],
+  OH: [38.84, -84.78, 41.78, -80.67],
+  OK: [33.91, -101.51, 36.91, -94.62],
+  OR: [42.07, -124.42, 46.16, -117.01],
+  PA: [39.73, -80.41, 42.08, -75.01],
+  RI: [41.17, -71.80, 41.92, -71.41],
+  SC: [32.22, -82.89, 34.99, -78.72],
+  SD: [42.77, -103.78, 45.82, -96.57],
+  TN: [35.04, -90.05, 36.62, -82.17],
+  TX: [25.91, -106.38, 36.22, -92.03],
+  UT: [37.01, -114.03, 41.79, -109.34],
+  VA: [36.57, -83.22, 39.14, -75.46],
+  VT: [42.89, -73.25, 44.94, -72.02],
+  WA: [45.62, -124.56, 48.79, -117.11],
+  WI: [42.59, -92.69, 46.79, -86.92],
+  WV: [37.30, -82.56, 40.17, -77.98],
+  WY: [41.04, -111.04, 44.91, -104.13]
+};
+
+/* ---------------- Time machine ----------------
+   Scrub back through the last 24 hours. Every point layer already comes from an
+   endpoint that accepts a time range, so this needs no server and no stored
+   state: one bulk request per state gives every observation from every ASOS
+   site for the whole day — 77 Michigan stations, 11,712 obs, about 700 KB — and
+   the storm reports are already fetched for a 24 hour window.
+
+   Radar is deliberately not part of this. No public service serves arbitrary
+   past radar as tiles: NOAA keeps under two hours, and IEM's WMS accepts a time
+   parameter and ignores it. Replaying radar would mean collecting and storing
+   frames ourselves, which is a server, which this project does not have. So the
+   radar stays live and the scrubber says so. */
+
+let replayAt = null;            // ms epoch while scrubbing, null when live
+let replayPlaying = false, replayTimer = null;
+let histRows = null;            // parsed obs, newest-last per station
+let histLoading = false, histStates = '', histFailed = [];
+let liveStationData = null;     // live obs, parked while replaying
+const REPLAY_HOURS = 24;
+const REPLAY_STEP_MIN = 10;     // one tick of the scrubber
+
+function replayActive(){ return replayAt != null; }
+
+// The states the view touches, reusing the same table the widget uses.
+function replayStatesFor(bounds){
+  const S = bounds.getSouth(), N = bounds.getNorth(), W = bounds.getWest(), E = bounds.getEast();
+  const hits = [];
+  for(const st in US_STATE_BOX){
+    const b = US_STATE_BOX[st];
+    if(b[2] < S || b[0] > N || b[3] < W || b[1] > E) continue;
+    // How much of the view each state covers, so the cap drops the ones
+    // contributing least rather than the ones late in the alphabet — sorting by
+    // name picked Iowa over Ohio for a Michigan view.
+    const area = Math.max(0, Math.min(b[2], N) - Math.max(b[0], S)) *
+                 Math.max(0, Math.min(b[3], E) - Math.max(b[1], W));
+    hits.push([st, area]);
+  }
+  hits.sort((a, z) => z[1] - a[1]);
+  return hits.slice(0, 4).map(h => h[0]);   // a bulk day is ~700 KB per state
+}
+
+async function loadHistory(){
+  const states = replayStatesFor(map.getBounds());
+  if(!states.length) return;
+  const key = states.join(',');
+  if(histLoading || (histRows && histStates === key)) return;
+  histLoading = true;
+  renderReplayBar();
+  const now = new Date(), then = new Date(now.getTime() - REPLAY_HOURS * 3600e3);
+  const d = x => `year${x[0]}=${x[1].getUTCFullYear()}&month${x[0]}=${x[1].getUTCMonth()+1}&day${x[0]}=${x[1].getUTCDate()}&hour${x[0]}=${x[1].getUTCHours()}`;
+  // One state at a time with a pause between. A day of observations is a real
+  // query for IEM to run, and four at once reliably draws a 503 — which used to
+  // fail silently and leave a partial map with no hint that three quarters of
+  // the stations were missing. One retry covers a transient refusal.
+  const parts = [];
+  histFailed = [];
+  for(const st of states){
+    const u = 'https://mesonet.agron.iastate.edu/cgi-bin/request/asos.py?network=' + st + '_ASOS' +
+      '&data=tmpf&data=dwpf&data=sknt&data=drct&data=mslp&data=skyc1&data=p01i' +
+      '&' + d(['1', then]) + '&' + d(['2', now]) +
+      '&tz=UTC&format=comma&latlon=yes&missing=empty&trace=empty';
+    let text = '';
+    for(let attempt = 0; attempt < 2 && !text; attempt++){
+      if(attempt) await new Promise(r => setTimeout(r, 1500));
+      try{
+        const res = await fetch(u);
+        if(res.ok) text = await res.text();
+      }catch(e){ /* retried below */ }
+    }
+    if(text) parts.push(text); else histFailed.push(st);
+    renderReplayBar();
+    await new Promise(r => setTimeout(r, 400));
+  }
+  if(parts.length){
+    histRows = parseHistory(parts.join('\n'));
+    histStates = key;
+  }
+  histLoading = false;
+  renderReplayBar();
+  if(replayActive()) applyReplay();
+}
+
+// station -> [{t, p}] ascending, so a scrub is a binary search rather than a fetch.
+function parseHistory(text){
+  const by = {};
+  for(const line of text.split('\n')){
+    if(!line || line[0] === '#' || line.startsWith('station,')) continue;
+    const f = line.split(',');
+    if(f.length < 10) continue;
+    const t = Date.parse(f[1].replace(' ', 'T') + 'Z');
+    const lat = +f[3], lon = +f[2];
+    if(!isFinite(t) || !isFinite(lat) || !isFinite(lon)) continue;
+    const num = v => (v === '' || v == null) ? null : (isFinite(+v) ? +v : null);
+    (by[f[0]] ||= []).push({t, lat, lon, p: {
+      station: f[0], name: f[0], utc_valid: f[1].replace(' ', 'T') + 'Z',
+      tmpf: num(f[4]), dwpf: num(f[5]), sknt: num(f[6]), drct: num(f[7]),
+      mslp: num(f[8]), skyc1: f[9] || null, phour: num(f[10]),
+    }});
+  }
+  for(const k in by) by[k].sort((a, z) => a.t - z.t);
+  return by;
+}
+
+// The newest observation at or before the scrub time, per station.
+function stationsAt(ms){
+  if(!histRows) return [];
+  const out = [];
+  for(const k in histRows){
+    const arr = histRows[k];
+    let lo = 0, hi = arr.length - 1, best = -1;
+    while(lo <= hi){ const mid = (lo + hi) >> 1;
+      if(arr[mid].t <= ms){ best = mid; lo = mid + 1; } else hi = mid - 1; }
+    if(best < 0) continue;
+    const r = arr[best];
+    if(ms - r.t > 2 * 3600e3) continue;        // stale: the site stopped reporting
+    out.push({lat: r.lat, lon: r.lon, p: r.p});
+  }
+  return out;
+}
+
+function applyReplay(){
+  if(replayActive()){
+    if(liveStationData === null) liveStationData = stationData;
+    stationData = stationsAt(replayAt);
+  }else if(liveStationData !== null){
+    stationData = liveStationData; liveStationData = null;
+  }
+  renderStations();
+  renderLSR();
+  renderFeed();
+  renderReplayBar();
+}
+
+function setReplay(ms){
+  replayAt = ms;
+  if(ms != null && !histRows && !histLoading) loadHistory();
+  applyReplay();
+}
+
+function replayPlayPause(){
+  replayPlaying = !replayPlaying;
+  clearInterval(replayTimer);
+  if(replayPlaying){
+    replayTimer = setInterval(() => {
+      const end = Date.now();
+      let next = (replayAt || end - REPLAY_HOURS * 3600e3) + REPLAY_STEP_MIN * 60e3;
+      if(next >= end){ next = end; replayPlaying = false; clearInterval(replayTimer); }
+      setReplay(next >= end ? null : next);
+    }, 420);
+  }
+  renderReplayBar();
+}
+
+// The slider is 144 steps of 10 minutes; the last step is live.
+function onReplayScrub(v){
+  const steps = 144, i = +v;
+  replayPlaying = false; clearInterval(replayTimer);
+  if(i >= steps){ setReplay(null); return; }
+  setReplay(Date.now() - (steps - i) * REPLAY_STEP_MIN * 60e3);
+}
+
+// Panning while scrubbed may bring new states into view, which need their own
+// bulk day of observations.
+function scheduleHistoryRefresh(){ if(replayActive()) loadHistory(); }
+
+function renderReplayBar(){
+  const bar = document.getElementById('replayBar');
+  if(!bar) return;
+  const t = document.getElementById('rpTime');
+  const play = document.getElementById('rpPlay');
+  const range = document.getElementById('rpRange');
+  bar.classList.toggle('live', !replayActive());
+  play.textContent = replayPlaying ? '\u2016' : '\u25B6';
+  play.classList.toggle('on', replayPlaying);
+  if(!replayActive()){
+    t.textContent = histLoading ? 'loading\u2026' : 'LIVE';
+    bar.title = histFailed.length ? 'no history for ' + histFailed.join(', ') : '';
+    if(range) range.value = 144;
+    return;
+  }
+  const d = new Date(replayAt);
+  const mins = Math.round((Date.now() - replayAt) / 60000);
+  const ago = mins >= 60 ? Math.floor(mins / 60) + 'h' + String(mins % 60).padStart(2, '0')
+                         : mins + 'm';
+  t.textContent = histLoading ? 'loading\u2026'
+    : d.toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'}) + ' \u00b7 -' + ago
+      + (histFailed.length ? ' \u00b7 partial' : '');
+  if(range) range.value = Math.round(144 - (Date.now() - replayAt) / (REPLAY_STEP_MIN * 60e3));
+}
+
+function replayGoLive(){
+  replayPlaying = false; clearInterval(replayTimer);
+  setReplay(null);
+  loadStations(); loadLSR();
+}
+
+
 let stationMetric = 'temp';  // which value each station label shows
 let windBarbsOn = false;     // draw a wind barb at each station
 
@@ -3931,6 +4219,7 @@ function collectEvents(){
   for(const f of lsrData){
     const c = f.geometry && f.geometry.coordinates; if(!c || !inView(c[1], c[0])) continue;
     if(!lsrKeep(f.properties)) continue;      // the feed obeys the same filter as the map
+    if(!reportAtOrBefore(f.properties)) continue;
     const p = f.properties;
     const mag = p.magnitude ? ` ${p.magnitude} ${p.unit || ''}`.trimEnd() : '';
     const type = p.typetext || 'Report';
@@ -4183,6 +4472,7 @@ async function boot(){
   loadAfdAreas();
   loadSurfaceAnalysis();
   fetchIsobars();
+  renderReplayBar();
   syncAppSettings();   // hand the app its opening state
   setInterval(loadAfdAreas, 20 * 60 * 1000);
   setInterval(loadSurfaceAnalysis, 20 * 60 * 1000);
