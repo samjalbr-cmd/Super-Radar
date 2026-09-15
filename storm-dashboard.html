@@ -1255,20 +1255,29 @@ async function loadAlerts(){
     // Record first-seen times. On the very first load, existing alerts are
     // stamped 0 (old) so they don't flash; only alerts that appear on a later
     // refresh get a fresh timestamp and pulse for ALERT_FLASH_MS.
-    const now = Date.now();
-    const seenNow = {};
-    for(const f of feats){
-      const id = f.id || (f.properties && f.properties.id);
-      if(!id) continue;
-      seenNow[id] = true;
-      if(alertFirstSeen[id] === undefined){
-        const isNew = alertsInitialized;   // false on first load, so no toast storm at startup
-        alertFirstSeen[id] = isNew ? now : 0;
-        if(isNew && !replayActive() && alertToastVisible(f) && alertInView(f)) showAlertToast(f);
+    //
+    // A replay fetch takes no part in this. It answers a different question —
+    // what was in force across the whole window — so its results are neither
+    // new arrivals nor evidence that a live alert has gone away. Letting it
+    // write here is what made the map flash and toast on the way back to live:
+    // alerts it had stamped looked freshly arrived, and live alerts missing
+    // from its window were forgotten and then rediscovered as new.
+    if(!replayActive()){
+      const now = Date.now();
+      const seenNow = {};
+      for(const f of feats){
+        const id = f.id || (f.properties && f.properties.id);
+        if(!id) continue;
+        seenNow[id] = true;
+        if(alertFirstSeen[id] === undefined){
+          const isNew = alertsInitialized;   // false on first load, so no toast storm at startup
+          alertFirstSeen[id] = isNew ? now : 0;
+          if(isNew && alertToastVisible(f) && alertInView(f)) showAlertToast(f);
+        }
       }
+      for(const id in alertFirstSeen){ if(!seenNow[id]) delete alertFirstSeen[id]; }
+      alertsInitialized = true;
     }
-    for(const id in alertFirstSeen){ if(!seenNow[id]) delete alertFirstSeen[id]; }
-    alertsInitialized = true;
 
     lastAlertFeats = feats;
     renderAlerts();
@@ -2492,7 +2501,13 @@ function setReplay(ms){
   if(ms != null && !histRows && !histLoading) loadHistory();
   // Crossing between live and replay swaps which alert query is the right one,
   // so refetch once on the transition rather than on every tick of the scrubber.
-  if(wasReplaying !== replayActive()){ invalidateTimeLayers(); loadAlerts(); loadMCD(); }
+  if(wasReplaying !== replayActive()){
+    // Coming back to live re-reads the active feed. Everything in it has been
+    // in force all along, so it is treated as a first load — stamped old, and
+    // silent — rather than as a screenful of things that just happened.
+    if(!replayActive()) alertsInitialized = false;
+    invalidateTimeLayers(); loadAlerts(); loadMCD();
+  }
   // Dragging the slider fires an event per pixel. Coalescing to one render per
   // frame means a fast drag costs one redraw, not forty.
   renderReplayBar();
