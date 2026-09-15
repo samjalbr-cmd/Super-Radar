@@ -1632,6 +1632,14 @@ const LSR_TIERS = {
 };
 let lsrTier = 'notable';
 
+// The same thresholds, for the station observations in the feed. 'all' keeps
+// the old behaviour: any measurable rain, and gusts from 30 mph.
+function obsFloor(kind){
+  const cfg = LSR_TIERS[lsrTier];
+  if(!cfg) return kind === 'wind' ? 30 : 0.01;
+  return cfg[kind];
+}
+
 function lsrKeep(p){
   const cfg = LSR_TIERS[lsrTier];
   if(!cfg) return true;
@@ -4050,7 +4058,11 @@ function collectEvents(){
   for(const s of stationData){
     if(!inView(s.lat, s.lon)) continue;
     const kt = recentPeakGustKt(s.p), mph = (kt != null) ? ktToMph(kt) : 0;
-    if(mph < 30) continue;
+    // Station observations obey the same threshold as the storm reports. These
+    // are a separate feed — measured at an ASOS site rather than phoned in by a
+    // spotter — but on the map they are indistinguishable from a storm report,
+    // so a 30 mph floor here quietly undid a 40 mph filter over there.
+    if(mph < obsFloor('wind')) continue;
     ev.push({cat: 'obs', rank: mph >= 58 ? 50 : 40, key: 'g' + s.p.station, t: feedTimeMs(s.p.utc_max_gust_ts || s.p.utc_valid),
       color: windColor(kt), main: `${Math.round(mph)} mph gust`, pin: `${Math.round(mph)} MPH`,
       sub: s.p.name || s.p.station, lat: s.lat, lon: s.lon});
@@ -4064,6 +4076,7 @@ function collectEvents(){
     if(p.pday > 0 || p.phour > 0){
       const day = (p.pday > 0) ? p.pday : null;
       const amt = (day != null) ? day : p.phour;
+      if(amt < obsFloor('rain')) continue;
       rainObs.push({cat: 'obs', rank: 25, key: 'r' + p.station, amt, t, color: rainColor(amt) || '#00ECEC', lat: s.lat, lon: s.lon,
         main: (day != null) ? `Rain ${inStr(day)} · since midnight` : `Rain ${inStr(p.phour)} · past 1 h`,
         pin: `${inStr(amt)} RAIN`,
@@ -4072,6 +4085,7 @@ function collectEvents(){
     if(p.snow > 0 || p.snowd > 0){
       const sf = (p.snow > 0) ? p.snow : null;
       const amt = (sf != null) ? sf : p.snowd;
+      if(amt < obsFloor('snow')) continue;
       snowObs.push({cat: 'obs', rank: 25, key: 's' + p.station, amt, t, color: snowColor(amt) || '#EAF4FF', lat: s.lat, lon: s.lon,
         main: (sf != null) ? `Snow ${inStr(sf)} · since midnight` : `Snow depth ${inStr(p.snowd)} · on ground now`,
         pin: `${inStr(amt)} SNOW`,
