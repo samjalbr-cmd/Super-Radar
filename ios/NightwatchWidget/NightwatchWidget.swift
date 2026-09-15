@@ -123,7 +123,6 @@ struct RadarProvider: AppIntentTimelineProvider {
         let composed = await RadarSnapshot.compose(lat: loc.lat, lon: loc.lon, zoom: zoom, size: size,
                                                    showReports: reports, showTemps: temps,
                                                    showAlerts: config.showAlerts && loc.showAlerts,
-                                                   showTracks: config.showTracks && loc.showTracks,
                                                    showDiscussion: config.showDiscussion && loc.showDiscussion,
                                                    showOutlook: config.showOutlook && loc.showOutlook,
                                                    showFronts: config.showFronts && loc.showFronts,

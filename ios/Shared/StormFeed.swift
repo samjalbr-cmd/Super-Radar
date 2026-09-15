@@ -13,7 +13,6 @@ struct WatchLocation: Codable {
     var showReports: Bool = true
     var showTemps: Bool = true
     var showAlerts: Bool = true
-    var showTracks: Bool = true
     var showDiscussion: Bool = true
     var showOutlook: Bool = true
     var showFronts: Bool = true
@@ -29,7 +28,7 @@ struct WatchLocation: Codable {
     static let key = "watchLocation"
     static let fallback = WatchLocation(lat: 42.907058, lon: -85.763014, name: "Grand Rapids",
                                         showReports: true, showTemps: true, showAlerts: true,
-                                        showTracks: true, showDiscussion: true,
+                                        showDiscussion: true,
                                         showOutlook: true, showFronts: true, stationModel: false, showIsobars: true,
                                         showMarine: false,
                                         zoom: .county, state: "MI")

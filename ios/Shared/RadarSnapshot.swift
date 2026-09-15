@@ -338,7 +338,7 @@ enum RadarSnapshot {
     @MainActor
     static func compose(lat: Double, lon: Double, zoom: RadarZoom, size: CGSize,
                         showReports: Bool, showTemps: Bool, showAlerts: Bool,
-                        showTracks: Bool, showDiscussion: Bool,
+                        showDiscussion: Bool,
                         showOutlook: Bool, showFronts: Bool, stationModel: Bool,
                         showIsobars: Bool, showMarine: Bool, state: String?) async -> (image: UIImage, hasEcho: Bool)? {
         let half = zoom.halfDegrees
@@ -400,7 +400,6 @@ enum RadarSnapshot {
         let mcds = showOutlook ? await MapLayers.mesoscaleDiscussions(sw: sw, ne: ne) : []
         let sfc = showFronts ? await MapLayers.surface() : nil
         let isobars = showIsobars ? await MapLayers.isobars(sw: sw, ne: ne) : []
-        let cells: [StormCell] = showTracks ? ((try? await StormFeed.cells()) ?? []) : []
 
         let out = UIGraphicsImageRenderer(size: size).image { ctx in
             snap.image.draw(at: .zero)
@@ -623,37 +622,6 @@ enum RadarSnapshot {
                 let sz = text.size(withAttributes: attrs)
                 let x = min(p.x + 5, size.width - sz.width - 1)
                 text.draw(at: CGPoint(x: x, y: p.y - sz.height / 2), withAttributes: attrs)
-            }
-
-            // Projected cell tracks, over the radar as on the dashboard.
-            for cell in cells where cell.notable && cell.speedKt >= 5 {
-                guard cell.lat >= sw.latitude, cell.lat <= ne.latitude,
-                      cell.lon >= sw.longitude, cell.lon <= ne.longitude else { continue }
-                let color: UIColor = cell.tvs ? UIColor(red: 1, green: 0.23, blue: 0.96, alpha: 1)
-                          : cell.meso ? UIColor(red: 0.88, green: 0.02, blue: 0, alpha: 1)
-                          : (cell.hailInches >= 1 || cell.posh >= 50)
-                            ? UIColor(red: 1, green: 0.48, blue: 0, alpha: 1)
-                            : UIColor(red: 1.0, green: 0.83, blue: 0, alpha: 1)
-                let start = snap.point(for: CLLocationCoordinate2D(latitude: cell.lat, longitude: cell.lon))
-                let nm = cell.speedKt          // one hour ahead
-                let r = cell.heading * .pi / 180
-                let dLat = (nm / 60) * cos(r)
-                let dLon = (nm / 60) * sin(r) / cos(cell.lat * .pi / 180)
-                let end = snap.point(for: CLLocationCoordinate2D(latitude: cell.lat + dLat, longitude: cell.lon + dLon))
-                let track = UIBezierPath()
-                track.move(to: start); track.addLine(to: end)
-                color.setStroke()
-                track.lineWidth = 1.6
-                track.setLineDash([5, 4], count: 2, phase: 0)
-                track.stroke()
-                // The cell itself, as a diamond like the dashboard uses.
-                let d = UIBezierPath()
-                d.move(to: CGPoint(x: start.x, y: start.y - 4))
-                d.addLine(to: CGPoint(x: start.x + 4, y: start.y))
-                d.addLine(to: CGPoint(x: start.x, y: start.y + 4))
-                d.addLine(to: CGPoint(x: start.x - 4, y: start.y))
-                d.close()
-                color.setStroke(); d.lineWidth = 1.8; d.setLineDash([], count: 0, phase: 0); d.stroke()
             }
 
             // Temperatures, thinned in screen space so the labels stay readable —
