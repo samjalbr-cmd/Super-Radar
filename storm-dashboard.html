@@ -496,6 +496,36 @@
   .mcd-label .mcd-sub{font-weight:700;font-size:9px;color:#fff;opacity:0.9;}
 
   /* Lightning intelligence badge (bottom-left). */
+  #metricPicker{
+    position:absolute;bottom:24px;right:24px;z-index:560;
+    display:flex;align-items:center;gap:8px;
+    padding:7px 11px;border-radius:10px;
+    background:var(--panel);border:1px solid var(--border);
+    backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+    max-width:calc(100vw - 48px);
+  }
+  #metricPicker label{
+    font-family:monospace;font-size:9.5px;color:var(--dim);
+    text-transform:uppercase;letter-spacing:0.06em;flex-shrink:0;
+  }
+  #metricPicker select{
+    background:#0d1420;color:#F5F3EC;border:1px solid var(--border);border-radius:7px;
+    font-family:monospace;font-size:11px;padding:4px 7px;cursor:pointer;
+    max-width:100%;text-overflow:ellipsis;
+  }
+  /* The loop bar is centred along the same edge; on a narrow screen the two
+     would sit on top of each other, so the picker gives up its label first and
+     then moves above the bar when the loop is actually showing. */
+  @media (max-width: 560px){
+    #metricPicker{
+      bottom:calc(env(safe-area-inset-bottom, 0px) + 16px); right:12px; padding:6px 9px;
+    }
+    #metricPicker label{ display:none; }
+    body.loop-on #metricPicker{
+      bottom:calc(env(safe-area-inset-bottom, 0px) + 68px);
+    }
+  }
+
   #lightningBadge{
     position:absolute;bottom:24px;left:24px;z-index:500;
     padding:8px 12px;display:none;flex-direction:column;gap:2px;
@@ -610,6 +640,33 @@
   <span id="radarLoopTime"></span>
 </div>
 
+<!-- The station metric was only reachable through the gear, two panels deep,
+     which made a map of ten different fields look like a map of temperature.
+     A native select rather than a custom menu: it costs no dropdown code and
+     iOS gives it a proper picker wheel, which is the better control on the
+     device this is mostly read on. -->
+<div id="metricPicker">
+  <label for="mapMetric">STATIONS</label>
+  <select id="mapMetric" onchange="setStationMetric(this.value)" title="Which value each station shows">
+          <option value="temp">Temperature (°F)</option>
+          <option value="feel">Feels Like (°F)</option>
+          <option value="dwpf">Dewpoint (°F)</option>
+          <option value="hitemp">High today (°F)</option>
+          <option value="lotemp">Low today (°F)</option>
+          <option value="wind">Wind — recent peak gust (mph)</option>
+          <option value="gust">Gust — current (mph)</option>
+          <option value="sknt">Wind — sustained (mph)</option>
+          <option value="relh">Humidity (%)</option>
+          <option value="mslp">Pressure (mb)</option>
+          <option value="vsby">Visibility (mi)</option>
+          <option value="ceil">Ceiling (ft)</option>
+          <option value="phour">Rain — past hour (in)</option>
+          <option value="pday">Rain — since midnight (in)</option>
+          <option value="snowday">Snowfall — since midnight (in)</option>
+          <option value="snowd">Snow depth — on ground (in)</option>
+  </select>
+</div>
+
 <div id="feedTab" onclick="toggleFeed()">EVENTS</div>
 <div id="feedPanel">
   <div class="feed-head"><span class="feed-title">Recent Events · in view</span><button id="feedClose" onclick="toggleFeed()">✕</button></div>
@@ -704,9 +761,15 @@
           <option value="temp">Temperature (°F)</option>
           <option value="feel">Feels Like (°F)</option>
           <option value="dwpf">Dewpoint (°F)</option>
+          <option value="hitemp">High today (°F)</option>
+          <option value="lotemp">Low today (°F)</option>
           <option value="wind">Wind — recent peak gust (mph)</option>
           <option value="gust">Gust — current (mph)</option>
+          <option value="sknt">Wind — sustained (mph)</option>
           <option value="relh">Humidity (%)</option>
+          <option value="mslp">Pressure (mb)</option>
+          <option value="vsby">Visibility (mi)</option>
+          <option value="ceil">Ceiling (ft)</option>
           <option value="phour">Rain — past hour (in)</option>
           <option value="pday">Rain — since midnight (in)</option>
           <option value="snowday">Snowfall — since midnight (in)</option>
@@ -2004,13 +2067,16 @@ function toggleRadarLoop(cb){
     if(radarMode !== 'national'){          // single-site has its own overlay
       radarLoopOn = false; cb.checked = false;
       if(bar) bar.classList.remove('show');
+      document.body.classList.remove('loop-on');
       return;
     }
     buildRadarFrames();
     if(bar) bar.classList.add('show');
+    document.body.classList.add('loop-on');    // lifts the metric picker clear of the bar
   }else{
     stopRadarPlay();
     destroyRadarFrames();
+    document.body.classList.remove('loop-on');
     if(radarLayer) radarLayer.setOpacity(radarOpacityNow());
     if(bar) bar.classList.remove('show');
   }
@@ -2734,6 +2800,44 @@ function tempColor(f){
   }
   return '#4A6FA5';
 }
+// Pressure: low is stormy and high is settled, so the scale runs warm to cool
+// through the standard atmosphere at 1013.
+function pressColor(mb){
+  if(mb == null) return '#4A6FA5';
+  if(mb >= 1030) return '#2B4C9B';
+  if(mb >= 1020) return '#4682B4';
+  if(mb >= 1013) return '#2ECC71';
+  if(mb >= 1005) return '#F2B705';
+  if(mb >= 995)  return '#FF7A00';
+  return '#DC143C';
+}
+// Visibility: the interesting end is the low one, so that is the end that gets
+// the loud colours. Above six miles is unrestricted and stays quiet.
+function visColor(mi){
+  if(mi == null) return '#4A6FA5';
+  if(mi >= 10) return '#7A8CA3';
+  if(mi >= 6)  return '#4FB0C6';
+  if(mi >= 3)  return '#F2B705';
+  if(mi >= 1)  return '#FF7A00';
+  return '#DC143C';
+}
+// Ceiling: the lowest broken or overcast layer, which is what a ceiling is —
+// scattered and few are not ceilings, however low they sit. Feet.
+function ceilingFt(p){
+  for(let i = 1; i <= 3; i++){
+    const c = p['skyc' + i], l = p['skyl' + i];
+    if((c === 'BKN' || c === 'OVC' || c === 'VV') && l != null) return l;
+  }
+  return null;
+}
+function ceilColor(ft){
+  if(ft == null) return '#4A6FA5';
+  if(ft >= 5000) return '#7A8CA3';
+  if(ft >= 3000) return '#4FB0C6';
+  if(ft >= 1000) return '#F2B705';
+  if(ft >= 500)  return '#FF7A00';
+  return '#DC143C';
+}
 function humColor(h){
   if(h == null) return '#4A6FA5';
   if(h >= 80) return '#4169E1';
@@ -2769,6 +2873,20 @@ const METRICS = {
   pday:    {val: p => (p.pday > 0 ? p.pday : null),   fmt: inStr, color: v => rainColor(v) || '#00ECEC'},
   snowday: {val: p => (p.snow > 0 ? p.snow : null),   fmt: inStr, color: v => snowColor(v) || '#EAF4FF'},
   snowd:   {val: p => (p.snowd > 0 ? p.snowd : null), fmt: inStr, color: v => snowColor(v) || '#EAF4FF'},
+
+  // Fields the feed has always carried and the map never offered. Coverage
+  // measured against a live national pull of 2538 stations.
+  hitemp: {val: p => p.max_tmpf, fmt: v => Math.round(v) + '°', color: tempColor},   // 99%
+  lotemp: {val: p => p.min_tmpf, fmt: v => Math.round(v) + '°', color: tempColor},   // 99%
+  sknt:   {val: p => p.sknt, fmt: v => String(Math.round(ktToMph(v))), color: windColor},  // 98%
+  vsby:   {val: p => p.vsby, fmt: v => (v >= 10 ? '10' : v >= 1 ? String(+v.toFixed(1)).replace(/\.0$/, '') : v.toFixed(2).replace(/^0/, '')),
+           color: visColor},                                                          // 98%
+  // 43% carry mslp, so this map is sparser than the rest — the same field the
+  // isobars are drawn from, which is why those two always agree.
+  mslp:   {val: p => (p.mslp != null && p.mslp > 940 && p.mslp < 1060 ? p.mslp : null),
+           fmt: v => String(Math.round(v)), color: pressColor},
+  ceil:   {val: p => ceilingFt(p), fmt: v => (v >= 1000 ? (v / 1000).toFixed(1).replace(/\.0$/, '') + 'k' : String(v)),
+           color: ceilColor},
 };
 const PRECIP_METRICS = new Set(['phour', 'pday', 'snowday', 'snowd']);
 // Precip amounts read better with the trailing inch mark than a bare number.
@@ -2928,7 +3046,36 @@ function toggleStations(cb){
   else{ map.removeLayer(stationLayer); }
 }
 
-function setStationMetric(v){ stationMetric = METRICS[v] ? v : 'temp'; renderStations(); }
+// Two controls, one state: the on-map picker and the one in the settings panel
+// are the same setting, so whichever is used the other has to follow.
+function setStationMetric(v){
+  stationMetric = METRICS[v] ? v : 'temp';
+  for(const id of ['stationMetric', 'mapMetric']){
+    const el = document.getElementById(id);
+    if(el && el.value !== stationMetric) el.value = stationMetric;
+  }
+  // Choosing a metric is a statement that you want to see it, so make it
+  // visible rather than changing a setting that has no effect on screen.
+  //
+  // The full station model draws its own fixed set of fields and ignores the
+  // metric entirely, so with it switched on this picker did nothing at all —
+  // the value changed and the map did not. They are two answers to the same
+  // question: the model shows everything at once, a metric shows one thing
+  // everywhere. Picking one leaves the other.
+  let relayout = false;
+  if(windBarbsOn){
+    const cb = document.getElementById('windBarbsChk');
+    if(cb){ cb.checked = false; }        // visibly off, not silently overridden
+    windBarbsOn = false;
+    relayout = true;
+  }
+  if(!stationsOn){
+    const cb = document.getElementById('stationsChk');
+    if(cb){ cb.checked = true; toggleStations(cb); return; }
+  }
+  renderStations();
+  if(relayout) syncAppSettings();
+}
 function setWindBarbs(cb){ windBarbsOn = cb.checked; renderStations(); }
 
 /* ---------------- Model layers (Open-Meteo grid) ----------------
