@@ -2367,6 +2367,15 @@ const US_STATE_BOX = {
    frames ourselves, which is a server, which this project does not have. So the
    radar stays live and the scrubber says so. */
 
+// Off the main screen for now: the scrubber only exists with ?replay=1 on the
+// URL. Everything below is inert without it — replayAt stays null, so mapNow()
+// is Date.now(), every window test passes, and each layer behaves exactly as it
+// did before any of this was written.
+const REPLAY_ENABLED = (function(){
+  try{ return new URLSearchParams(location.search).get('replay') === '1'; }
+  catch(e){ return false; }
+})();
+
 let replayAt = null;            // ms epoch while scrubbing, null when live
 let replayPlaying = false, replayTimer = null;
 let histRows = null;            // parsed obs, newest-last per station
@@ -2534,6 +2543,7 @@ function applyReplay(){
 let replayFrame = null;
 
 function setReplay(ms){
+  if(!REPLAY_ENABLED) return;
   const wasReplaying = replayActive();
   replayAt = ms;
   if(ms != null && !histRows && !histLoading) loadHistory();
@@ -2577,11 +2587,12 @@ function onReplayScrub(v){
 
 // Panning while scrubbed may bring new states into view, which need their own
 // bulk day of observations.
-function scheduleHistoryRefresh(){ if(replayActive()) loadHistory(); }
+function scheduleHistoryRefresh(){ if(REPLAY_ENABLED && replayActive()) loadHistory(); }
 
 function renderReplayBar(){
   const bar = document.getElementById('replayBar');
   if(!bar) return;
+  if(!REPLAY_ENABLED){ bar.style.display = 'none'; return; }
   const t = document.getElementById('rpTime');
   const play = document.getElementById('rpPlay');
   const range = document.getElementById('rpRange');
@@ -4769,13 +4780,21 @@ function saveSettings(){
   try{ localStorage.setItem(PREFS_KEY, JSON.stringify(out)); }catch(e){}
 }
 
+// Settings that can leave the map looking broken are not restored.
+//
+// Most station metrics are on 99% of sites, but gust is on 1% — it is reported
+// only when there is a gust to report. Restoring it silently turns a full map
+// into an empty one, and the cause is invisible: the setting was chosen once,
+// days ago, and the map simply looks like it has stopped working.
+const PREF_SKIP_RESTORE = new Set(['stationMetric', 'modelField', 'precipLayer']);
+
 function restoreSettings(){
   let saved = null;
   try{ saved = JSON.parse(localStorage.getItem(PREFS_KEY) || 'null'); }catch(e){}
   if(saved){
     for(const el of prefControls()){
       const k = prefKey(el), v = saved[k];
-      if(v === undefined) continue;
+      if(v === undefined || PREF_SKIP_RESTORE.has(k)) continue;
       if(el.type === 'checkbox'){
         if(el.checked === !!v) continue;              // already right, nothing to fire
         el.checked = !!v;
