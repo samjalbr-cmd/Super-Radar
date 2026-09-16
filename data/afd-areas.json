@@ -1,155 +1,207 @@
 {
- "generated": "2026-09-16T13:58:46.618Z",
+ "generated": "2026-09-16T23:29:11.731Z",
  "offices": {
   "GRR": {
-   "product": "1c3e43bc-9d90-4149-9d4d-f1523b565ea7",
-   "issued": "2026-09-16T10:28:00+00:00",
+   "product": "517a88a2-a599-41dc-9ed0-effee0242ade",
+   "issued": "2026-09-16T23:11:00+00:00",
    "office": "Grand Rapids MI",
-   "headline": "Dense fog this morning; heavy rain threat tonight and this weekend",
+   "headline": "Widespread soaking rain possible Saturday; showers into Thursday AM",
    "areas": [
     {
-     "hazard": "dense fog",
-     "label": "Patchy dense fog",
-     "confidence": "high",
-     "start": "2026-09-16T10:28:00.000Z",
-     "end": "2026-09-16T14:00:00.000Z",
-     "quote": "The greatest fog \npotential looks to be areas east of US131, especially near and \nsouth of I96.[",
-     "polygon": [
-      [
-       42.95,
-       -85.7
-      ],
-      [
-       42.75,
-       -84.55
-      ],
-      [
-       42.08,
-       -84.4
-      ],
-      [
-       42.08,
-       -85.7
-      ]
-     ]
-    },
-    {
      "hazard": "heavy rain",
-     "label": "Showers/storms, heavy rain tonight",
-     "confidence": "high",
-     "start": "2026-09-16T22:00:00.000Z",
-     "end": "2026-09-17T12:00:00.000Z",
-     "quote": "This will being the best shower and thunderstorm potential along and \nsouth of I96, especially near I94.",
-     "polygon": [
-      [
-       42.99,
-       -86.24
-      ],
-      [
-       42.96,
-       -85.67
-      ],
-      [
-       42.76,
-       -84.4
-      ],
-      [
-       42.08,
-       -84.4
-      ],
-      [
-       42.08,
-       -86.22
-      ],
-      [
-       42.45,
-       -86.26
-      ]
-     ]
-    },
-    {
-     "hazard": "heavy rain",
-     "label": "1-2\"+ rain, southern half",
+     "label": "Soaking rain, locally 2+ inches",
      "confidence": "medium",
-     "start": "2026-09-19T02:00:00.000Z",
-     "end": "2026-09-20T18:00:00.000Z",
-     "quote": "Probabilistic data shows a 70-80% chance of over 1\" of rain across \nmuch of the area with a 40-50% chance of exceeding 2\" mainly across \nthe southern half.",
+     "start": "2026-09-19T04:00:00.000Z",
+     "end": "2026-09-20T06:00:00.000Z",
+     "quote": "The global ensemble systems have generally been producing median \nQPF around 1 inch, with about 20 percent reaching 2 inches, \nindicating a widespread soaking rain is likely along with swaths \nof locally more than 2 inches where thunderstorms persist.",
      "polygon": [
       [
-       43.3,
+       44.16,
        -86.3
       ],
       [
-       43.3,
-       -84.4
+       44.16,
+       -84.61
+      ],
+      [
+       43.47,
+       -84.37
       ],
       [
        42.08,
-       -84.4
+       -84.14
       ],
       [
        42.08,
        -86.22
       ],
       [
+       42.99,
+       -86.23
+      ],
+      [
+       43.63,
+       -86.54
+      ],
+      [
+       44,
+       -86.45
+      ]
+     ]
+    },
+    {
+     "hazard": "severe storms",
+     "label": "Showers, isolated thunder",
+     "confidence": "medium",
+     "start": "2026-09-16T23:11:00.000Z",
+     "end": "2026-09-17T16:00:00.000Z",
+     "quote": "The chance for occasional showers and perhaps a thunderstorm \ncontinues into Thursday morning, though the potential for heavy \nrain should likely be contained south of southwest Michigan \ntonight.",
+     "polygon": [
+      [
+       44.16,
+       -86.3
+      ],
+      [
+       44.16,
+       -84.61
+      ],
+      [
+       43.47,
+       -84.37
+      ],
+      [
+       42.08,
+       -84.14
+      ],
+      [
+       42.08,
+       -86.22
+      ],
+      [
+       42.99,
+       -86.23
+      ],
+      [
+       43.63,
+       -86.54
+      ],
+      [
+       44,
+       -86.45
+      ]
+     ]
+    },
+    {
+     "hazard": "dense fog",
+     "label": "IFR low clouds overnight",
+     "confidence": "medium",
+     "start": "2026-09-17T00:00:00.000Z",
+     "end": "2026-09-17T15:00:00.000Z",
+     "quote": "Conditions this evening will range from IFR across southern Lower\nMichigan to MVFR across central Lower Michigan.",
+     "polygon": [
+      [
+       43.47,
+       -86.3
+      ],
+      [
+       43.47,
+       -84.37
+      ],
+      [
+       42.08,
+       -84.14
+      ],
+      [
+       42.08,
+       -86.22
+      ],
+      [
+       42.99,
+       -86.23
+      ]
+     ]
+    },
+    {
+     "hazard": "marine",
+     "label": "Small craft conditions, gusts 25 kt",
+     "confidence": "medium",
+     "start": "2026-09-19T02:00:00.000Z",
+     "end": "2026-09-20T18:00:00.000Z",
+     "quote": "Small\ncraft advisory conditions are possible Friday night into Sunday \nas winds strengthen with gusts to 25 knots.",
+     "polygon": [
+      [
+       44.1,
+       -86.45
+      ],
+      [
+       43.6,
+       -86.65
+      ],
+      [
+       42.99,
+       -86.3
+      ],
+      [
        42.45,
-       -86.26
+       -86.35
+      ],
+      [
+       42.25,
+       -86.5
+      ],
+      [
+       42.6,
+       -87
+      ],
+      [
+       43.6,
+       -87.1
+      ],
+      [
+       44.15,
+       -86.9
       ]
      ]
     }
    ]
   },
   "DTX": {
-   "product": "75ecb265-3e3a-4ac1-8734-38dab3c45bf5",
-   "issued": "2026-09-16T10:47:00+00:00",
+   "product": "49c8d5a6-79fc-4f5b-ac09-9032ce8703e3",
+   "issued": "2026-09-16T19:00:00+00:00",
    "office": "Detroit/Pontiac MI",
-   "headline": "Showers/storms near Detroit corridor; heavy rain risk Saturday",
+   "headline": "Widespread showers Saturday may bring 1 inch or more of rain",
    "areas": [
     {
-     "hazard": "severe storms",
-     "label": "Showers, rumbles of thunder",
-     "confidence": "medium",
-     "start": "2026-09-16T14:00:00.000Z",
-     "end": "2026-09-17T12:00:00.000Z",
-     "quote": "The cold front stalls near the southern Great Lakes this evening, sustaining a chance for showers and storms mainly near Lake Erie into tonight and Thursday.",
-     "polygon": [
-      [
-       41.72,
-       -84.35
-      ],
-      [
-       41.74,
-       -83.42
-      ],
-      [
-       42.1,
-       -82.85
-      ],
-      [
-       42.55,
-       -82.6
-      ],
-      [
-       42.75,
-       -83.2
-      ],
-      [
-       42.75,
-       -84.2
-      ]
-     ]
-    },
-    {
      "hazard": "heavy rain",
-     "label": "Heavy rainfall potential Saturday",
+     "label": "Rainfall over 1 inch possible",
      "confidence": "medium",
-     "start": "2026-09-19T12:00:00.000Z",
-     "end": "2026-09-20T06:00:00.000Z",
-     "quote": "The latest Excessive Rainfall Outlook products have been highlighting a Slight risk for a good portion of Southeast Michigan.",
+     "start": "2026-09-19T04:00:00.000Z",
+     "end": "2026-09-20T12:00:00.000Z",
+     "quote": "Euro ensembles indicate > 70% chance of half an inch or more or rainfall, with 40-60% chance of one inch or more in the Saturday into Saturday night timeframe.",
      "polygon": [
       [
-       41.72,
-       -84.35
+       44.07,
+       -82.92
+      ],
+      [
+       43.58,
+       -83.68
+      ],
+      [
+       44,
+       -84.05
+      ],
+      [
+       43.81,
+       -84.61
+      ],
+      [
+       42.78,
+       -84.16
+      ],
+      [
+       41.71,
+       -84.36
       ],
       [
        41.74,
@@ -158,32 +210,16 @@
       [
        42.63,
        -82.52
-      ],
-      [
-       43.6,
-       -82.9
-      ],
-      [
-       44,
-       -84.1
-      ],
-      [
-       43.8,
-       -84.6
-      ],
-      [
-       42.78,
-       -84.16
       ]
      ]
     },
     {
      "hazard": "marine",
-     "label": "High waves, southern Lake Huron",
+     "label": "Easterly gusts 20-30 kt",
      "confidence": "medium",
-     "start": "2026-09-18T08:00:00.000Z",
-     "end": "2026-09-18T20:00:00.000Z",
-     "quote": "Given the long fetch into southern Lake Huron, will monitor the need for a Small Craft Advisory for high waves reaching the nearshore waters Friday morning.",
+     "start": "2026-09-20T12:00:00.000Z",
+     "end": "2026-09-21T18:00:00.000Z",
+     "quote": "A moderate gradient, supporting easterly gusts 20-30kts, lingers behind the low Sunday into the new work week as the area holds between the stalled boundary over the Ohio Valley and high pressure over northern Ontario.",
      "polygon": [
       [
        44.05,
@@ -191,129 +227,141 @@
       ],
       [
        43.6,
-       -83.6
+       -83.3
       ],
       [
-       43.75,
-       -83.95
+       43,
+       -82.55
       ],
       [
-       44,
-       -83.6
+       42.63,
+       -82.52
       ],
       [
-       44.05,
-       -83.1
+       42.9,
+       -82.45
+      ],
+      [
+       43.6,
+       -82.45
       ]
      ]
     }
    ]
   },
   "APX": {
-   "product": "526139d6-60d6-4961-9a08-906da0ec0e65",
-   "issued": "2026-09-16T09:56:00+00:00",
+   "product": "943115da-7793-4db9-ba8a-7bcfbb13bdf6",
+   "issued": "2026-09-16T17:58:00+00:00",
    "office": "Gaylord MI",
-   "headline": "Heaviest weekend rain likely stays south of M-72",
+   "headline": "Heavy rain possible Friday night, mainly along/south of M-72",
    "areas": [
     {
      "hazard": "heavy rain",
-     "label": "Heavy rain chance south of M-72",
+     "label": "Heavy rain, M-72 and south",
      "confidence": "medium",
-     "start": "2026-09-19T02:00:00.000Z",
-     "end": "2026-09-20T12:00:00.000Z",
-     "quote": "Residual moisture from this wave could spark some showers at times, but current thinking is the heaviest rainfall across the region would likely hold south of M-72.",
+     "start": "2026-09-19T00:00:00.000Z",
+     "end": "2026-09-19T16:00:00.000Z",
+     "quote": "Current confidence is in a \nsolution that brings a swath of potentially efficient rain into \nparts of northern lower MI (primarily M-72 and south) Friday night \ninto early Saturday with additional heavy rain chances thereafter \nfocused to our south across southern WI/northern IL/northern IN and \nsou",
      "polygon": [
       [
-       44.7,
-       -86.05
+       44.78,
+       -86.2
       ],
       [
-       44.7,
-       -83.55
+       44.75,
+       -84.5
+      ],
+      [
+       44.72,
+       -83.45
       ],
       [
        44.05,
-       -83.58
+       -83.55
       ],
       [
-       44.18,
+       44.1,
        -86.3
-      ],
-      [
-       44.7,
-       -86.05
       ]
      ]
     }
    ]
   },
   "MQT": {
-   "product": "311a955e-e004-4610-b524-6b2fb1e5984d",
-   "issued": "2026-09-16T11:49:00+00:00",
+   "product": "09a01518-6f56-4aff-8b95-af52060f4c6c",
+   "issued": "2026-09-16T23:21:00+00:00",
    "office": "Marquette MI",
-   "headline": "Quiet week; light rain chances tonight and over southern UP Fri-Sat",
+   "headline": "Heavy rain likely Friday PM-Saturday AM over southern half of UP",
    "areas": [
     {
      "hazard": "heavy rain",
-     "label": "Rain chances, southern UP",
-     "confidence": "medium",
-     "start": "2026-09-18T12:00:00.000Z",
-     "end": "2026-09-20T00:00:00.000Z",
-     "quote": "The next chances at rain arrive Friday and Saturday with another shortwave, though the current NBM keeps PoPs above 35% confined to the southern half of the UP and each of the last 3 runs has trended slightly south with the track of precipitation.",
+     "label": "1\"+ rain potential, south half UP",
+     "confidence": "high",
+     "start": "2026-09-18T18:00:00.000Z",
+     "end": "2026-09-19T15:00:00.000Z",
+     "quote": "Rain becomes likely (>60% chance) for the south half of the UP \nFriday afternoon into at least Saturday morning, where there is a \nmoderate chance (40-60%) of amounts exceeding an inch.",
      "polygon": [
       [
-       45.1,
-       -87.6
+       45.09,
+       -87.59
       ],
       [
-       46.2,
-       -88.4
-      ],
-      [
-       46.3,
-       -86.6
-      ],
-      [
-       46.1,
-       -85.3
+       45.92,
+       -86.97
       ],
       [
        45.6,
-       -86.6
+       -86.61
       ],
       [
-       45.9,
+       46.25,
+       -85.24
+      ],
+      [
+       46.5,
+       -86
+      ],
+      [
+       46.45,
        -87
+      ],
+      [
+       46.4,
+       -88.2
+      ],
+      [
+       45.92,
+       -88.1
       ]
      ]
     },
     {
      "hazard": "marine",
-     "label": "NE gusts 20-25 kt W Lake Superior",
+     "label": "NE winds 20-30 kt, 3-4 ft waves",
      "confidence": "medium",
      "start": "2026-09-18T12:00:00.000Z",
-     "end": "2026-09-19T22:00:00.000Z",
-     "quote": "During the day Friday through Saturday afternoon, wind gusts to 20-25 kt are expected over far western Lake Superior as easterly and northeasterly winds funnel between the MN Arrowhead and the Bayfield Peninsula.",
+     "end": "2026-09-21T00:00:00.000Z",
+     "quote": "Friday \nand Saturday, low pressure passing by to the south combined with a \nhigh to the north will result in prolonged northeasterly flow into \nthe western arm of Lake Superior, with winds increasing to 20-30 kt \nand waves of 3-4 feet.",
      "polygon": [
       [
-       46.7,
-       -90.3
+       46.57,
+       -90.42
+      ],
+      [
+       47.48,
+       -87.98
       ],
       [
        47.2,
-       -90.2
+       -88.5
       ],
       [
-       47.45,
-       -88.6
-      ],
-      [
-       47,
-       -88.4
+       46.76,
+       -88.5
       ],
       [
        46.6,
-       -89.3
+       -89.5
       ]
      ]
     }
