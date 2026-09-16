@@ -1869,14 +1869,51 @@ function appBridge(){
 }
 
 // Map zoom is continuous; the widget's zoom is a handful of named steps.
-function widgetZoomFor(z){
-  if(z >= 11) return 'metro';
-  if(z >= 10) return 'county';
-  if(z >= 9)  return 'area';
-  if(z >= 8)  return 'region';
-  if(z >= 7)  return 'wide';
-  if(z >= 6)  return 'state';
-  return 'multi';
+// The widget's zoom ladder, in degrees of longitude either side of centre —
+// the same numbers RadarZoom uses in Swift.
+const WIDGET_SPANS = {metro: 0.35, county: 0.9, area: 1.3, region: 1.8,
+                      wide: 2.5, state: 3.2, multi: 5.5};
+
+// Pick the widget zoom that covers roughly the same ground as the map does now.
+//
+// This used to be a fixed ladder of zoom levels, which assumed the two surfaces
+// were the same size. They are not: a browser window is far wider than a
+// widget, so at web zoom 8 the map showed eight degrees of longitude and the
+// widget was handed a box covering three and a half. Reports plainly visible on
+// the map were outside the widget's view and looked missing.
+//
+// Measuring the map's actual span instead means the answer is right whatever
+// the window size — the phone's web view and a desktop browser at the same
+// zoom cover very different ground, and both now map correctly.
+// The widget's frame, used to turn its ladder into a box rather than a width.
+const WIDGET_ASPECT = 382 / 345;
+
+function widgetZoomFor(){
+  let lonHalf, latHalf, lat;
+  try{
+    const b = map.getBounds();
+    lonHalf = (b.getEast() - b.getWest()) / 2;
+    latHalf = (b.getNorth() - b.getSouth()) / 2;
+    lat = b.getCenter().lat;
+  }catch(e){ return 'county'; }
+  if(!isFinite(lonHalf) || lonHalf <= 0) return 'county';
+
+  // The smallest ladder step that still covers what the map is showing, in both
+  // directions. Matching the width alone was not enough: a browser window is
+  // proportionally taller than a widget, so a box of the same width still cut
+  // off the north and south of what was on screen.
+  //
+  // Erring wider is deliberate. The complaint this answers is reports visible
+  // on the map and missing from the widget, and a widget showing slightly more
+  // than the map is a far smaller surprise than one showing less.
+  const needed = Math.max(lonHalf, latHalf / (WIDGET_ASPECT * Math.cos(lat * Math.PI / 180)));
+  let best = null, bestSpan = Infinity, widest = null, widestSpan = -Infinity;
+  for(const k in WIDGET_SPANS){
+    const v = WIDGET_SPANS[k];
+    if(v > widestSpan){ widestSpan = v; widest = k; }
+    if(v >= needed && v < bestSpan){ bestSpan = v; best = k; }
+  }
+  return best || widest;      // beyond the widest step, the widest is the best we have
 }
 
 let bridgeTimer = null;
@@ -1889,7 +1926,7 @@ function syncAppSettings(){
       bridge.postMessage({
         lat, lon,
         name: (document.getElementById('cityInput') || {}).value || '',
-        zoom: widgetZoomFor(map.getZoom()),
+        zoom: widgetZoomFor(),
         // The widget draws temperatures, so it cares whether stations are on
         // AND whether the metric being shown is actually a temperature.
         showTemps: !!stationsOn && (stationMetric === 'temp' || stationMetric === 'feel' || stationMetric === 'dwpf'),
