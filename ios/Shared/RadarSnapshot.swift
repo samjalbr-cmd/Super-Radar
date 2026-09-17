@@ -330,6 +330,11 @@ private func drawStationModel(_ st: StormFeed.Station, at p: CGPoint) {
     }
 }
 
+/// How far the basemap is knocked back, matching the dashboard's
+/// brightness(0.5): a black wash at this alpha multiplies the ground by the
+/// same factor.
+private let basemapDim: CGFloat = 0.5
+
 enum RadarSnapshot {
     /// A dark basemap for the region, with radar drawn over it. The watched
     /// point frames the view but is not marked — the picture is the subject,
@@ -405,6 +410,17 @@ enum RadarSnapshot {
 
         let out = UIGraphicsImageRenderer(size: size).image { ctx in
             snap.image.draw(at: .zero)
+            // Darken the basemap to match the dashboard, which runs its tiles
+            // through brightness(0.5). MapKit's dark style is lighter than that,
+            // which left the widget's ground competing with the radar instead of
+            // sitting under it.
+            //
+            // A black wash at this alpha multiplies the map by the same factor,
+            // and it goes here rather than at the end so only the ground is
+            // dimmed — every overlay drawn below keeps its full strength, as it
+            // does on the dashboard.
+            UIColor.black.withAlphaComponent(basemapDim).setFill()
+            UIRectFillUsingBlendMode(CGRect(origin: .zero, size: size), .normal)
 
             // The SPC outlook is the broadest context on the map, so it sits
             // furthest back. Fill stays very light because the risk areas nest
