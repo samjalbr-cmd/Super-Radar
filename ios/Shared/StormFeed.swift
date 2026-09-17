@@ -161,22 +161,30 @@ enum StormFeed {
         let lon: Double
         let color: UIColor
         var label: String = ""      // "62 mph", "1.5\" hail"
-        var rank: Int = 0           // higher keeps its label when two collide
+        var rank: Double = 0        // higher keeps its label when two collide
     }
 
     /// Which report keeps its label when two want the same patch of screen.
     /// A tornado outranks a 41 mph gust; within a class, the bigger number wins.
-    static func reportRank(type: String, magnitude: Double?) -> Int {
+    /// The same formula the dashboard uses, down to the numbers.
+    ///
+    /// These were different orderings — the dashboard put hail above wind damage
+    /// and treated a flash flood as an ordinary flood — and since both platforms
+    /// pack their labels, the same view kept a different set of reports on each.
+    /// The magnitude is a fraction rather than a whole number so that 1.2 and
+    /// 1.9 inches of rain are told apart, as they are on the map.
+    static func reportRank(type: String, magnitude: Double?) -> Double {
         let t = type.uppercased()
-        let base: Int
-        if t.contains("TORNADO") || t.contains("SPOUT") { base = 900 }
-        else if t.contains("DMG") || t.contains("DEBRIS") || t.contains("LANDSLIDE") { base = 700 }
-        else if t.contains("FLASH FLOOD") { base = 600 }
-        else if t.contains("HAIL") { base = 500 }
-        else if t.contains("WND") || t.contains("WIND") { base = 400 }
-        else if t.contains("FLOOD") { base = 300 }
-        else { base = 100 }
-        return base + Int(min(max(magnitude ?? 0, 0), 99))
+        let base: Double
+        if t.contains("TORNADO") || t.contains("SPOUT") { base = 96 }
+        else if t.contains("DMG") || t.contains("DEBRIS") || t.contains("LANDSLIDE") { base = 80 }
+        else if t.contains("FLASH FLOOD") { base = 72 }
+        else if t.contains("HAIL") { base = 64 }
+        else if t.contains("WND") || t.contains("WIND") { base = 56 }
+        else if t.contains("FLOOD") { base = 50 }
+        else { base = 45 }
+        // Small enough that it can never outrank the class above.
+        return base + min(max(magnitude ?? 0, 0), 99) / 100
     }
 
     /// How much of the storm-report feed is worth a pin.

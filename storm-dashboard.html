@@ -1762,8 +1762,8 @@ function renderLSR(){
     const shown = lsrData
       .filter(f => f.geometry && lsrKeep(f.properties) && reportAtOrBefore(f.properties))
       .filter(f => view.contains([f.geometry.coordinates[1], f.geometry.coordinates[0]]))
-      .sort((a, z) => lsrRank(z.properties.typetext) - lsrRank(a.properties.typetext)
-                   || (parseFloat(z.properties.magnitude) || 0) - (parseFloat(a.properties.magnitude) || 0));
+      .sort((a, z) => lsrRank(z.properties.typetext, z.properties.magnitude)
+                   - lsrRank(a.properties.typetext, a.properties.magnitude));
     const sig = shown.map(f => f.properties.valid + f.properties.typetext).join('|')
               + '@' + map.getZoom() + ',' + Math.round(map.getCenter().lat * 50);
     if(sig === sigLSR) return;
@@ -4706,13 +4706,32 @@ let feedSeenAt = 0;
 let feedHot = null;          // key of the row/pin under the cursor
 try{ feedSeenAt = +localStorage.getItem('nightwatch.feedSeen') || 0; }catch(e){}
 
-function lsrRank(t){
+// How serious a report is, which decides both where it sits in the feed and
+// which label survives when two want the same patch of map.
+//
+// The widget ranks the same way. It used to not: this put hail above wind
+// damage and treated a flash flood as an ordinary flood, while the widget put
+// damage second and flash flooding third. Both platforms pack their labels, so
+// the same view kept a different set of reports on each — which is exactly how
+// it looked, completely different rather than subtly so.
+//
+// The numbers stay on the feed's own scale, where an observation is 25 and a
+// discussion 60, so only the order changes and the events list still mixes the
+// categories sensibly.
+function lsrRank(t, mag){
   t = (t || '').toUpperCase();
-  if(t.includes('TORNADO') || t.includes('FUNNEL')) return 96;
-  if(t.includes('HAIL')) return 60;
-  if(t.includes('WIND') || t.includes('TSTM')) return 55;
-  if(t.includes('FLOOD')) return 52;
-  return 45;
+  let base;
+  if(t.includes('TORNADO') || t.includes('SPOUT')) base = 96;
+  else if(t.includes('DMG') || t.includes('DEBRIS') || t.includes('LANDSLIDE')) base = 80;
+  else if(t.includes('FLASH FLOOD')) base = 72;
+  else if(t.includes('HAIL')) base = 64;
+  else if(t.includes('WND') || t.includes('WIND')) base = 56;
+  else if(t.includes('FLOOD')) base = 50;
+  else base = 45;
+  // Within a class the larger measurement is the more interesting one, kept
+  // small enough that it can never outrank the class above.
+  const m = Number(mag);
+  return base + (isFinite(m) ? Math.min(Math.max(m, 0), 99) / 100 : 0);
 }
 
 // Every source, normalised. `key` identifies a row across refreshes so hover
@@ -4737,7 +4756,7 @@ function collectEvents(){
     const p = f.properties;
     const mag = p.magnitude ? ` ${p.magnitude} ${p.unit || ''}`.trimEnd() : '';
     const type = p.typetext || 'Report';
-    ev.push({cat: 'report', rank: lsrRank(type), key: 'l' + p.valid + type + c[0], t: feedTimeMs(p.valid),
+    ev.push({cat: 'report', rank: lsrRank(type, p.magnitude), key: 'l' + p.valid + type + c[0], t: feedTimeMs(p.valid),
       color: lsrColor(type), main: `${type}${mag}`, pin: `${type}${mag}`.toUpperCase(),
       sub: `${p.city || ''}, ${p.state || ''}`, lat: c[1], lon: c[0],
       group: type.toUpperCase() + '|' + Math.round(c[1] / 0.2) + '|' + Math.round(c[0] / 0.2),
