@@ -417,6 +417,15 @@
     text-shadow:0 0 3px #000, 0 0 2px #000, 0 1px 1px #000;
     white-space:nowrap;display:inline-block;transform:translate(-50%,-50%);
   }
+  .lake-temp{
+    font-family:monospace;font-weight:800;font-size:calc(10px * var(--lblscale, 1));line-height:1;
+    text-shadow:0 0 3px #000, 0 0 2px #000, 0 1px 1px #000;
+    white-space:nowrap;display:inline-block;transform:translate(-50%,-50%);
+    cursor:pointer;letter-spacing:0.02em;
+  }
+  .lake-temp .lt-d{ font-size:calc(8px * var(--lblscale, 1)); opacity:0.9; font-weight:700; }
+  .lake-temp .lt-w{ opacity:0.75; margin-right:0.5px; }
+
   .stn-label{
     font-family:monospace;font-weight:700;font-size:calc(10px * var(--lblscale, 1));line-height:1;
     text-shadow:0 0 3px #000, 0 0 2px #000, 0 1px 1px #000;
@@ -755,6 +764,7 @@
       <summary>Observations</summary>
       <div class="set-body">
         <label class="set-row"><input type="checkbox" id="stationsChk" checked onchange="toggleStations(this)"><span class="sw-t"></span>Live stations (METAR)</label>
+        <label class="set-row"><input type="checkbox" id="lakeChk" checked onchange="toggleLakeTemps(this)"><span class="sw-t"></span>Lake water temperature</label>
         <label class="set-row"><input type="checkbox" id="windBarbsChk" onchange="setWindBarbs(this)"><span class="sw-t"></span>Full station model</label>
         <label class="set-cap" for="stationMetric">Station metric</label>
         <select id="stationMetric" class="set-field" onchange="setStationMetric(this.value)">
@@ -891,7 +901,7 @@
 let lat = 42.907058, lon = -85.763014;
 let map, basemap, basemapLabels, radarLayer, marker, alertLayerGroup, lightningLayerGroup, feedLayerGroup;
 let spcOutlookLayer, mcdLayer, lsrLayer, stationLayer, modelLayer, modelMarkers, afdHazardLayer, sfcLayer
-let isobarLayer, isobarMarkers;
+let isobarLayer, isobarMarkers, lakeLayer;
 let precipGroup, precipMarkers;
 const ESRI_CANVAS = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/';
 
@@ -940,6 +950,7 @@ function initMap(){
   spcOutlookLayer = L.layerGroup().addTo(map);
   alertLayerGroup = L.layerGroup().addTo(map);
   afdHazardLayer = L.layerGroup().addTo(map);
+  lakeLayer = L.layerGroup().addTo(map);
   sfcLayer = L.layerGroup().addTo(map);
   mcdLayer = L.layerGroup().addTo(map);
   lsrLayer = L.layerGroup().addTo(map);
@@ -967,7 +978,7 @@ function initMap(){
   const MOVE_TASKS = [renderStations, drawIsoLines, renderSurface,
                       renderFeed, scheduleAfdRefresh, scheduleModelRefresh,
                       scheduleIsobarRefresh, scheduleNoaaRadar, schedulePrecipRefresh,
-                      syncAppSettings, scheduleHistoryRefresh];
+                      syncAppSettings, scheduleHistoryRefresh, renderLakeTemps];
   const FRAME_BUDGET_MS = 8;          // leaves room in a 16 ms frame to paint
   let movePass = false, moveAgain = false;
   function runMoveTasks(){
@@ -3792,6 +3803,71 @@ function scheduleModelRefresh(){
    key in this file would be handed to every visitor. See
    .github/workflows/afd-areas.yml. */
 
+/* ---------------- Lake water temperature ----------------
+   Buoy water temperature across the Great Lakes, which is a different question
+   from air temperature and the one that actually drives the weather here: lake
+   breezes in summer, and in winter the difference between the water and the air
+   above it is what decides whether a west wind arrives dry or as a snow band.
+
+   NDBC publishes every station's latest observation in one 107 KB file, which is
+   the cheapest way to get this, but sends no CORS header — so a scheduled job
+   fetches it and commits the Great Lakes subset, the same arrangement the
+   forecast discussion areas use. CO-OPS is CORS-open and was the obvious
+   alternative, but its Great Lakes coverage is harbours and channels with almost
+   nothing on open Lake Michigan. */
+const LAKE_DATA_URL = 'data/lake-temps.json';
+let lakeData = null, lakeOn = true;
+
+async function loadLakeTemps(){
+  try{
+    const r = await fetch(LAKE_DATA_URL + '?t=' + Math.floor(Date.now() / 6e5));
+    lakeData = await r.json();
+  }catch(e){ console.error('lake temps', e); lakeData = null; }
+  renderLakeTemps();
+}
+
+function renderLakeTemps(){
+  if(!lakeLayer) return;
+  lakeLayer.clearLayers();
+  if(!lakeOn || !lakeData || !lakeData.stations) return;
+  const view = map.getBounds();
+  // Buoys cluster in harbours, so the same screen-space thinning the stations
+  // use keeps a marina from becoming a stack of identical numbers.
+  const cell = 46, claimed = new Set();
+  const age = lakeData.generated ? (Date.now() - Date.parse(lakeData.generated)) / 3600e3 : null;
+  for(const st of lakeData.stations){
+    if(!view.contains([st.lat, st.lon])) continue;
+    const pt = map.latLngToLayerPoint([st.lat, st.lon]);
+    const key = Math.round(pt.x / cell) + ':' + Math.round(pt.y / cell);
+    if(claimed.has(key)) continue;
+    claimed.add(key);
+    const c = tempColor(st.waterF);
+    // The air-water difference is the interesting number in autumn and winter,
+    // so it rides along when the water is the warmer of the two.
+    const diff = (st.airF != null) ? Math.round(st.waterF - st.airF) : null;
+    const sub = (diff != null && diff >= 4) ? `<span class="lt-d"> +${diff}</span>` : '';
+    // A wave marks it as water. The colour still comes from the same ramp, so a
+    // number means the same thing whether it is air or lake, but at the
+    // shoreline the two are otherwise indistinguishable.
+    const html = `<span class="lake-temp" style="color:${c}">` +
+                 `<span class="lt-w">\u2248</span>${Math.round(st.waterF)}\u00b0${sub}</span>`;
+    L.marker([st.lat, st.lon], {
+      icon: L.divIcon({className: 'lake-icon', html, iconSize: [0, 0], iconAnchor: [0, 0]}),
+      keyboard: false,
+    }).bindPopup(`<div class="alert-popup"><b>Water ${st.waterF}\u00b0F</b>` +
+      `Buoy ${st.id}` +
+      (st.airF != null ? `<br>Air ${st.airF}\u00b0F \u00b7 water is ${Math.abs(Math.round(st.waterF - st.airF))}\u00b0 ` +
+        (st.waterF >= st.airF ? 'warmer' : 'cooler') : '') +
+      (age != null ? `<br><span style="color:#8A93A6">${age < 1 ? 'within the hour' : Math.round(age) + ' h old'}</span>` : '') +
+      `</div>`).addTo(lakeLayer);
+  }
+}
+
+function toggleLakeTemps(cb){
+  lakeOn = cb.checked;
+  renderLakeTemps();
+}
+
 const AFD_DATA_URL = 'data/afd-areas.json';
 let afdAreas = null;          // {generated, offices:{WFO:{headline, issued, areas[]}}}
 let afdAreasOn = true;
@@ -4919,11 +4995,13 @@ async function boot(){
   setInterval(() => { renderFeed(); }, 30000);   // keep "Xm ago" fresh
   loadAfdAreas();
   loadSurfaceAnalysis();
+  loadLakeTemps();
   fetchIsobars();
   renderReplayBar();
   syncAppSettings();   // hand the app its opening state
   setInterval(loadAfdAreas, 20 * 60 * 1000);
   setInterval(loadSurfaceAnalysis, 20 * 60 * 1000);
+  setInterval(loadLakeTemps, 30 * 60 * 1000);   // the collector runs hourly
   setInterval(loadStormTracks, 5 * 60 * 1000);   // one volume scan
 }
 

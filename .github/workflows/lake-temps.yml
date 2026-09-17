@@ -1,0 +1,42 @@
+name: Lake temperatures
+
+# Water is thermal mass: a lake does not change temperature quickly, so hourly
+# is already generous. Runs are cheap — one 107 KB fetch, no model calls.
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: lake-temps
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: node scripts/lake-temps.mjs
+      - name: Commit if changed
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet -- data/lake-temps.json; then
+            echo "unchanged"
+            exit 0
+          fi
+          git add data/lake-temps.json
+          git commit -m "Update lake temperatures"
+          # The AFD job commits to the same branch, so a race is normal rather
+          # than exceptional; rebase and retry instead of failing the run.
+          for i in 1 2 3; do
+            git pull --rebase --autostash origin main && git push origin HEAD:main && exit 0
+            sleep 5
+          done
+          exit 1
