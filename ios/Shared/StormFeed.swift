@@ -19,6 +19,7 @@ struct WatchLocation: Codable {
     var stationModel: Bool = false
     var showIsobars: Bool = true
     var showMarine: Bool = false
+    var showLake: Bool = true
     var zoom: RadarZoom = .county
     /// Two-letter state, resolved by the app. The national station feed is
     /// 3.4 MB; one state's network is about 100 KB, and the API accepts only one.
@@ -30,7 +31,7 @@ struct WatchLocation: Codable {
                                         showReports: true, showTemps: true, showAlerts: true,
                                         showDiscussion: true,
                                         showOutlook: true, showFronts: true, stationModel: false, showIsobars: true,
-                                        showMarine: false,
+                                        showMarine: false, showLake: true,
                                         zoom: .county, state: "MI")
 
     static func load() -> WatchLocation {
@@ -489,6 +490,43 @@ enum StormFeed {
         }
         return maxLat >= sw.latitude && minLat <= ne.latitude
             && maxLon >= sw.longitude && minLon <= ne.longitude
+    }
+
+    // MARK: - Lake water temperature
+
+    /// A buoy's water temperature, and the air above it where reported.
+    struct LakeTemp {
+        let lat: Double
+        let lon: Double
+        let waterF: Double
+        let airF: Double?
+    }
+
+    /// Water temperature across the Great Lakes.
+    ///
+    /// Served as a static file from the same Pages site as the dashboard,
+    /// rebuilt hourly. NDBC has it first-hand but sends no CORS header, which
+    /// does not constrain a native client — the shared file is used anyway so
+    /// the widget and the map cannot disagree about what the water is doing.
+    static func lakeTemps(sw: CLLocationCoordinate2D, ne: CLLocationCoordinate2D) async -> [LakeTemp] {
+        guard let url = URL(string: "https://samjalbr-cmd.github.io/Super-Radar/data/lake-temps.json")
+        else { return [] }
+        struct Doc: Decodable {
+            struct S: Decodable {
+                let lat: Double; let lon: Double
+                let waterF: Double; let airF: Double?
+            }
+            let stations: [S]?
+        }
+        var req = URLRequest(url: url); req.timeoutInterval = 20
+        guard let data = try? await URLSession.shared.data(for: req).0,
+              let doc = try? JSONDecoder().decode(Doc.self, from: data),
+              let list = doc.stations else { return [] }
+        return list.compactMap { s in
+            guard s.lat >= sw.latitude, s.lat <= ne.latitude,
+                  s.lon >= sw.longitude, s.lon <= ne.longitude else { return nil }
+            return LakeTemp(lat: s.lat, lon: s.lon, waterF: s.waterF, airF: s.airF)
+        }
     }
 
     // MARK: - Forecast discussion areas

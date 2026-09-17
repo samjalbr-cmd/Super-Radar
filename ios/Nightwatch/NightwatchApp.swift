@@ -37,6 +37,7 @@ final class SettingsBridge: NSObject, WKScriptMessageHandler {
         if let f = d["showFronts"] as? Bool { loc.showFronts = f }
         if let m = d["stationModel"] as? Bool { loc.stationModel = m }
         if let i = d["showIsobars"] as? Bool { loc.showIsobars = i }
+        if let l = d["showLake"] as? Bool { loc.showLake = l }
         if moved { loc.state = nil }
         loc.save()
 

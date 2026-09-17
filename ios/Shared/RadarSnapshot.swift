@@ -340,7 +340,8 @@ enum RadarSnapshot {
                         showReports: Bool, showTemps: Bool, showAlerts: Bool,
                         showDiscussion: Bool,
                         showOutlook: Bool, showFronts: Bool, stationModel: Bool,
-                        showIsobars: Bool, showMarine: Bool, state: String?) async -> (image: UIImage, hasEcho: Bool)? {
+                        showIsobars: Bool, showMarine: Bool, showLake: Bool,
+                        state: String?) async -> (image: UIImage, hasEcho: Bool)? {
         let half = zoom.halfDegrees
 
         // Framed as a projected rect, not a coordinate span. A degree of
@@ -400,6 +401,7 @@ enum RadarSnapshot {
         let mcds = showOutlook ? await MapLayers.mesoscaleDiscussions(sw: sw, ne: ne) : []
         let sfc = showFronts ? await MapLayers.surface() : nil
         let isobars = showIsobars ? await MapLayers.isobars(sw: sw, ne: ne) : []
+        let lake = showLake ? await StormFeed.lakeTemps(sw: sw, ne: ne) : []
 
         let out = UIGraphicsImageRenderer(size: size).image { ctx in
             snap.image.draw(at: .zero)
@@ -643,6 +645,31 @@ enum RadarSnapshot {
             // and a sparse scatter of numbers looks like missing data. Widens
             // with the view, where stations crowd together on screen.
             let cell: CGFloat = stationModel ? zoom.labelSpacing * 1.5 : zoom.labelSpacing
+            // Water readings first, and into the same claimed-cell grid as the
+            // land temperatures, so a buoy just offshore and a station on the
+            // beach cannot print over each other.
+            for w in lake {
+                let p = snap.point(for: CLLocationCoordinate2D(latitude: w.lat, longitude: w.lon))
+                guard p.x > 0, p.y > 0, p.x < size.width, p.y < size.height else { continue }
+                let key = Int64(p.x / cell) &* 1000 &+ Int64(p.y / cell)
+                if claimed.contains(key) { continue }
+                // A wave marks it as water. The colour is the same ramp as the
+                // air temperatures, so a number means the same thing either way.
+                var label = "\u{2248}\(Int(w.waterF.rounded()))"
+                if let air = w.airF, w.waterF - air >= 4 { label += " +\(Int((w.waterF - air).rounded()))" }
+                let text = label as NSString
+                let attrs: [NSAttributedString.Key: Any] = [
+                    .font: UIFont.monospacedDigitSystemFont(ofSize: 10, weight: .bold),
+                    .foregroundColor: tempColor(w.waterF),
+                    .strokeColor: UIColor.black, .strokeWidth: -3.0,
+                ]
+                let sz = text.size(withAttributes: attrs)
+                let x = min(max(p.x - sz.width / 2, 1), size.width - sz.width - 1)
+                let y = min(max(p.y - sz.height / 2, 1), size.height - sz.height - 1)
+                claimed.insert(key)
+                text.draw(at: CGPoint(x: x, y: y), withAttributes: attrs)
+            }
+
             for st in temps {
                 let p = snap.point(for: CLLocationCoordinate2D(latitude: st.lat, longitude: st.lon))
                 guard p.x > 0, p.y > 0, p.x < size.width, p.y < size.height else { continue }

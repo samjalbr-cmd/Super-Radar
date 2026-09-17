@@ -68,4 +68,7 @@ struct RadarConfig: WidgetConfigurationIntent {
     // zone, and dozens of them bury the map.
     @Parameter(title: "Show marine warnings", default: false)
     var showMarine: Bool
+
+    @Parameter(title: "Lake water temperature", default: true)
+    var showLake: Bool
 }
