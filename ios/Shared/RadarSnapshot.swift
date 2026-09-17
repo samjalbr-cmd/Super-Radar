@@ -640,6 +640,7 @@ enum RadarSnapshot {
             // Temperatures, thinned in screen space so the labels stay readable —
             // the same trick the dashboard uses for its station layer.
             var claimed = Set<Int64>()
+            var lakeClaimed = Set<Int64>()  // buoys thin against each other more finely
             var placed: [CGRect] = []      // station-model footprints already drawn
             // Tighter than the dashboard's 40px, because a widget is read closer
             // and a sparse scatter of numbers looks like missing data. Widens
@@ -651,22 +652,30 @@ enum RadarSnapshot {
             for w in lake {
                 let p = snap.point(for: CLLocationCoordinate2D(latitude: w.lat, longitude: w.lon))
                 guard p.x > 0, p.y > 0, p.x < size.width, p.y < size.height else { continue }
-                let key = Int64(p.x / cell) &* 1000 &+ Int64(p.y / cell)
-                if claimed.contains(key) { continue }
+                // Buoys thin against each other on a finer grid than the land
+                // stations use — the reading is smaller, and they cluster, so
+                // the station spacing threw away a third of them over open
+                // water. The coarse cell is claimed as well, so a station on
+                // the beach still will not print over a buoy just offshore.
+                let lakeCell = cell * 0.7
+                let fine = Int64(p.x / lakeCell) &* 1000 &+ Int64(p.y / lakeCell)
+                if lakeClaimed.contains(fine) { continue }
+                let coarse = Int64(p.x / cell) &* 1000 &+ Int64(p.y / cell)
                 // A wave marks it as water. The colour is the same ramp as the
                 // air temperatures, so a number means the same thing either way.
                 var label = "\u{2248}\(Int(w.waterF.rounded()))"
                 if let air = w.airF, w.waterF - air >= 4 { label += " +\(Int((w.waterF - air).rounded()))" }
                 let text = label as NSString
                 let attrs: [NSAttributedString.Key: Any] = [
-                    .font: UIFont.monospacedDigitSystemFont(ofSize: 10, weight: .bold),
+                    .font: UIFont.monospacedDigitSystemFont(ofSize: 8, weight: .semibold),
                     .foregroundColor: tempColor(w.waterF),
                     .strokeColor: UIColor.black, .strokeWidth: -3.0,
                 ]
                 let sz = text.size(withAttributes: attrs)
                 let x = min(max(p.x - sz.width / 2, 1), size.width - sz.width - 1)
                 let y = min(max(p.y - sz.height / 2, 1), size.height - sz.height - 1)
-                claimed.insert(key)
+                lakeClaimed.insert(fine)
+                claimed.insert(coarse)
                 text.draw(at: CGPoint(x: x, y: y), withAttributes: attrs)
             }
 

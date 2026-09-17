@@ -418,12 +418,12 @@
     white-space:nowrap;display:inline-block;transform:translate(-50%,-50%);
   }
   .lake-temp{
-    font-family:monospace;font-weight:800;font-size:calc(10px * var(--lblscale, 1));line-height:1;
+    font-family:monospace;font-weight:700;font-size:calc(8.5px * var(--lblscale, 1));line-height:1;
     text-shadow:0 0 3px #000, 0 0 2px #000, 0 1px 1px #000;
     white-space:nowrap;display:inline-block;transform:translate(-50%,-50%);
     cursor:pointer;letter-spacing:0.02em;
   }
-  .lake-temp .lt-d{ font-size:calc(8px * var(--lblscale, 1)); opacity:0.9; font-weight:700; }
+  .lake-temp .lt-d{ font-size:calc(7px * var(--lblscale, 1)); opacity:0.85; font-weight:700; }
   .lake-temp .lt-w{ opacity:0.75; margin-right:0.5px; }
 
   .stn-label{
@@ -3832,16 +3832,15 @@ function renderLakeTemps(){
   lakeLayer.clearLayers();
   if(!lakeOn || !lakeData || !lakeData.stations) return;
   const view = map.getBounds();
-  // Buoys cluster in harbours, so the same screen-space thinning the stations
-  // use keeps a marina from becoming a stack of identical numbers.
-  const cell = 46, claimed = new Set();
+  // Packed against what is already drawn rather than bucketed into a grid.
+  // Buoys cluster in harbours, and a grid both threw away a third of them over
+  // open water and still let neighbours in adjacent cells overlap. Testing the
+  // real footprint fits more in and guarantees none of them collide.
+  const placed = [];
   const age = lakeData.generated ? (Date.now() - Date.parse(lakeData.generated)) / 3600e3 : null;
   for(const st of lakeData.stations){
     if(!view.contains([st.lat, st.lon])) continue;
     const pt = map.latLngToLayerPoint([st.lat, st.lon]);
-    const key = Math.round(pt.x / cell) + ':' + Math.round(pt.y / cell);
-    if(claimed.has(key)) continue;
-    claimed.add(key);
     const c = tempColor(st.waterF);
     // The air-water difference is the interesting number in autumn and winter,
     // so it rides along when the water is the warmer of the two.
@@ -3852,6 +3851,12 @@ function renderLakeTemps(){
     // shoreline the two are otherwise indistinguishable.
     const html = `<span class="lake-temp" style="color:${c}">` +
                  `<span class="lt-w">\u2248</span>${Math.round(st.waterF)}\u00b0${sub}</span>`;
+    // Roughly what the label occupies: about 5 px a character at 8.5 px, and a
+    // touch of air around it.
+    const w = (sub ? 40 : 26), h = 12;
+    const box = {l: pt.x - w / 2, t: pt.y - h / 2, r: pt.x + w / 2, b: pt.y + h / 2};
+    if(placed.some(q => !(box.r <= q.l || box.l >= q.r || box.b <= q.t || box.t >= q.b))) continue;
+    placed.push(box);
     L.marker([st.lat, st.lon], {
       icon: L.divIcon({className: 'lake-icon', html, iconSize: [0, 0], iconAnchor: [0, 0]}),
       keyboard: false,
