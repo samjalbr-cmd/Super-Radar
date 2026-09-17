@@ -14,9 +14,10 @@ enum RadarZoomOption: String, AppEnum {
         .region: "Region · ~300 km",
         .wide:   "Wide · ~415 km",
         .state:  "State · ~530 km",
+        .tristate: "Tri-state · ~680 km",
         .multi:  "Multi-state · ~900 km",
     ]
-    case followApp, metro, county, area, region, wide, state, multi
+    case followApp, metro, county, area, region, wide, state, tristate, multi
 
     func resolve(_ appSetting: RadarZoom) -> RadarZoom {
         switch self {
@@ -27,6 +28,7 @@ enum RadarZoomOption: String, AppEnum {
         case .region: return .region
         case .wide:   return .wide
         case .state:  return .state
+        case .tristate: return .tristate
         case .multi:  return .multi
         }
     }

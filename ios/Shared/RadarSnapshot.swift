@@ -7,7 +7,7 @@ import UIKit
 /// MapKit and the radar composited on top of it, aligned by projecting the
 /// region's own corners rather than trusting two services to agree.
 enum RadarZoom: String, CaseIterable, Codable, Sendable {
-    case metro, county, area, region, wide, state, multi
+    case metro, county, area, region, wide, state, tristate, multi
 
     /// Half-width in degrees of longitude.
     var halfDegrees: Double {
@@ -18,6 +18,10 @@ enum RadarZoom: String, CaseIterable, Codable, Sendable {
         case .region: return 1.8    // ~300 km
         case .wide:   return 2.5    // ~415 km
         case .state:  return 3.2    // ~530 km
+        // The step from state to multi-state was 1.72x where every other step
+        // is about 1.35x, so the ladder had a hole in it. 4.2 is the geometric
+        // midpoint, which splits that jump into two even 1.31x steps.
+        case .tristate: return 4.2  // ~680 km
         case .multi:  return 5.5    // ~900 km
         }
     }
@@ -29,6 +33,7 @@ enum RadarZoom: String, CaseIterable, Codable, Sendable {
         case .region: return "Region"
         case .wide:   return "Wide"
         case .state:  return "State"
+        case .tristate: return "Tri-state"
         case .multi:  return "Multi-state"
         }
     }
@@ -44,7 +49,7 @@ enum RadarZoom: String, CaseIterable, Codable, Sendable {
         switch self {
         case .metro, .county, .area: return 26
         case .region, .wide:         return 30
-        case .state, .multi:         return 34
+        case .state, .tristate, .multi: return 34
         }
     }
 
@@ -54,7 +59,7 @@ enum RadarZoom: String, CaseIterable, Codable, Sendable {
         switch self {
         case .metro, .county, .area: return 6
         case .region, .wide:         return 9
-        case .state, .multi:         return 14
+        case .state, .tristate, .multi: return 14
         }
     }
 }
