@@ -162,6 +162,14 @@ enum StormFeed {
         let color: UIColor
         var label: String = ""      // "62 mph", "1.5\" hail"
         var rank: Double = 0        // higher keeps its label when two collide
+        /// Whether the value is written beside the dot.
+        ///
+        /// Spotter reports are drawn but not labelled. A single flooding
+        /// episode arrives as dozens of calls from the same few miles, and
+        /// their text was a wall of identical words; as bare dots they still
+        /// show where it happened without burying the measurements, which come
+        /// from a fixed place with a number attached and do carry their text.
+        var labelled: Bool = true
     }
 
     /// Which report keeps its label when two want the same patch of screen.
@@ -357,7 +365,8 @@ enum StormFeed {
             let color = reportColor(t)
             return Report(lat: c[1], lon: c[0], color: color,
                           label: reportLabel(type: t, magnitude: mag, unit: f.properties.unit),
-                          rank: reportRank(type: t, magnitude: mag))
+                          rank: reportRank(type: t, magnitude: mag),
+                          labelled: false)
         }
         // Worst first, so when labels compete for the same patch of screen the
         // packer keeps the tornado and drops the 41 mph gust.
