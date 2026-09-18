@@ -118,7 +118,14 @@ struct RadarProvider: AppIntentTimelineProvider {
         let zoom = config.zoom.resolve(loc.zoom)
         // The app's own setting is the default; the widget parameter can override
         // it so two widgets can differ without changing the app.
-        let reports = config.showReports && loc.showReports
+        //
+        // Station measurements are the exception: they answer to the widget's
+        // own switch alone. The stored flag beside it came from the map's
+        // spotter toggle, so a map with spotter reports switched off wrote false
+        // here and the widget drew nothing — and since the stored value only
+        // changes when the app next runs, no amount of fixing the map helped.
+        // The map always draws these; so does the widget.
+        let reports = config.showReports
         let temps = config.showTemps && loc.showTemps
         let composed = await RadarSnapshot.compose(lat: loc.lat, lon: loc.lon, zoom: zoom, size: size,
                                                    showReports: reports, showTemps: temps,

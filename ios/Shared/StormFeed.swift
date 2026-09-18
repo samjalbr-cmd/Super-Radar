@@ -26,6 +26,54 @@ struct WatchLocation: Codable {
     /// 3.4 MB; one state's network is about 100 KB, and the API accepts only one.
     var state: String? = nil
 
+    /// Decoded field by field, so a stored value written before a field existed
+    /// still loads.
+    ///
+    /// The synthesised version requires every key, which meant that adding a
+    /// setting invalidated whatever was already saved: the decode threw, load()
+    /// fell back, and the widget quietly reverted to the default location and
+    /// every default toggle until the app next ran and wrote the new shape. It
+    /// looked like settings being ignored, and it happened on every release that
+    /// added one.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        lat  = try c.decode(Double.self, forKey: .lat)
+        lon  = try c.decode(Double.self, forKey: .lon)
+        name = (try? c.decode(String.self, forKey: .name)) ?? ""
+        func flag(_ k: CodingKeys, _ fallback: Bool) -> Bool {
+            (try? c.decodeIfPresent(Bool.self, forKey: k)) .flatMap { $0 } ?? fallback
+        }
+        showReports    = flag(.showReports, true)
+        showTemps      = flag(.showTemps, true)
+        showAlerts     = flag(.showAlerts, true)
+        showDiscussion = flag(.showDiscussion, true)
+        showOutlook    = flag(.showOutlook, true)
+        showFronts     = flag(.showFronts, true)
+        stationModel   = flag(.stationModel, false)
+        showIsobars    = flag(.showIsobars, true)
+        showMarine     = flag(.showMarine, false)
+        showLake       = flag(.showLake, true)
+        showSpotter    = flag(.showSpotter, true)
+        zoom  = ((try? c.decodeIfPresent(RadarZoom.self, forKey: .zoom)) ?? nil) ?? .county
+        state = (try? c.decodeIfPresent(String.self, forKey: .state)) ?? nil
+    }
+
+    /// The memberwise initialiser, which the custom decoder above suppresses.
+    init(lat: Double, lon: Double, name: String,
+         showReports: Bool = true, showTemps: Bool = true, showAlerts: Bool = true,
+         showDiscussion: Bool = true, showOutlook: Bool = true, showFronts: Bool = true,
+         stationModel: Bool = false, showIsobars: Bool = true, showMarine: Bool = false,
+         showLake: Bool = true, showSpotter: Bool = true,
+         zoom: RadarZoom = .county, state: String? = nil) {
+        self.lat = lat; self.lon = lon; self.name = name
+        self.showReports = showReports; self.showTemps = showTemps; self.showAlerts = showAlerts
+        self.showDiscussion = showDiscussion; self.showOutlook = showOutlook
+        self.showFronts = showFronts; self.stationModel = stationModel
+        self.showIsobars = showIsobars; self.showMarine = showMarine
+        self.showLake = showLake; self.showSpotter = showSpotter
+        self.zoom = zoom; self.state = state
+    }
+
     static let appGroup = "group.com.samjalbr.nightwatch"
     static let key = "watchLocation"
     static let fallback = WatchLocation(lat: 42.907058, lon: -85.763014, name: "Grand Rapids",
