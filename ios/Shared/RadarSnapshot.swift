@@ -392,19 +392,25 @@ enum RadarSnapshot {
         // view, so resolve the list once and share it.
         let wantTemps = showTemps && zoom.showsTemperatures
         var states: [String] = []
-        if wantTemps || showAlerts {
+        if wantTemps || showAlerts || showReports {
             // A table lookup now, so it costs nothing to ask for every state the
             // view touches — capped only to bound the station fetches that follow.
             states = Array(StormFeed.statesCovering(sw: sw, ne: ne, fallback: state)
                 .prefix(zoom.maxStates))
         }
-        let temps: [StormFeed.Station] = wantTemps
+        // Stations are fetched for either layer. The measured pins were built
+        // from whatever the temperature layer happened to fetch, which quietly
+        // tied one to the other: turning temperatures off took the gust and
+        // rain pins with them, though they are a separate thing entirely.
+        let needStations = wantTemps || showReports
+        let observed: [StormFeed.Station] = needStations
             ? await StormFeed.stations(states: states, sw: sw, ne: ne) : []
+        let temps: [StormFeed.Station] = wantTemps ? observed : []
         // What stations have measured reads as a report on the map, so it joins
         // them and is packed in the same pass — worst first, so a 70 mph gust
         // keeps its label over a 42 mph one.
-        if showReports && !temps.isEmpty {
-            reports += StormFeed.observationReports(temps)
+        if showReports && !observed.isEmpty {
+            reports += StormFeed.observationReports(observed)
             reports.sort { $0.rank > $1.rank }
         }
         // Marine areas go in alongside the states, or warnings over water — a

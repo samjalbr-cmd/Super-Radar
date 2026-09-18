@@ -223,6 +223,24 @@ enum StormFeed {
         return reportDamage.contains(t)
     }
 
+    /// Report colour by type, matching the dashboard's lsrColor exactly.
+    ///
+    /// The two had drifted: the widget's blues and greens were a shade off, and
+    /// it had no case for snow or ice at all, so a blizzard report came out the
+    /// same purple as anything unrecognised.
+    static func reportColor(_ type: String) -> UIColor {
+        let t = type.uppercased()
+        func rgb(_ r: Int, _ g: Int, _ b: Int) -> UIColor {
+            UIColor(red: CGFloat(r)/255, green: CGFloat(g)/255, blue: CGFloat(b)/255, alpha: 1)
+        }
+        if t.contains("TORNADO") || t.contains("FUNNEL") || t.contains("WALL CLOUD") { return rgb(225, 6, 0) }
+        if t.contains("HAIL") { return rgb(0, 224, 208) }
+        if t.contains("WND") || t.contains("WIND") || t.contains("GUST") { return rgb(58, 160, 255) }
+        if t.contains("FLOOD") || t.contains("FLD") || t.contains("RAIN") { return rgb(46, 204, 113) }
+        if t.contains("SNOW") || t.contains("ICE") || t.contains("SLEET") || t.contains("BLIZZARD") { return rgb(207, 232, 255) }
+        return rgb(183, 111, 255)
+    }
+
     /// Short names for reports that carry no magnitude, where the type is the
     /// whole message. Without these the widget drew an unlabelled dot for a
     /// storm surge, a landspout, a waterspout or a wildfire.
@@ -249,20 +267,20 @@ enum StormFeed {
                 let mph = kt * 1.15078
                 if mph >= ReportMin.wind {
                     out.append(Report(lat: st.lat, lon: st.lon,
-                                      color: UIColor(red: 0.23, green: 0.63, blue: 1, alpha: 1),
+                                      color: reportColor("WND GST"),
                                       label: "\(Int(mph.rounded())) mph",
                                       rank: reportRank(type: "WND GST", magnitude: mph)))
                 }
             }
             if let r = st.rainIn, r >= ReportMin.rain {
                 out.append(Report(lat: st.lat, lon: st.lon,
-                                  color: UIColor(red: 0.18, green: 0.80, blue: 0.44, alpha: 1),
+                                  color: reportColor("RAIN"),
                                   label: "\(trimmed(r))\" rain",
                                   rank: reportRank(type: "RAIN", magnitude: r)))
             }
             if let sn = st.snowIn, sn >= ReportMin.snow {
                 out.append(Report(lat: st.lat, lon: st.lon,
-                                  color: UIColor(red: 0.85, green: 0.92, blue: 1.0, alpha: 1),
+                                  color: reportColor("SNOW"),
                                   label: "\(trimmed(sn))\" snow",
                                   rank: reportRank(type: "SNOW", magnitude: sn)))
             }
@@ -336,12 +354,7 @@ enum StormFeed {
             let t = (f.properties.typetext ?? "").uppercased()
             let mag = f.properties.magnitude?.value
             guard reportKeep(type: t, magnitude: mag) else { return nil }
-            let color: UIColor
-            if t.contains("TORNADO") || t.contains("FUNNEL") { color = UIColor(red: 0.88, green: 0.02, blue: 0, alpha: 1) }
-            else if t.contains("HAIL") { color = UIColor(red: 0, green: 0.88, blue: 0.82, alpha: 1) }
-            else if t.contains("WIND") || t.contains("TSTM") { color = UIColor(red: 0.23, green: 0.63, blue: 1, alpha: 1) }
-            else if t.contains("FLOOD") || t.contains("RAIN") { color = UIColor(red: 0.18, green: 0.80, blue: 0.44, alpha: 1) }
-            else { color = UIColor(red: 0.72, green: 0.44, blue: 1, alpha: 1) }
+            let color = reportColor(t)
             return Report(lat: c[1], lon: c[0], color: color,
                           label: reportLabel(type: t, magnitude: mag, unit: f.properties.unit),
                           rank: reportRank(type: t, magnitude: mag))
