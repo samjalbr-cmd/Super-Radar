@@ -313,6 +313,14 @@
     font-family:monospace;font-size:11px;color:var(--dim);letter-spacing:0.03em;
   }
   #afdStatus.show{display:flex;}
+  #hiddenStatus{
+    display:none; pointer-events:auto; cursor:pointer;
+    font-family:monospace; font-size:11px; color:var(--dim);
+    background:var(--panel); border:1px solid var(--border); border-radius:10px;
+    padding:6px 10px; backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+  }
+  #hiddenStatus:hover{ color:#F5F3EC; }
+
   #isoStatus{
     padding:7px 11px;display:none;align-items:center;gap:7px;align-self:flex-start;max-width:100%;
     background:var(--panel);border:1px solid var(--border);border-radius:10px;
@@ -631,6 +639,7 @@
   <div id="precipStatus"><span class="sw" id="precipSw"></span><span id="precipStatusText"></span></div>
   <div id="afdStatus"><span class="sw" style="background:#F2B705"></span><span id="afdStatusText"></span></div>
   <div id="isoStatus"><span class="sw" style="background:#9FB3C8"></span><span id="isoStatusText"></span></div>
+  <div id="hiddenStatus" onclick="toggleSettings(true)" title="Open settings"></div>
   <div id="arrival"></div>
 </div>
 <div id="replayBar" class="live">
@@ -1641,6 +1650,39 @@ setInterval(() => {
    outlines, and Local Storm Reports. Each lives in its own layer
    group toggled from the settings panel.                        */
 const spcVisible = {outlook:true, mcd:true, lsr:true};
+// Say so when a layer is switched off.
+//
+// Settings persist now, so a layer turned off once stays off on every later
+// visit — and an empty map looks identical whether there is no weather or the
+// layer is simply hidden. That cost an evening: storm reports were off in
+// saved settings while the widget, which keeps its own toggles, went on showing
+// them, and the two looked like they disagreed about the weather.
+const HIDEABLE = [
+  ['Storm reports', () => spcVisible.lsr],
+  ['SPC outlook',   () => spcVisible.outlook],
+  ['Discussions',   () => spcVisible.mcd],
+  ['Stations',      () => stationsOn],
+  ['Lake temps',    () => lakeOn],
+  ['Fronts',        () => sfcOn],
+  ['Isobars',       () => isobarsOn],
+  ['Discussion areas', () => afdAreasOn],
+  ['Warnings',      () => hazardVisible.tornado || hazardVisible.thunderstorm || hazardVisible.flood],
+];
+
+function renderHiddenStatus(){
+  const el = document.getElementById('hiddenStatus');
+  if(!el) return;
+  let off = [];
+  for(const [name, on] of HIDEABLE){
+    try{ if(!on()) off.push(name); }catch(e){}
+  }
+  if(!off.length){ el.style.display = 'none'; return; }
+  el.style.display = 'block';
+  el.textContent = off.length <= 2 ? off.join(' and ') + ' hidden'
+                                   : off.length + ' layers hidden';
+  el.title = 'Hidden: ' + off.join(', ') + ' \u2014 tap to open settings';
+}
+
 function toggleSpc(cb){
   const key = cb.dataset.spc;
   spcVisible[key] = cb.checked;
@@ -1765,7 +1807,9 @@ function renderLSR(){
       .sort((a, z) => lsrRank(z.properties.typetext, z.properties.magnitude)
                    - lsrRank(a.properties.typetext, a.properties.magnitude));
     const sig = shown.map(f => f.properties.valid + f.properties.typetext).join('|')
-              + '@' + map.getZoom() + ',' + Math.round(map.getCenter().lat * 50);
+              + '@' + map.getZoom() + ',' + Math.round(map.getCenter().lat * 50)
+              + ',' + Math.round(map.getCenter().lng * 50);   // longitude too, or an
+                                                             // east-west pan looks unchanged
     if(sig === sigLSR) return;
     sigLSR = sig;
     lsrLayer.clearLayers();
@@ -3958,7 +4002,8 @@ function renderAfdAreas(){
   if(!afdHazardLayer) return;
   renderAfdStatus();
   if(!afdAreasOn || !afdAreas || !afdAreas.offices){ afdHazardLayer.clearLayers(); sigAfd = null; return; }
-  let sig = '' + map.getZoom() + Math.round(map.getCenter().lat * 50);
+  let sig = '' + map.getZoom() + ',' + Math.round(map.getCenter().lat * 50)
+                                + ',' + Math.round(map.getCenter().lng * 50);
   for(const w in afdAreas.offices)
     for(const a of (afdAreas.offices[w].areas || []))
       sig += '|' + (afdWindowState(a, afdAreas.offices[w]) || '-');
@@ -5098,10 +5143,11 @@ function restoreSettings(){
     }
   }
   prefsReady = true;
+  renderHiddenStatus();
   // One delegated listener covers every control, including any added later.
   const panel = document.getElementById('settingsPanel');
   if(panel){
-    panel.addEventListener('change', saveSettings);
+    panel.addEventListener('change', () => { saveSettings(); renderHiddenStatus(); });
     panel.addEventListener('input', e => { if(e.target.type === 'range') saveSettings(); });
   }
 }
