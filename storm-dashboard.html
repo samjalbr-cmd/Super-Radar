@@ -1985,7 +1985,12 @@ function syncAppSettings(){
         // The widget draws temperatures, so it cares whether stations are on
         // AND whether the metric being shown is actually a temperature.
         showTemps: !!stationsOn && (stationMetric === 'temp' || stationMetric === 'feel' || stationMetric === 'dwpf'),
-        showReports: !!spcVisible.lsr,
+        // The widget draws two things here: what stations have measured, which
+        // the map always shows, and the spotter reports, which have a toggle.
+        // Sending one flag for both meant switching the spotter layer off here
+        // took the measurements with it and left the widget with nothing.
+        showReports: true,
+        showSpotter: !!spcVisible.lsr,
         showAlerts: !!(hazardVisible.tornado || hazardVisible.thunderstorm || hazardVisible.flood),
         showDiscussion: !!afdAreasOn,
         showOutlook: !!(spcVisible.outlook || spcVisible.mcd),

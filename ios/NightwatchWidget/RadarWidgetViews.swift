@@ -73,4 +73,7 @@ struct RadarConfig: WidgetConfigurationIntent {
 
     @Parameter(title: "Lake water temperature", default: true)
     var showLake: Bool
+
+    @Parameter(title: "Spotter report dots", default: true)
+    var showSpotter: Bool
 }

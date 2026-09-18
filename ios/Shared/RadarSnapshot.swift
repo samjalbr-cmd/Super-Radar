@@ -351,7 +351,7 @@ enum RadarSnapshot {
                         showDiscussion: Bool,
                         showOutlook: Bool, showFronts: Bool, stationModel: Bool,
                         showIsobars: Bool, showMarine: Bool, showLake: Bool,
-                        state: String?) async -> (image: UIImage, hasEcho: Bool)? {
+                        showSpotter: Bool, state: String?) async -> (image: UIImage, hasEcho: Bool)? {
         let half = zoom.halfDegrees
 
         // Framed as a projected rect, not a coordinate span. A degree of
@@ -387,7 +387,11 @@ enum RadarSnapshot {
         // Height follows from the box's aspect, so the returned extent is the
         // box asked for rather than one ArcGIS has reshaped.
         let render = await StormFeed.radarImage(sw: sw, ne: ne, pixelsWide: Int(size.width * 2))
-        var reports = showReports ? await StormFeed.recentReports(sw: sw, ne: ne) : []
+        // Spotter reports are the dots; the station measurements added below are
+        // the labelled ones. They answer to separate switches because the map
+        // treats them separately — one has a toggle, the other is always drawn.
+        var reports = (showReports && showSpotter)
+            ? await StormFeed.recentReports(sw: sw, ne: ne) : []
         // Both temperatures and the alert query are scoped by the states in
         // view, so resolve the list once and share it.
         let wantTemps = showTemps && zoom.showsTemperatures
