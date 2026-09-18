@@ -387,7 +387,12 @@ enum RadarSnapshot {
         // Height follows from the box's aspect, so the returned extent is the
         // box asked for rather than one ArcGIS has reshaped.
         let render = await StormFeed.radarImage(sw: sw, ne: ne, pixelsWide: Int(size.width * 2))
-        var reports = showReports ? await StormFeed.recentReports(sw: sw, ne: ne) : []
+        // Station measurements only. The spotter feed is dense — a single
+        // flooding episode arrives as dozens of separate calls from the same few
+        // miles — and on a widget that became a wall of identical green dots
+        // with nothing to tell them apart. A station reports once, from a fixed
+        // and known place, with a number attached.
+        var reports: [StormFeed.Report] = []
         // Both temperatures and the alert query are scoped by the states in
         // view, so resolve the list once and share it.
         let wantTemps = showTemps && zoom.showsTemperatures
