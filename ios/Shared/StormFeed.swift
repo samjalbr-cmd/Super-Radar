@@ -236,6 +236,40 @@ enum StormFeed {
         "SNOW SQUALL": "snow squall", "DUST STORM": "dust storm",
     ]
 
+    /// Pins for what stations have measured, as the dashboard draws them.
+    ///
+    /// These are a separate feed from the spotter reports — measured at an ASOS
+    /// site rather than phoned in — but on the map they read the same way, and
+    /// the widget was drawing none of them. They pass the same thresholds as
+    /// everything else: forty miles an hour, an inch of rain, two of snow.
+    static func observationReports(_ stations: [Station]) -> [Report] {
+        var out: [Report] = []
+        for st in stations {
+            if let kt = st.peakGustKt {
+                let mph = kt * 1.15078
+                if mph >= ReportMin.wind {
+                    out.append(Report(lat: st.lat, lon: st.lon,
+                                      color: UIColor(red: 0.23, green: 0.63, blue: 1, alpha: 1),
+                                      label: "\(Int(mph.rounded())) mph",
+                                      rank: reportRank(type: "WND GST", magnitude: mph)))
+                }
+            }
+            if let r = st.rainIn, r >= ReportMin.rain {
+                out.append(Report(lat: st.lat, lon: st.lon,
+                                  color: UIColor(red: 0.18, green: 0.80, blue: 0.44, alpha: 1),
+                                  label: "\(trimmed(r))\" rain",
+                                  rank: reportRank(type: "RAIN", magnitude: r)))
+            }
+            if let sn = st.snowIn, sn >= ReportMin.snow {
+                out.append(Report(lat: st.lat, lon: st.lon,
+                                  color: UIColor(red: 0.85, green: 0.92, blue: 1.0, alpha: 1),
+                                  label: "\(trimmed(sn))\" snow",
+                                  rank: reportRank(type: "SNOW", magnitude: sn)))
+            }
+        }
+        return out
+    }
+
     /// The value a report is worth showing, matching the dashboard's wording
     /// exactly — the two are checked against each other over the whole feed.
     static func reportLabel(type: String, magnitude: Double?, unit: String?) -> String {
@@ -664,6 +698,12 @@ enum StormFeed {
         var windDir: Double? = nil
         var sky: String? = nil      // CLR, FEW, SCT, BKN, OVC, VV
         var wx: String? = nil       // METAR present-weather codes
+        // What the site has measured, as distinct from what it is doing now.
+        // The dashboard draws pins from these — a peak gust, a rain total —
+        // and the widget was not carrying them at all.
+        var peakGustKt: Double? = nil
+        var rainIn: Double? = nil
+        var snowIn: Double? = nil
     }
 
     /// The ground each state's ASOS network covers, derived once from the
@@ -799,6 +839,9 @@ enum StormFeed {
                     let tmpf: Double?; let dwpf: Double?; let mslp: Double?
                     let sknt: Double?; let drct: Double?
                     let skyc1: String?; let wxcodes: WxCodes?
+                    let gust: Double?; let max_gust: Double?; let utc_max_gust_ts: String?
+                    let pday: Double?; let phour: Double?
+                    let snow: Double?; let snowd: Double?
                 }
                 let geometry: G?; let properties: P
             }
@@ -830,11 +873,23 @@ enum StormFeed {
                               c[0] >= sw.longitude, c[0] <= ne.longitude else { return nil }
                         let sky = p.skyc1?.trimmingCharacters(in: .whitespaces)
                         let wx = p.wxcodes?.joined?.trimmingCharacters(in: .whitespaces)
+                        // The day's peak gust, but only while it is recent — an
+                        // afternoon high is not news at midnight. Three hours,
+                        // matching the dashboard.
+                        var peak: Double? = p.gust
+                        if let mg = p.max_gust, let ts = p.utc_max_gust_ts,
+                           let when = ISO8601DateFormatter().date(from: ts),
+                           Date().timeIntervalSince(when) <= 3 * 3600 {
+                            peak = max(mg, peak ?? 0)
+                        }
                         return Station(lat: c[1], lon: c[0], tempF: t,
                                        dewF: p.dwpf, mslp: p.mslp,
                                        windKt: p.sknt, windDir: p.drct,
                                        sky: (sky?.isEmpty ?? true) ? nil : sky,
-                                       wx: (wx?.isEmpty ?? true) ? nil : wx)
+                                       wx: (wx?.isEmpty ?? true) ? nil : wx,
+                                       peakGustKt: peak,
+                                       rainIn: (p.pday ?? 0) > 0 ? p.pday : p.phour,
+                                       snowIn: (p.snow ?? 0) > 0 ? p.snow : p.snowd)
                     }
                 }
             }

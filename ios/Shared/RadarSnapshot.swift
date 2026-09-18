@@ -387,7 +387,7 @@ enum RadarSnapshot {
         // Height follows from the box's aspect, so the returned extent is the
         // box asked for rather than one ArcGIS has reshaped.
         let render = await StormFeed.radarImage(sw: sw, ne: ne, pixelsWide: Int(size.width * 2))
-        let reports = showReports ? await StormFeed.recentReports(sw: sw, ne: ne) : []
+        var reports = showReports ? await StormFeed.recentReports(sw: sw, ne: ne) : []
         // Both temperatures and the alert query are scoped by the states in
         // view, so resolve the list once and share it.
         let wantTemps = showTemps && zoom.showsTemperatures
@@ -400,6 +400,13 @@ enum RadarSnapshot {
         }
         let temps: [StormFeed.Station] = wantTemps
             ? await StormFeed.stations(states: states, sw: sw, ne: ne) : []
+        // What stations have measured reads as a report on the map, so it joins
+        // them and is packed in the same pass — worst first, so a 70 mph gust
+        // keeps its label over a 42 mph one.
+        if showReports && !temps.isEmpty {
+            reports += StormFeed.observationReports(temps)
+            reports.sort { $0.rank > $1.rank }
+        }
         // Marine areas go in alongside the states, or warnings over water — a
         // gale on the lakes, say — never appear at all.
         let alertAreas = showAlerts
