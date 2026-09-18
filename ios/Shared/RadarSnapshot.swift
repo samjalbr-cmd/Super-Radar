@@ -706,9 +706,7 @@ enum RadarSnapshot {
                 let coarse = Int64(p.x / cell) &* 1000 &+ Int64(p.y / cell)
                 // A wave marks it as water. The colour is the same ramp as the
                 // air temperatures, so a number means the same thing either way.
-                var label = "\u{2248}\(Int(w.waterF.rounded()))"
-                if let air = w.airF, w.waterF - air >= 4 { label += " +\(Int((w.waterF - air).rounded()))" }
-                let text = label as NSString
+                let text = "\u{2248}\(Int(w.waterF.rounded()))" as NSString
                 let attrs: [NSAttributedString.Key: Any] = [
                     .font: UIFont.monospacedDigitSystemFont(ofSize: 8, weight: .semibold),
                     .foregroundColor: tempColor(w.waterF),
