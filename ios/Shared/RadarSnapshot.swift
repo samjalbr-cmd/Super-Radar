@@ -415,6 +415,10 @@ enum RadarSnapshot {
         // keeps its label over a 42 mph one.
         if showReports && !observed.isEmpty {
             reports += StormFeed.observationReports(observed)
+            // Only the live view records what the temperatures were; a replayed
+            // or preview render must not overwrite that history with readings
+            // from another moment.
+            reports += StormFeed.temperatureShifts(observed)
             reports.sort { $0.rank > $1.rank }
         }
         // Marine areas go in alongside the states, or warnings over water — a

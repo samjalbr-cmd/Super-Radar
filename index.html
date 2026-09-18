@@ -4856,7 +4856,10 @@ function collectEvents(){
   for(const e of tempEvents){
     if(!inView(e.lat, e.lon)) continue;
     const rising = e.to > e.from;
-    ev.push({cat: 'obs', rank: 20, key: 't' + e.name + e.time, t: e.time,
+    // Rank 40 is the line for carrying a visible value, and these sat at 20 —
+    // so a frontal passage drew a dot that looked like any other dot, with the
+    // one number that makes it interesting left off.
+    ev.push({cat: 'obs', rank: 40, key: 't' + e.name + e.time, t: e.time,
       color: rising ? '#FF7A00' : '#3AA0FF',
       main: `Temp ${rising ? '▲' : '▼'} ${Math.round(e.from)}° → ${Math.round(e.to)}°`,
       pin: `${Math.round(e.to)}°${rising ? '▲' : '▼'}`,

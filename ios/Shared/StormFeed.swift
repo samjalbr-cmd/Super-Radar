@@ -311,6 +311,45 @@ enum StormFeed {
         "SNOW SQUALL": "snow squall", "DUST STORM": "dust storm",
     ]
 
+    /// Stations whose temperature has moved sharply since the last refresh.
+    ///
+    /// A widget snapshot is a fresh process with no memory of the one before,
+    /// so the previous reading is kept in the shared store and compared on the
+    /// next run. The dashboard does the same thing in memory, which is why it
+    /// only notices while the page stays open; here it survives between
+    /// refreshes, which is the more useful half.
+    ///
+    /// Seven degrees is the dashboard's threshold, and it is what a front
+    /// crossing a station looks like.
+    static func temperatureShifts(_ stations: [Station]) -> [Report] {
+        let store = UserDefaults(suiteName: WatchLocation.appGroup)
+        let key = "lastTemps"
+        let previous = (store?.dictionary(forKey: key) as? [String: Double]) ?? [:]
+
+        var current: [String: Double] = [:]
+        var out: [Report] = []
+        for st in stations {
+            // Position is the identity: the feed's own id is not carried on the
+            // Station, and a buoy or site does not move.
+            let id = String(format: "%.3f,%.3f", st.lat, st.lon)
+            current[id] = st.tempF
+            guard let was = previous[id] else { continue }
+            let delta = st.tempF - was
+            guard abs(delta) >= 7 else { continue }
+            let rising = delta > 0
+            out.append(Report(
+                lat: st.lat, lon: st.lon,
+                color: rising ? UIColor(red: 1.0, green: 0.48, blue: 0, alpha: 1)
+                              : UIColor(red: 0.23, green: 0.63, blue: 1, alpha: 1),
+                label: "\(Int(st.tempF.rounded()))\u{00B0}" + (rising ? "\u{25B2}" : "\u{25BC}"),
+                // Above a gust but below anything severe: a front is worth
+                // seeing, and worth less than a tornado.
+                rank: 58 + min(abs(delta), 40) / 100))
+        }
+        store?.set(current, forKey: key)
+        return out
+    }
+
     /// Pins for what stations have measured, as the dashboard draws them.
     ///
     /// These are a separate feed from the spotter reports — measured at an ASOS
