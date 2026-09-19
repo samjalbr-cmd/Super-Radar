@@ -1,57 +1,57 @@
 {
- "generated": "2026-09-18T22:58:21.168Z",
+ "generated": "2026-09-19T12:50:11.700Z",
  "offices": {
   "GRR": {
-   "product": "0ae45f67-c92f-48c5-a2f2-bf6571c95321",
-   "issued": "2026-09-18T19:28:00+00:00",
+   "product": "bba28fca-964c-4683-99db-3d451232f5d3",
+   "issued": "2026-09-19T10:49:00+00:00",
    "office": "Grand Rapids MI",
-   "headline": "Flood Watch: 2-4 inches of rain for SW Lower Michigan this weekend",
+   "headline": "Heavy rain through tonight; Flood Watch for SW Lower Michigan",
    "areas": [
     {
      "hazard": "flash flooding",
-     "label": "Flood Watch, 2-4 inch rainfall",
+     "label": "Flood Watch, heavy rain bursts",
      "confidence": "high",
-     "start": "2026-09-19T06:00:00.000Z",
+     "start": "2026-09-19T10:49:00.000Z",
      "end": "2026-09-20T14:00:00.000Z",
-     "quote": "We have gone ahead an issued a Flood Watch for Allegan, Barry, Van\nBuren, Kalamazoo and Calhoun Counties.",
+     "quote": "The highest potential for this is where the Flood Watch is across the SW corner of the forecast area.",
      "polygon": [
+      [
+       42.08,
+       -86.22
+      ],
+      [
+       42.08,
+       -84.95
+      ],
+      [
+       42.78,
+       -84.95
+      ],
+      [
+       42.78,
+       -85.85
+      ],
       [
        42.77,
        -86.21
       ],
       [
-       42.77,
-       -84.9
-      ],
-      [
-       42.07,
-       -84.9
-      ],
-      [
-       42.07,
-       -86.22
+       42.45,
+       -86.26
       ],
       [
        42.24,
-       -86.22
-      ],
-      [
-       42.42,
-       -86.27
-      ],
-      [
-       42.59,
-       -86.23
+       -86.36
       ]
      ]
     },
     {
      "hazard": "heavy rain",
-     "label": "1-2 inches of rain",
+     "label": "Periods of rain, locally heavy",
      "confidence": "medium",
-     "start": "2026-09-19T04:00:00.000Z",
-     "end": "2026-09-20T04:00:00.000Z",
-     "quote": "1 to 2 inch amounts are likely outside of those\n5 counties.",
+     "start": "2026-09-19T10:49:00.000Z",
+     "end": "2026-09-20T12:00:00.000Z",
+     "quote": "Periods of rain through tonight, locally heavy at times",
      "polygon": [
       [
        44.18,
@@ -82,8 +82,8 @@
        -86.22
       ],
       [
-       42.45,
-       -86.26
+       42.24,
+       -86.36
       ],
       [
        42.99,
@@ -98,84 +98,130 @@
        -86.46
       ]
      ]
+    },
+    {
+     "hazard": "marine",
+     "label": "Small Craft Advisory likely Sunday",
+     "confidence": "medium",
+     "start": "2026-09-20T10:00:00.000Z",
+     "end": "2026-09-21T06:00:00.000Z",
+     "quote": "Sunday looks like a better shot of needed a Small Craft Advisory, \nmainly due to the winds.",
+     "polygon": [
+      [
+       42.24,
+       -86.36
+      ],
+      [
+       42.45,
+       -86.26
+      ],
+      [
+       42.99,
+       -86.23
+      ],
+      [
+       43.63,
+       -86.54
+      ],
+      [
+       44.06,
+       -86.52
+      ],
+      [
+       44.18,
+       -86.39
+      ],
+      [
+       44,
+       -86.3
+      ],
+      [
+       43.4,
+       -86.1
+      ],
+      [
+       42.8,
+       -86.15
+      ],
+      [
+       42.24,
+       -86.25
+      ]
+     ]
     }
    ]
   },
   "DTX": {
-   "product": "c12a7501-19b6-498d-9631-a3f586b93cfd",
-   "issued": "2026-09-18T22:42:00+00:00",
+   "product": "e658e8ad-0d3e-4d41-a75f-9b19a25b4a44",
+   "issued": "2026-09-19T10:47:00+00:00",
    "office": "Detroit/Pontiac MI",
-   "headline": "Soaking rain, up to 2+ inches, favored south of M-59 this weekend",
+   "headline": "Rounds of rain, heaviest south of I-94 and M-59 into Sunday AM",
    "areas": [
     {
      "hazard": "heavy rain",
-     "label": "Heaviest rain south of M-59",
+     "label": "Heavier rain, storms south of I-94",
      "confidence": "high",
-     "start": "2026-09-19T12:00:00.000Z",
-     "end": "2026-09-20T18:00:00.000Z",
-     "quote": "Then moderate rainfall rates and potential for training/repeated showers is more favored to occur from Saturday night into Sunday morning, especially for areas south of M-59.",
+     "start": "2026-09-19T13:00:00.000Z",
+     "end": "2026-09-19T19:00:00.000Z",
+     "quote": "Potential exists for a brief period of heavier rain and some thunderstorms later this morning, mainly along or south of the I-94 corridor.",
      "polygon": [
       [
-       41.72,
-       -84.35
-      ],
-      [
-       42.85,
-       -84.2
-      ],
-      [
-       42.9,
-       -82.7
+       42.3,
+       -84.3
       ],
       [
        42.3,
-       -82.6
+       -83
       ],
       [
-       41.74,
+       42.05,
+       -82.55
+      ],
+      [
+       41.71,
        -83.42
+      ],
+      [
+       41.72,
+       -84.35
       ]
      ]
     },
     {
-     "hazard": "heavy rain",
-     "label": "1+ inch Saginaw Valley to Port Huron",
+     "hazard": "flash flooding",
+     "label": "Training heavy rain, urban ponding",
      "confidence": "medium",
-     "start": "2026-09-19T12:00:00.000Z",
-     "end": "2026-09-20T18:00:00.000Z",
-     "quote": "Forecast rainfall totals have trended toward a broader area of higher total rainfall amounts across the Saginaw Valley towards Port Huron area.",
+     "start": "2026-09-20T04:00:00.000Z",
+     "end": "2026-09-20T12:00:00.000Z",
+     "quote": "This period carries a higher probability for moderate to heavy rates with potential for training/repeated showers, especially for areas south of M-59.",
      "polygon": [
       [
-       43.7,
-       -84.3
+       42.75,
+       -84.25
       ],
       [
-       43.9,
-       -83.3
+       42.75,
+       -82.75
       ],
       [
-       43.2,
-       -82.6
+       42.3,
+       -82.55
       ],
       [
-       42.9,
-       -82.7
+       41.71,
+       -83.42
       ],
       [
-       43,
-       -83.8
-      ],
-      [
-       43.3,
-       -84.5
+       41.72,
+       -84.35
       ]
      ]
     },
     {
      "hazard": "marine",
-     "label": "NE winds 25-30 kt on Lake Huron",
+     "label": "NE winds 25-30 kt on the lakes",
      "confidence": "medium",
-     "start": "2026-09-20T06:00:00.000Z",
+     "start": "2026-09-20T12:00:00.000Z",
      "end": "2026-09-21T18:00:00.000Z",
      "quote": "Tightening of the gradient on the backside of the exiting low will ramp northeast winds back up on Sunday reaching 25 to 30 knots.",
      "polygon": [
@@ -185,209 +231,263 @@
       ],
       [
        43.6,
-       -83.66
+       -83.65
       ],
       [
-       43.2,
-       -82.9
+       43,
+       -82.45
       ],
       [
-       42.7,
+       42.55,
+       -82.5
+      ],
+      [
+       42.05,
+       -83.1
+      ],
+      [
+       41.75,
+       -83.45
+      ],
+      [
+       41.95,
        -82.6
       ],
       [
-       43.4,
-       -82.55
+       43.2,
+       -82.2
       ]
      ]
     }
    ]
   },
   "APX": {
-   "product": "e71cf2fd-b921-4ac7-befa-aecb82c9c2ef",
-   "issued": "2026-09-18T18:19:00+00:00",
+   "product": "e4e0d201-d1b5-428e-81aa-62db0a2cd974",
+   "issued": "2026-09-19T09:39:00+00:00",
    "office": "Gaylord MI",
-   "headline": "Weekend rain focused south of M-55; patchy frost early next week",
+   "headline": "Light rain south of M-32 today; patchy fog tonight, then quiet",
    "areas": [
     {
-     "hazard": "heavy rain",
-     "label": "Heaviest rain south of M-55",
-     "confidence": "medium",
-     "start": "2026-09-19T16:00:00.000Z",
-     "end": "2026-09-20T12:00:00.000Z",
-     "quote": "As of right now, it looks like M-55 will be the dividing line between heavier rains to the south and much lighter rain to the north.",
-     "polygon": [
-      [
-       44.4,
-       -86.1
-      ],
-      [
-       44.42,
-       -85
-      ],
-      [
-       44.4,
-       -83.5
-      ],
-      [
-       44.05,
-       -83.58
-      ],
-      [
-       44.18,
-       -86.39
-      ]
-     ]
-    },
-    {
-     "hazard": "frost",
-     "label": "Patchy frost early next week",
-     "confidence": "medium",
-     "start": "2026-09-21T06:00:00.000Z",
-     "end": "2026-09-22T13:00:00.000Z",
-     "quote": "These cooler temperatures will also bring about chances of at least patchy frost early next week.",
+     "hazard": "dense fog",
+     "label": "Patchy mist/fog overnight",
+     "confidence": "low",
+     "start": "2026-09-20T02:00:00.000Z",
+     "end": "2026-09-20T14:00:00.000Z",
+     "quote": "Combination of those light winds and increasing low level moisture may result in some patchy mist/fog tonight as well.",
      "polygon": [
       [
        45.78,
        -84.75
       ],
       [
-       45.3,
-       -85.6
-      ],
-      [
-       44.18,
-       -86.39
+       45.27,
+       -83.38
       ],
       [
        44.05,
        -83.58
       ],
       [
-       45.27,
-       -83.38
+       44.18,
+       -86.39
+      ],
+      [
+       45.4,
+       -85.6
+      ]
+     ]
+    },
+    {
+     "hazard": "heavy rain",
+     "label": "Quarter to half inch of rain",
+     "confidence": "medium",
+     "start": "2026-09-19T15:00:00.000Z",
+     "end": "2026-09-20T06:00:00.000Z",
+     "quote": "Latest high-resolution guidance keeps measurable rainfall south of the M-32 corridor, with highest amounts of a general quarter to half inch along and south of Grand Traverse Bay.",
+     "polygon": [
+      [
+       44.9,
+       -85.7
+      ],
+      [
+       44.95,
+       -84
+      ],
+      [
+       44.05,
+       -83.6
+      ],
+      [
+       44.18,
+       -86.39
       ]
      ]
     }
    ]
   },
   "MQT": {
-   "product": "51dbf73c-5a3a-4c39-bbfa-49d01bb41a1a",
-   "issued": "2026-09-18T18:09:00+00:00",
+   "product": "2ca8e469-c418-4b91-af01-14523cbbfaec",
+   "issued": "2026-09-19T11:36:00+00:00",
    "office": "Marquette MI",
-   "headline": "Light rain south of US-2; patchy frost possible inland tonight",
+   "headline": "Gusty NE winds bring hazardous Lake Superior swim/rip current risk Sunday",
    "areas": [
     {
-     "hazard": "heavy rain",
-     "label": "Chance of rain south of US-2",
-     "confidence": "medium",
-     "start": "2026-09-18T22:00:00.000Z",
-     "end": "2026-09-20T00:00:00.000Z",
-     "quote": "Chance of rain (30-50%) mainly south of US-2 this evening through \nSaturday evening.",
-     "polygon": [
-      [
-       46.5,
-       -90.35
-      ],
-      [
-       46.05,
-       -88.5
-      ],
-      [
-       46,
-       -86.5
-      ],
-      [
-       45.85,
-       -85.35
-      ],
-      [
-       45.55,
-       -86.6
-      ],
-      [
-       45.1,
-       -87.6
-      ],
-      [
-       45.92,
-       -88.1
-      ],
-      [
-       46.5,
-       -90.35
-      ]
-     ]
-    },
-    {
-     "hazard": "frost",
-     "label": "Patchy frost, lows upper 30s",
-     "confidence": "high",
-     "start": "2026-09-19T05:00:00.000Z",
-     "end": "2026-09-19T12:00:00.000Z",
-     "quote": "Low temperatures in the upper 30s to low 40s tonight for the \neastern U.P. and the central-western U.P. will lead to a 10-25% \nchance of frost formation.",
-     "polygon": [
-      [
-       46.75,
-       -89.4
-      ],
-      [
-       46.9,
-       -88.3
-      ],
-      [
-       46.6,
-       -86.4
-      ],
-      [
-       46.6,
-       -85.3
-      ],
-      [
-       46.1,
-       -85.5
-      ],
-      [
-       46.2,
-       -87
-      ],
-      [
-       46.3,
-       -89.6
-      ]
-     ]
-    },
-    {
      "hazard": "marine",
-     "label": "NE winds 25-30kt, gusts to 35kt",
-     "confidence": "medium",
-     "start": "2026-09-20T12:00:00.000Z",
+     "label": "NE gales, 4-6 ft waves, rip currents",
+     "confidence": "high",
+     "start": "2026-09-20T08:00:00.000Z",
      "end": "2026-09-21T06:00:00.000Z",
-     "quote": "The \nwestern arm and south-central portion of the lake could see gale-\nforce gusts up to 35kts.",
+     "quote": "This will also drive waves of up to 6 ft within 5 miles of the Lake Superior shoreline, which will drastically increase the risk of hazardous rip currents and challenging swimming conditions for those trying to squeeze in a late-September Sunday beach day at Lake Superior beaches.",
      "polygon": [
       [
-       47.4,
+       46.6,
        -90.3
       ],
       [
-       47.9,
+       47.5,
        -89.2
+      ],
+      [
+       48.1,
+       -88.5
       ],
       [
        47.5,
        -87.6
       ],
       [
-       46.9,
+       46.95,
        -87.9
       ],
       [
-       46.8,
-       -89.2
+       46.55,
+       -87.4
+      ],
+      [
+       46.45,
+       -86.5
+      ],
+      [
+       46.75,
+       -85.3
+      ],
+      [
+       46.85,
+       -86.6
       ],
       [
        47,
-       -90.4
+       -88.5
+      ]
+     ]
+    },
+    {
+     "hazard": "other",
+     "label": "Light lake-enhanced showers",
+     "confidence": "medium",
+     "start": "2026-09-20T10:00:00.000Z",
+     "end": "2026-09-21T04:00:00.000Z",
+     "quote": "Sunday, light lake-enhanced showers will be possible (30-50%) especially along the terrain of the western and north-central UP.",
+     "polygon": [
+      [
+       46.6,
+       -90.3
+      ],
+      [
+       47.4,
+       -89.2
+      ],
+      [
+       47.3,
+       -88.2
+      ],
+      [
+       46.8,
+       -87.3
+      ],
+      [
+       46.4,
+       -87.4
+      ],
+      [
+       46.3,
+       -88.6
+      ],
+      [
+       46.5,
+       -89.9
+      ]
+     ]
+    },
+    {
+     "hazard": "frost",
+     "label": "Patchy frost, eastern UP",
+     "confidence": "medium",
+     "start": "2026-09-19T11:36:00.000Z",
+     "end": "2026-09-19T13:00:00.000Z",
+     "quote": "A slight upwards trend in the temperature forecast for this morning has resulted in this forecast trimming back the frost potential to just some patches of the eastern third of the UP, so no frost advisory will be issued.",
+     "polygon": [
+      [
+       46.8,
+       -86.6
+      ],
+      [
+       46.75,
+       -85.25
+      ],
+      [
+       46.25,
+       -85.25
+      ],
+      [
+       45.95,
+       -86.2
+      ],
+      [
+       46.4,
+       -86.5
+      ]
+     ]
+    },
+    {
+     "hazard": "frost",
+     "label": "Possible freeze Tuesday morning",
+     "confidence": "low",
+     "start": "2026-09-22T07:00:00.000Z",
+     "end": "2026-09-22T12:00:00.000Z",
+     "quote": "For instance, the NBM even calls for up to 50% chances of sub-\nfreezing temperatures for Tuesday morning, though the LREF chances \nare significantly lower.",
+     "polygon": [
+      [
+       47.4,
+       -89.5
+      ],
+      [
+       47.4,
+       -88
+      ],
+      [
+       46.6,
+       -86.5
+      ],
+      [
+       46.7,
+       -85.3
+      ],
+      [
+       46,
+       -86.6
+      ],
+      [
+       45.5,
+       -87.4
+      ],
+      [
+       46.2,
+       -88.3
+      ],
+      [
+       46.6,
+       -90.2
       ]
      ]
     }
