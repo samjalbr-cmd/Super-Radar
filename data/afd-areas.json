@@ -1,19 +1,75 @@
 {
- "generated": "2026-09-19T22:37:32.594Z",
+ "generated": "2026-09-20T13:24:47.170Z",
  "offices": {
   "GRR": {
-   "product": "89dcf777-d15f-46ad-981e-604a99c529d6",
-   "issued": "2026-09-19T19:28:00+00:00",
+   "product": "472ca194-c90a-4b7d-a55e-e7d8643a4ff3",
+   "issued": "2026-09-20T10:53:00+00:00",
    "office": "Grand Rapids MI",
-   "headline": "Flood Watch continues along I-94 corridor tonight into Sunday",
+   "headline": "Up to an inch of rain far southwest today; Small Craft Advisory on northern nearshore wate",
    "areas": [
     {
-     "hazard": "flash flooding",
-     "label": "Heavy rain, flooding on saturated ground",
+     "hazard": "heavy rain",
+     "label": "~1 inch rain far SW",
      "confidence": "high",
-     "start": "2026-09-19T20:00:00.000Z",
-     "end": "2026-09-20T16:00:00.000Z",
-     "quote": "High resolution models show the low level jet aimed at our far southern CWA towards I-94. This should be the focus area for heavy rain tonight based on the moisture transport vectors centered in that area as well.",
+     "start": "2026-09-20T11:00:00.000Z",
+     "end": "2026-09-20T23:00:00.000Z",
+     "quote": "Consensus from new \nmodel guidance and mean amounts show that far SW Van Buren could see \nan inch or so of rain today, with lesser amounts to the NE.",
+     "polygon": [
+      [
+       42.07,
+       -86.23
+      ],
+      [
+       42.42,
+       -86.26
+      ],
+      [
+       42.42,
+       -85.7
+      ],
+      [
+       42.07,
+       -85.6
+      ]
+     ]
+    },
+    {
+     "hazard": "marine",
+     "label": "Small Craft Advisory northern waters",
+     "confidence": "high",
+     "start": "2026-09-20T15:00:00.000Z",
+     "end": "2026-09-21T06:00:00.000Z",
+     "quote": "We will be issuing a Small Craft Advisory for the northern two \nmarine zones for today and tonight.",
+     "polygon": [
+      [
+       44.18,
+       -86.39
+      ],
+      [
+       44.18,
+       -86
+      ],
+      [
+       43.4,
+       -86.15
+      ],
+      [
+       43.4,
+       -86.55
+      ],
+      [
+       43.97,
+       -86.46
+      ]
+     ]
+    },
+    {
+     "hazard": "dense fog",
+     "label": "LIFR ceilings/visibility",
+     "confidence": "medium",
+     "start": "2026-09-20T11:00:00.000Z",
+     "end": "2026-09-20T22:00:00.000Z",
+     "quote": "We continue to see the LIFR -VLIFR conditions in place for mainly\nceilings, but some visibilities also.",
      "polygon": [
       [
        42.08,
@@ -21,435 +77,341 @@
       ],
       [
        42.08,
-       -84.9
+       -84.14
       ],
       [
-       42.6,
-       -84.9
+       43.47,
+       -84.37
       ],
       [
-       42.78,
-       -85.2
-      ],
-      [
-       42.78,
-       -86.25
-      ],
-      [
-       42.45,
-       -86.26
-      ]
-     ]
-    },
-    {
-     "hazard": "marine",
-     "label": "Waves 3-5 ft north of Whitehall",
-     "confidence": "medium",
-     "start": "2026-09-20T12:00:00.000Z",
-     "end": "2026-09-22T00:00:00.000Z",
-     "quote": "There is an indication however that waves may push into the 3 to 5 foot range Sunday into Monday, especially from Whitehall north up the shoreline.",
-     "polygon": [
-      [
-       43.4,
-       -86.44
-      ],
-      [
-       43.63,
-       -86.54
-      ],
-      [
-       43.97,
-       -86.46
-      ],
-      [
-       44.18,
-       -86.39
-      ],
-      [
-       44.18,
+       43.47,
        -86.2
       ],
       [
-       43.6,
-       -86.28
-      ],
-      [
-       43.4,
-       -86.26
+       42.99,
+       -86.23
       ]
      ]
     }
    ]
   },
   "DTX": {
-   "product": "4b119dda-6290-4607-b8ad-60de7718aa1b",
-   "issued": "2026-09-19T19:52:00+00:00",
+   "product": "377e2163-fcdc-4c19-850d-6958982b8943",
+   "issued": "2026-09-20T10:03:00+00:00",
    "office": "Detroit/Pontiac MI",
-   "headline": "Heavy rain and dense fog tonight south of M-59; showers exit Sunday",
+   "headline": "Rain focused south of I-94 today; Small Craft Advisories on all nearshore waters",
    "areas": [
     {
-     "hazard": "flash flooding",
-     "label": "Training showers, 1+ inch rain",
+     "hazard": "heavy rain",
+     "label": "Lingering rain south of I-94",
      "confidence": "high",
-     "start": "2026-09-19T23:00:00.000Z",
-     "end": "2026-09-20T14:00:00.000Z",
-     "quote": "Additional showers are expected overnight, some of which will be capable of producing heavy rainfall, more so for areas south of M-59 where potential exists for training/repeated showers.",
+     "start": "2026-09-20T14:00:00.000Z",
+     "end": "2026-09-21T02:00:00.000Z",
+     "quote": "Greatest chances from midday into the evening focused generally along/south of the I-94 corridor.",
      "polygon": [
       [
-       42.67,
-       -84.28
+       42.35,
+       -84.3
       ],
       [
-       42.67,
-       -82.9
-      ],
-      [
-       42.3,
-       -82.85
-      ],
-      [
-       41.9,
+       42.35,
        -83.15
       ],
       [
-       41.72,
-       -83.45
+       42.05,
+       -82.85
       ],
       [
        41.72,
-       -84.36
-      ]
-     ]
-    },
-    {
-     "hazard": "dense fog",
-     "label": "Locally dense overnight fog",
-     "confidence": "medium",
-     "start": "2026-09-20T02:00:00.000Z",
-     "end": "2026-09-20T13:00:00.000Z",
-     "quote": "Potential exists for locally dense patches at times, therefore, a Dense Fog Advisory may be needed on short notice.",
-     "polygon": [
-      [
-       44.05,
-       -82.95
-      ],
-      [
-       43.99,
-       -84.03
-      ],
-      [
-       43.81,
-       -84.61
-      ],
-      [
-       42.78,
-       -84.16
-      ],
-      [
-       41.71,
-       -84.36
-      ],
-      [
-       41.74,
        -83.42
       ],
       [
-       42.63,
-       -82.52
-      ],
-      [
-       43.58,
-       -82.63
+       41.71,
+       -84.34
       ]
      ]
     },
     {
      "hazard": "marine",
-     "label": "Small Craft Advisory nearshore",
+     "label": "Small Craft Advisory nearshore waters",
      "confidence": "high",
      "start": "2026-09-20T16:00:00.000Z",
      "end": "2026-09-24T02:00:00.000Z",
-     "quote": "While gales currently look unlikely, onshore flow warrants long duration Small Craft Advisories for all nearshore waters.",
+     "quote": "While gales look unlikely, onshore flow warrants long duration Small Craft Advisories for all nearshore waters.",
      "polygon": [
       [
        44.05,
-       -82.95
+       -83.05
       ],
       [
        43.6,
-       -82.55
-      ],
-      [
-       42.9,
-       -82.4
-      ],
-      [
-       42.4,
        -82.6
       ],
       [
-       41.85,
-       -83.1
+       43,
+       -82.4
       ],
       [
-       41.74,
-       -83.45
+       42.6,
+       -82.4
       ],
       [
-       41.95,
+       42.2,
+       -82.9
+      ],
+      [
+       41.75,
        -83.2
       ],
       [
-       42.55,
-       -82.75
+       41.8,
+       -83.45
       ],
       [
-       43.2,
-       -82.75
+       42.3,
+       -83.1
       ],
       [
-       43.6,
-       -82.85
+       42.75,
+       -82.7
+      ],
+      [
+       43.3,
+       -82.6
+      ],
+      [
+       43.85,
+       -83.1
       ]
      ]
     }
    ]
   },
   "APX": {
-   "product": "63477487-7cc5-4e02-8786-08bfa41038d2",
-   "issued": "2026-09-19T18:21:00+00:00",
+   "product": "9b470c3f-b676-4207-bc69-25abd31fa171",
+   "issued": "2026-09-20T10:51:00+00:00",
    "office": "Gaylord MI",
-   "headline": "Cool and mostly dry; light showers south of M-72 tonight, patchy frost Monday night",
+   "headline": "Morning fog, then frost risk Monday night in interior north MI",
    "areas": [
     {
-     "hazard": "heavy rain",
-     "label": "A few light showers south of M-72",
+     "hazard": "dense fog",
+     "label": "Patchy fog, lingering drizzle",
      "confidence": "medium",
-     "start": "2026-09-19T22:00:00.000Z",
-     "end": "2026-09-20T12:00:00.000Z",
-     "quote": "A few showers over northern lower tonight, more numerous \n  south of M-72.",
+     "start": "2026-09-20T10:51:00.000Z",
+     "end": "2026-09-20T14:00:00.000Z",
+     "quote": "-Patchy fog and lingering drizzle continue this morning.",
      "polygon": [
       [
-       44.68,
-       -86.15
+       45.78,
+       -84.75
       ],
       [
-       44.68,
-       -83.55
+       45.3,
+       -83.4
       ],
       [
-       44.06,
+       44.05,
        -83.6
       ],
       [
-       44.15,
-       -86.1
+       44.18,
+       -86.39
+      ],
+      [
+       45.4,
+       -85.6
       ]
      ]
     },
     {
      "hazard": "frost",
-     "label": "Patchy frost in interior areas",
+     "label": "Frost, interior and higher terrain",
      "confidence": "medium",
      "start": "2026-09-22T04:00:00.000Z",
      "end": "2026-09-22T12:00:00.000Z",
-     "quote": "Monday will \nbe the coolest day with highs in the mid 50s to lower 60s, \nsetting us up for a very cool and possibly frosty night in at \nleast some interior areas (if the winds decouple).",
+     "quote": "Coldest night be Monday night where interior areas/elevated terrain will likely observe lows near freezing, potentially leading to frost.",
      "polygon": [
       [
-       45.55,
+       45.4,
        -85.3
       ],
       [
-       45.55,
-       -84
+       45.4,
+       -84.1
       ],
       [
-       44.3,
+       44.6,
        -83.9
       ],
       [
-       44.25,
-       -85.4
+       44.3,
+       -84.3
+      ],
+      [
+       44.4,
+       -85.3
       ]
      ]
     },
     {
      "hazard": "marine",
-     "label": "Small Craft Advisory on the lakes",
+     "label": "Small Craft Advisory, NE winds",
      "confidence": "high",
      "start": "2026-09-20T15:00:00.000Z",
      "end": "2026-09-22T00:00:00.000Z",
-     "quote": "Small Craft Advisory from 2 PM Sunday to 8 PM EDT Monday for \n     LHZ348-349.",
+     "quote": "Post-frontal pressure gradient force winds will clear out low-level moisture and build breezy northeast winds today.",
      "polygon": [
       [
-       46.4,
-       -85.2
+       45.9,
+       -86.1
       ],
       [
-       45.95,
-       -83.6
-      ],
-      [
-       45.2,
-       -83.25
-      ],
-      [
-       44.1,
-       -83.55
-      ],
-      [
-       44.2,
-       -86.3
+       45.85,
+       -84.6
       ],
       [
        45.3,
-       -86.3
+       -83.35
       ],
       [
-       46.1,
-       -85.9
+       44.1,
+       -83.6
+      ],
+      [
+       44.18,
+       -86.39
+      ],
+      [
+       45.3,
+       -86.2
       ]
      ]
     }
    ]
   },
   "MQT": {
-   "product": "1fe7771a-fd8f-4dfe-a0fd-e3fdf24fb567",
-   "issued": "2026-09-19T19:06:00+00:00",
+   "product": "5498abee-8209-48ac-97db-9e39f798d8eb",
+   "issued": "2026-09-20T11:54:00+00:00",
    "office": "Marquette MI",
-   "headline": "Lake-enhanced showers and hazardous Lake Superior swimming Sunday",
+   "headline": "Gusty NE winds bring beach hazards on Lake Superior; frost possible tonight",
    "areas": [
     {
      "hazard": "marine",
-     "label": "6 ft waves, rip current risk",
+     "label": "Beach hazards, rip currents",
      "confidence": "high",
      "start": "2026-09-20T12:00:00.000Z",
-     "end": "2026-09-21T06:00:00.000Z",
-     "quote": "This in turn cranks wave heights up to 6 ft within 5 miles of the Lake Superior shoreline, which will drastically increase the risk of hazardous rip currents and challenging swimming conditions for those trying to squeeze in a late-September Sunday beach day at Lake Superior beaches.",
+     "end": "2026-09-21T00:00:00.000Z",
+     "quote": "Gusty northeast winds will cause hazardous swimming conditions and \nrip current risks along Lake Superior today.",
      "polygon": [
       [
-       46.57,
-       -90.42
+       46.78,
+       -87.7
       ],
       [
-       47.48,
-       -87.98
+       46.78,
+       -86.2
       ],
       [
-       48.1,
-       -88.6
-      ],
-      [
-       47.85,
-       -89.23
-      ],
-      [
-       46.76,
-       -88.5
-      ],
-      [
-       46.41,
-       -86.64
-      ],
-      [
-       46.25,
-       -85.24
-      ],
-      [
-       46.5,
-       -85.7
-      ],
-      [
-       46.55,
-       -87
+       46.4,
+       -86.25
       ],
       [
        46.35,
+       -87.55
+      ],
+      [
+       46.6,
+       -87.7
+      ]
+     ]
+    },
+    {
+     "hazard": "marine",
+     "label": "NE gusts 20-30 kt, waves 4-6 ft",
+     "confidence": "high",
+     "start": "2026-09-20T12:00:00.000Z",
+     "end": "2026-09-21T12:00:00.000Z",
+     "quote": "High pressure building to the north today in addition to gusty winds \nmixing down in the wake of a Hudson Bay cold front looks to bring 20-\n30 kt northeast gusts to most of Lake Superior.",
+     "polygon": [
+      [
+       46.6,
+       -90.4
+      ],
+      [
+       47.45,
+       -88
+      ],
+      [
+       47,
+       -85.3
+      ],
+      [
+       46.6,
+       -86.1
+      ],
+      [
+       46.78,
        -88.4
+      ],
+      [
+       46.35,
+       -90
       ]
      ]
     },
     {
      "hazard": "heavy rain",
-     "label": "Lake-enhanced showers, W/NC UP",
+     "label": "Light lake-enhanced showers",
      "confidence": "medium",
-     "start": "2026-09-20T10:00:00.000Z",
-     "end": "2026-09-21T02:00:00.000Z",
-     "quote": "Light lake-enhanced showers will be possible (30-50%) especially \nalong the terrain of the western and north-central UP Sunday.",
+     "start": "2026-09-20T12:00:00.000Z",
+     "end": "2026-09-20T18:00:00.000Z",
+     "quote": "Light lake-enhanced showers will be possible (~30%) especially \nalong the terrain of the western and north-central UP this morning.",
      "polygon": [
       [
-       46.57,
-       -90.42
+       47.3,
+       -90.1
       ],
       [
-       47.2,
-       -88.6
+       46.95,
+       -87.9
       ],
       [
-       47,
-       -88
-      ],
-      [
-       46.55,
-       -87.2
-      ],
-      [
-       46.2,
+       46.4,
        -87.6
       ],
       [
-       46.1,
-       -88.6
-      ],
-      [
-       46.3,
+       46.35,
        -89.6
       ]
      ]
     },
     {
      "hazard": "frost",
-     "label": "Morning frost potential",
+     "label": "Patchy frost inland overnight",
      "confidence": "medium",
-     "start": "2026-09-22T06:00:00.000Z",
-     "end": "2026-09-22T13:00:00.000Z",
-     "quote": "Below-average temperatures expected through Wednesday (including \nmorning frost potential), giving way to above-normal temperatures \nlate week.",
+     "start": "2026-09-21T04:00:00.000Z",
+     "end": "2026-09-21T12:00:00.000Z",
+     "quote": "Clearing skies overnight will allow temperatures tonight \nto fall to the 30s away from the shores of the Great Lakes.",
      "polygon": [
       [
-       47,
+       46.55,
        -89.9
       ],
       [
-       46.6,
-       -90.4
+       46.5,
+       -87
       ],
       [
-       45.92,
-       -88.1
+       46.05,
+       -85.6
       ],
       [
-       45.09,
-       -87.59
+       45.85,
+       -87.2
       ],
       [
-       45.92,
-       -86.97
-      ],
-      [
-       46.25,
-       -85.24
-      ],
-      [
-       46.6,
-       -85.5
-      ],
-      [
-       46.7,
-       -87.5
-      ],
-      [
-       47.3,
-       -88.4
+       46.15,
+       -88.9
       ]
      ]
     }
