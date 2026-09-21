@@ -1,199 +1,118 @@
 {
- "generated": "2026-09-20T22:53:42.736Z",
+ "generated": "2026-09-21T15:34:56.382Z",
  "offices": {
   "GRR": {
-   "product": "31611c7b-dc40-4c93-a743-5bdb0d3edfe0",
-   "issued": "2026-09-20T17:55:00+00:00",
+   "product": "b65424dc-45f5-4b32-aac1-ce7609620454",
+   "issued": "2026-09-21T10:20:00+00:00",
    "office": "Grand Rapids MI",
-   "headline": "Rain ends by midnight; Small Craft Advisory north of Whitehall",
-   "areas": [
-    {
-     "hazard": "marine",
-     "label": "NE winds 30 kt, waves 3-6 ft",
-     "confidence": "high",
-     "start": "2026-09-20T18:00:00.000Z",
-     "end": "2026-09-21T06:00:00.000Z",
-     "quote": "We currently have a Small Craft Advisory in place for areas north of Whitehall to cover the threat of winds to 30 knots and waves of 3 to 6 feet.",
-     "polygon": [
-      [
-       43.41,
-       -86.36
-      ],
-      [
-       43.63,
-       -86.54
-      ],
-      [
-       44.06,
-       -86.51
-      ],
-      [
-       44.18,
-       -86.39
-      ],
-      [
-       44.17,
-       -86.2
-      ],
-      [
-       43.6,
-       -86.28
-      ],
-      [
-       43.41,
-       -86.23
-      ]
-     ]
-    },
-    {
-     "hazard": "heavy rain",
-     "label": "Rain tapering, 2-3 inch totals",
-     "confidence": "medium",
-     "start": "2026-09-20T18:00:00.000Z",
-     "end": "2026-09-21T04:00:00.000Z",
-     "quote": "Rainfall of 2-3 inches has been common in the heavy rain area to the south and southwest of Grand Rapids.",
-     "polygon": [
-      [
-       43.05,
-       -86.23
-      ],
-      [
-       43.05,
-       -84.6
-      ],
-      [
-       42.3,
-       -84.3
-      ],
-      [
-       42.08,
-       -84.3
-      ],
-      [
-       42.08,
-       -86.22
-      ],
-      [
-       42.45,
-       -86.3
-      ]
-     ]
-    }
-   ]
+   "headline": "Slight shower chance far south; dry, seasonable midweek",
+   "areas": []
   },
   "DTX": {
-   "product": "9064fb22-c385-4b95-af01-93b423423af5",
-   "issued": "2026-09-20T20:07:00+00:00",
+   "product": "27f00fc8-1c9d-40f1-8a54-37985cfe7e6b",
+   "issued": "2026-09-21T10:02:00+00:00",
    "office": "Detroit/Pontiac MI",
-   "headline": "Breezy NE winds prompt long-duration Small Craft Advisories; showers near Ohio border",
+   "headline": "Breezy NE winds, Small Craft Advisories; low rain chance near Ohio border",
    "areas": [
     {
      "hazard": "marine",
-     "label": "NE gusts 20-30kt, Small Craft Adv",
+     "label": "Small Craft Advisory, NE 20-30 kt",
      "confidence": "high",
-     "start": "2026-09-21T00:00:00.000Z",
+     "start": "2026-09-21T10:02:00.000Z",
      "end": "2026-09-24T02:00:00.000Z",
      "quote": "Gales remain unlikely though onshore flow warrants long duration Small Craft Advisories for all nearshore waters.",
      "polygon": [
       [
        44.05,
+       -83.6
+      ],
+      [
+       43.9,
+       -82.95
+      ],
+      [
+       43,
+       -82.4
+      ],
+      [
+       42.3,
+       -82.75
+      ],
+      [
+       41.85,
+       -83.3
+      ],
+      [
+       41.7,
+       -83.45
+      ],
+      [
+       42,
+       -83.1
+      ],
+      [
+       42.6,
+       -82.5
+      ],
+      [
+       43.6,
        -83.05
       ],
       [
        43.95,
-       -83.95
-      ],
-      [
-       43.75,
-       -83.92
-      ],
-      [
-       43.58,
-       -83.68
-      ],
-      [
-       43.8,
-       -83.3
-      ],
-      [
-       43.2,
-       -82.4
-      ],
-      [
-       42.6,
-       -82.45
-      ],
-      [
-       42.3,
-       -82.9
-      ],
-      [
-       41.75,
-       -83.3
-      ],
-      [
-       41.72,
-       -82.9
-      ],
-      [
-       42.6,
-       -82.3
-      ],
-      [
-       43.3,
-       -82.2
+       -83.9
       ]
      ]
     },
     {
      "hazard": "heavy rain",
-     "label": "Showers near Ohio border",
+     "label": "Low rain chance near Ohio border",
      "confidence": "medium",
      "start": "2026-09-21T12:00:00.000Z",
-     "end": "2026-09-23T06:00:00.000Z",
-     "quote": "The exception will be closer to the Ohio border where a shortwave moves from The Plains into the Ohio Valley, before closing off and stalling.",
+     "end": "2026-09-23T18:00:00.000Z",
+     "quote": "There remains a lower end rain chance near the Ohio border, as shortwave energy rippling thru the southern stream into the Ohio valley may engage the deeper moisture still lingering near the Michigan-Ohio border.",
      "polygon": [
       [
-       42.3,
-       -84.2
+       42.25,
+       -84.3
       ],
       [
-       42.3,
-       -83
+       42.25,
+       -83.1
       ],
       [
-       42.1,
+       41.95,
        -82.9
       ],
       [
-       41.74,
-       -83.42
+       41.72,
+       -83.45
       ],
       [
        41.71,
-       -84.31
+       -84.35
       ]
      ]
     }
    ]
   },
   "APX": {
-   "product": "ec7a7f19-50d2-4c79-a26d-4a6151b27e9f",
-   "issued": "2026-09-20T18:41:00+00:00",
+   "product": "8f005321-4088-4f23-b87d-7f076c875888",
+   "issued": "2026-09-21T10:55:00+00:00",
    "office": "Gaylord MI",
-   "headline": "Patchy frost possible tonight and Monday night; otherwise dry",
+   "headline": "Frost likely in interior Eastern Upper tonight; dry high pressure otherwise",
    "areas": [
     {
      "hazard": "frost",
-     "label": "Patchy frost, interior east UP",
+     "label": "Frost likely, interior E Upper",
      "confidence": "high",
-     "start": "2026-09-21T04:00:00.000Z",
-     "end": "2026-09-21T12:00:00.000Z",
-     "quote": "Cooler temperatures tonight will bring some potential for patchy frost across interior eastern Upper, especially in areas that see lighter winds.",
+     "start": "2026-09-22T04:00:00.000Z",
+     "end": "2026-09-22T12:00:00.000Z",
+     "quote": "Interior Eastern Upper will very likely see frost development in the \nmorning while interior northern lower remains in the upper 30s.",
      "polygon": [
       [
-       46.45,
-       -85.7
+       46.2,
+       -85.9
       ],
       [
        46.5,
@@ -201,83 +120,67 @@
       ],
       [
        46.1,
-       -84.2
+       -84.1
       ],
       [
        45.95,
-       -84.9
+       -84.6
       ],
       [
-       46,
-       -85.8
+       45.95,
+       -85.6
       ]
      ]
     },
     {
      "hazard": "frost",
-     "label": "Patchy frost, interior areas",
+     "label": "Patchy frost, interior N Lower",
      "confidence": "medium",
      "start": "2026-09-22T04:00:00.000Z",
      "end": "2026-09-22T12:00:00.000Z",
-     "quote": "Another chilly night is expected Monday night, with temperatures again falling into the 30s across many interior locations bringing the potential for some patchy frost yet again...",
+     "quote": "Patchy frost is still expected to develop, but will remain more \nlocalized compared to eastern upper.",
      "polygon": [
       [
-       46.4,
-       -85.6
-      ],
-      [
-       46.45,
-       -84.5
-      ],
-      [
        45.6,
-       -84.2
-      ],
-      [
-       44.5,
-       -83.8
-      ],
-      [
-       44.3,
-       -84.6
-      ],
-      [
-       44.6,
-       -85.6
+       -85.2
       ],
       [
        45.5,
-       -85.3
+       -84
       ],
       [
-       45.9,
-       -85.8
+       44.3,
+       -83.8
+      ],
+      [
+       44.2,
+       -85.4
+      ],
+      [
+       44.9,
+       -85.6
       ]
      ]
     },
     {
      "hazard": "marine",
-     "label": "Small Craft Advisory nearshore waters",
+     "label": "Small craft advisory, N Lake Michigan",
      "confidence": "medium",
-     "start": "2026-09-20T18:41:00.000Z",
+     "start": "2026-09-21T10:55:00.000Z",
      "end": "2026-09-22T00:00:00.000Z",
-     "quote": "MARINE...Small Craft Advisory until 2 AM EDT Monday for LHZ345.",
+     "quote": "Small Craft Advisory until 8 PM EDT this evening for LHZ348-\n     349.",
      "polygon": [
       [
-       45.9,
+       45.8,
        -86.2
       ],
       [
-       45.9,
-       -84
+       45.8,
+       -85
       ],
       [
-       45.2,
-       -83.3
-      ],
-      [
-       44.2,
-       -83.5
+       44.9,
+       -85.6
       ],
       [
        44.2,
@@ -292,80 +195,110 @@
    ]
   },
   "MQT": {
-   "product": "3f2740c2-4fbb-4b56-ac06-1d95bd9c3f3a",
-   "issued": "2026-09-20T17:44:00+00:00",
+   "product": "4c3f39b1-f0e0-4850-9204-b0a695e507bf",
+   "issued": "2026-09-21T11:26:00+00:00",
    "office": "Marquette MI",
-   "headline": "High swim risk on Lake Superior tonight; frost risk Monday night",
+   "headline": "Rip currents today in Marquette Co; widespread frost west UP Tuesday AM",
    "areas": [
     {
      "hazard": "marine",
-     "label": "High swim risk, rip currents",
+     "label": "High rip current risk, Marquette Co",
      "confidence": "high",
-     "start": "2026-09-20T17:44:00.000Z",
-     "end": "2026-09-21T12:00:00.000Z",
-     "quote": "This supports a high swim risk along Lake Superior shores into tonight, possibly into early Monday morning for Marquette County.",
+     "start": "2026-09-21T11:26:00.000Z",
+     "end": "2026-09-21T21:00:00.000Z",
+     "quote": "Hazardous swimming conditions and high rip current risks are \npresent through this afternoon for Marquette County due to high wave \nheights from the northeast.",
      "polygon": [
       [
-       46.55,
-       -88.6
-      ],
-      [
-       47.25,
-       -88.3
-      ],
-      [
-       47,
-       -87.3
+       46.9,
+       -87.9
       ],
       [
        46.75,
-       -86.3
+       -87.9
       ],
       [
-       46.45,
-       -86.35
+       46.5,
+       -87.6
       ],
       [
-       46.4,
-       -87.4
+       46.55,
+       -87.2
       ],
       [
-       46.45,
-       -88.4
+       46.85,
+       -87.3
+      ],
+      [
+       46.95,
+       -87.6
       ]
      ]
     },
     {
      "hazard": "frost",
-     "label": "Patchy frost, interior west",
-     "confidence": "medium",
-     "start": "2026-09-22T03:00:00.000Z",
+     "label": "Widespread frost western UP",
+     "confidence": "high",
+     "start": "2026-09-22T06:00:00.000Z",
      "end": "2026-09-22T12:00:00.000Z",
-     "quote": "Decreasing cloud cover and lighter winds yields better frost potential Monday night (20-60% chance in the interior, highest west).",
+     "quote": "widespread frost is likely (50-80%) in the western UP Tuesday \nmorning, and patchy frost is possible (20-40%) elsewhere away \nfrom shorelines.",
      "polygon": [
       [
-       46.7,
-       -90.1
+       46.6,
+       -90.4
       ],
       [
-       46.5,
+       47.3,
+       -88.6
+      ],
+      [
+       47,
        -88.2
       ],
       [
-       46.1,
-       -87.7
-      ],
-      [
-       45.9,
-       -88.3
+       46.3,
+       -87.6
       ],
       [
        46,
-       -89.4
+       -88.3
       ],
       [
-       46.4,
-       -90.2
+       46.1,
+       -89.5
+      ]
+     ]
+    },
+    {
+     "hazard": "frost",
+     "label": "Patchy frost interior east UP",
+     "confidence": "medium",
+     "start": "2026-09-22T06:00:00.000Z",
+     "end": "2026-09-22T12:00:00.000Z",
+     "quote": "widespread frost is likely (50-80%) in the western UP Tuesday \nmorning, and patchy frost is possible (20-40%) elsewhere away \nfrom shorelines.",
+     "polygon": [
+      [
+       46.5,
+       -87.8
+      ],
+      [
+       46.5,
+       -85.4
+      ],
+      [
+       46.1,
+       -85.4
+      ],
+      [
+       45.8,
+       -86.6
+      ],
+      [
+       45.4,
+       -87.4
+      ],
+      [
+       46,
+       -87.9
       ]
      ]
     }
