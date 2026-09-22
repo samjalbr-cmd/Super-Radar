@@ -1,26 +1,107 @@
 {
- "generated": "2026-09-22T13:50:50.918Z",
+ "generated": "2026-09-22T23:26:02.857Z",
  "offices": {
   "GRR": {
-   "product": "de984c14-a673-4f8f-a5af-e1819cb468e4",
-   "issued": "2026-09-22T10:34:00+00:00",
+   "product": "d05e4291-8529-4b8b-80ac-60b73d464e73",
+   "issued": "2026-09-22T18:54:00+00:00",
    "office": "Grand Rapids MI",
-   "headline": "Quiet weather; slight shower chance south Wednesday, dry and warming after",
-   "areas": []
-  },
-  "DTX": {
-   "product": "1ac45993-3baf-443e-ba07-585308cdff15",
-   "issued": "2026-09-22T09:55:00+00:00",
-   "office": "Detroit/Pontiac MI",
-   "headline": "Small Craft Advisory on nearshore waters; gusts near 30 kt",
+   "headline": "Mostly quiet; gusty east winds, slight rain chance far south",
    "areas": [
     {
      "hazard": "marine",
-     "label": "Small Craft Advisory, gusts to 30 kt",
+     "label": "Strong offshore east winds",
+     "confidence": "medium",
+     "start": "2026-09-22T18:54:00.000Z",
+     "end": "2026-09-23T04:00:00.000Z",
+     "quote": "Strong offshore winds will continue the the evening hours.",
+     "polygon": [
+      [
+       44.17,
+       -86.39
+      ],
+      [
+       44.05,
+       -86.52
+      ],
+      [
+       43.63,
+       -86.54
+      ],
+      [
+       42.99,
+       -86.23
+      ],
+      [
+       42.45,
+       -86.26
+      ],
+      [
+       42.24,
+       -86.37
+      ],
+      [
+       42.24,
+       -86.15
+      ],
+      [
+       43,
+       -86.05
+      ],
+      [
+       43.7,
+       -86.35
+      ],
+      [
+       44.17,
+       -86.2
+      ]
+     ]
+    },
+    {
+     "hazard": "other",
+     "label": "Slight chance light rain, far south",
+     "confidence": "medium",
+     "start": "2026-09-23T16:00:00.000Z",
+     "end": "2026-09-24T00:00:00.000Z",
+     "quote": "there is a slight chance that some of the precip bands on the periphery will infiltrate Michigan with a slight chance of bringing light rain to the southern tier or two of Michigan tomorrow afternoon.",
+     "polygon": [
+      [
+       42.07,
+       -86.22
+      ],
+      [
+       42.07,
+       -84.13
+      ],
+      [
+       42.45,
+       -84.14
+      ],
+      [
+       42.45,
+       -86.25
+      ],
+      [
+       42.3,
+       -86.33
+      ]
+     ]
+    }
+   ]
+  },
+  "DTX": {
+   "product": "5b9e5c39-3162-441d-bf35-1ab18f624f99",
+   "issued": "2026-09-22T19:39:00+00:00",
+   "office": "Detroit/Pontiac MI",
+   "headline": "Small Craft Advisory on all nearshore waters through Wednesday night",
+   "areas": [
+    {
+     "hazard": "marine",
+     "label": "Small Craft Advisory, elevated waves",
      "confidence": "high",
-     "start": "2026-09-22T10:00:00.000Z",
+     "start": "2026-09-22T19:39:00.000Z",
      "end": "2026-09-24T02:00:00.000Z",
-     "quote": "This sustains elevated \nwave action for most of the waterways, therefore, a Small Craft \nAdvisory remains in effect for all nearshore waters.",
+     "quote": "This sustains elevated on-shore waves for most of the waterways, therefore, a Small Craft Advisory remains in effect for all nearshore waters until Wednesday night.",
      "polygon": [
       [
        44.05,
@@ -28,303 +109,271 @@
       ],
       [
        43.6,
-       -82.42
+       -82.45
       ],
       [
-       42.95,
+       43,
        -82.4
       ],
       [
-       42.5,
-       -82.52
+       42.6,
+       -82.42
       ],
       [
-       42.05,
-       -83.08
+       42.3,
+       -82.85
       ],
       [
-       41.75,
-       -83.22
+       41.9,
+       -83.25
       ],
       [
-       41.8,
-       -83.45
+       41.72,
+       -83.44
       ],
       [
-       42.12,
+       41.68,
        -83.2
       ],
       [
-       42.6,
-       -82.66
+       42.2,
+       -82.95
       ],
       [
-       43.5,
+       42.55,
        -82.6
       ],
       [
-       43.85,
-       -83
+       43.1,
+       -82.55
+      ],
+      [
+       43.65,
+       -82.62
+      ],
+      [
+       44,
+       -83.2
+      ]
+     ]
+    },
+    {
+     "hazard": "heavy rain",
+     "label": "Low chance light rain south of I-94",
+     "confidence": "medium",
+     "start": "2026-09-23T00:00:00.000Z",
+     "end": "2026-09-23T22:00:00.000Z",
+     "quote": "Aside from a low chance of rain tonight and Wednesday mainly south \nof I-94, dry conditions are expected through next weekend.",
+     "polygon": [
+      [
+       42.25,
+       -84.3
+      ],
+      [
+       42.25,
+       -83.2
+      ],
+      [
+       42.05,
+       -82.9
+      ],
+      [
+       41.72,
+       -83.42
+      ],
+      [
+       41.71,
+       -84.35
       ]
      ]
     }
    ]
   },
   "APX": {
-   "product": "0897ca70-f420-48ee-aca3-1fee1de3f1ac",
-   "issued": "2026-09-22T10:48:00+00:00",
+   "product": "a20dc769-4961-414f-a928-177f17cf5008",
+   "issued": "2026-09-22T17:30:00+00:00",
    "office": "Gaylord MI",
-   "headline": "Quiet high pressure; patchy frost tonight inland, lake hazards today",
+   "headline": "Frost Advisory for eastern Upper Michigan tonight; high swim risk on Lake Huron beaches",
    "areas": [
     {
      "hazard": "frost",
-     "label": "Patchy frost, lows mid/upper 30s",
+     "label": "Frost, near freezing lows",
      "confidence": "high",
-     "start": "2026-09-23T03:00:00.000Z",
-     "end": "2026-09-23T13:00:00.000Z",
-     "quote": "Efficient overnight radiational \ncooling will drop lows into the mid/upper 30s across interior \neastern upper and northern lower leading to another round of patchy \nfrost development tonight.",
+     "start": "2026-09-23T02:00:00.000Z",
+     "end": "2026-09-23T12:00:00.000Z",
+     "quote": "Frost Advisory for eastern upper Michigan tonight",
      "polygon": [
       [
-       45.95,
-       -85.1
+       46,
+       -85.9
       ],
       [
-       46.3,
-       -84.8
-      ],
-      [
-       46.2,
-       -84.2
-      ],
-      [
-       45.6,
-       -84.15
-      ],
-      [
-       45,
-       -84.1
-      ],
-      [
-       44.3,
-       -84.2
-      ],
-      [
-       44.25,
-       -85.2
-      ],
-      [
-       45.1,
-       -85.25
-      ],
-      [
-       45.6,
-       -85.2
-      ]
-     ]
-    },
-    {
-     "hazard": "marine",
-     "label": "Beach hazards, Lake Michigan shore",
-     "confidence": "medium",
-     "start": "2026-09-22T10:48:00.000Z",
-     "end": "2026-09-23T01:00:00.000Z",
-     "quote": "MI...Beach Hazards Statement through this evening for MIZ018-024-\n     030-036-042.",
-     "polygon": [
-      [
-       45.75,
-       -85.6
-      ],
-      [
-       45.6,
-       -85.05
-      ],
-      [
-       45.1,
+       46.5,
        -85.3
       ],
       [
-       44.75,
-       -85.7
+       46.55,
+       -84.3
       ],
       [
-       44.3,
-       -86.1
+       46.2,
+       -83.9
       ],
       [
-       44.6,
-       -86.3
+       45.95,
+       -84.2
+      ],
+      [
+       45.95,
+       -85.3
+      ]
+     ]
+    },
+    {
+     "hazard": "frost",
+     "label": "Isolated mid 30s in cold spots",
+     "confidence": "medium",
+     "start": "2026-09-23T04:00:00.000Z",
+     "end": "2026-09-23T12:00:00.000Z",
+     "quote": "Isolated pockets of low to mid 30s remain likely tonight for cold spots, however the surface inversion should continue to remain shallow and only allow for a few hours of temperatures at their coolest near sunrise.",
+     "polygon": [
+      [
+       45.75,
+       -84.8
+      ],
+      [
+       45.3,
+       -83.4
+      ],
+      [
+       44.1,
+       -83.6
+      ],
+      [
+       44.2,
+       -86
       ],
       [
        45.2,
-       -86.1
-      ],
-      [
-       45.7,
-       -85.9
+       -85.6
       ]
      ]
     },
     {
      "hazard": "marine",
-     "label": "Small Craft Advisory, Lake Huron",
-     "confidence": "medium",
-     "start": "2026-09-22T10:48:00.000Z",
+     "label": "High swim risk, Lake Huron beaches",
+     "confidence": "high",
+     "start": "2026-09-22T17:30:00.000Z",
      "end": "2026-09-23T00:00:00.000Z",
-     "quote": "MARINE...Small Craft Advisory until 8 PM EDT this evening for LHZ348-\n     349.",
+     "quote": "High swim risk exists through late this evening for the sunrise side beaches due to gusty winds and waves of 4 ft.",
      "polygon": [
       [
-       45.85,
-       -84.3
-      ],
-      [
-       45.6,
+       45.4,
        -83.5
       ],
       [
-       45,
-       -83.25
+       45.1,
+       -83.2
       ],
       [
-       44.3,
+       44.5,
+       -83.2
+      ],
+      [
+       44.05,
        -83.4
       ],
       [
-       44.3,
-       -83.7
+       44.1,
+       -83.8
       ],
       [
-       45,
+       44.6,
        -83.6
       ],
       [
-       45.45,
-       -83.9
-      ],
-      [
-       45.7,
-       -84.45
+       45.1,
+       -83.5
       ]
      ]
     }
    ]
   },
   "MQT": {
-   "product": "7e5a4aa9-5752-4091-a792-7847ccdc3071",
-   "issued": "2026-09-22T11:24:00+00:00",
+   "product": "35875ab8-d605-40e9-aa30-15d83d1390e6",
+   "issued": "2026-09-22T18:23:00+00:00",
    "office": "Marquette MI",
-   "headline": "Frost and freeze this morning in western UP; frost again Wednesday AM",
+   "headline": "Frost Advisory for interior Upper Michigan late tonight into Wednesday morning",
    "areas": [
     {
      "hazard": "frost",
-     "label": "Widespread frost/freeze, western UP",
+     "label": "Frost, lows in the 30s",
      "confidence": "high",
-     "start": "2026-09-22T11:24:00.000Z",
-     "end": "2026-09-22T13:00:00.000Z",
-     "quote": "Widespread frost is likely (50-80%) in the western UP, and patchy \nfrost (20-40%) is possible elsewhere away from shorelines.",
+     "start": "2026-09-23T06:00:00.000Z",
+     "end": "2026-09-23T13:00:00.000Z",
+     "quote": "Temperatures falling back into the lower to mid 30s tonight will \nlead to a potential for frost formation again.",
      "polygon": [
       [
-       46.57,
-       -90.42
-      ],
-      [
-       47.48,
-       -87.98
+       46.55,
+       -90.35
       ],
       [
        47,
-       -87.9
+       -88.6
       ],
       [
-       46.5,
-       -87.7
+       46.6,
+       -87
       ],
       [
-       46,
-       -88.3
+       46.35,
+       -85.5
       ],
       [
-       45.95,
-       -88.1
-      ]
-     ]
-    },
-    {
-     "hazard": "frost",
-     "label": "Areas of frost Wednesday morning",
-     "confidence": "medium",
-     "start": "2026-09-23T08:00:00.000Z",
-     "end": "2026-09-23T13:00:00.000Z",
-     "quote": "Wednesday morning, areas of frost are likely (60-90%) in the \nwestern UP and patchy frost is possible (20-40%) elsewhere away from \nshorelines.",
-     "polygon": [
-      [
-       46.57,
-       -90.42
+       45.9,
+       -86.2
       ],
       [
-       47.35,
-       -88.2
-      ],
-      [
-       46.7,
-       -87.6
-      ],
-      [
-       46.3,
-       -86.8
-      ],
-      [
-       46,
-       -86.6
-      ],
-      [
-       45.8,
+       45.85,
        -87.4
       ],
       [
-       45.92,
-       -88.1
+       46,
+       -88.4
+      ],
+      [
+       46.3,
+       -89.5
       ]
      ]
     },
     {
      "hazard": "marine",
-     "label": "E gusts 25 kt, waves 4-5 ft",
-     "confidence": "high",
-     "start": "2026-09-22T13:00:00.000Z",
-     "end": "2026-09-23T10:00:00.000Z",
-     "quote": "For the Bay of Green Bay and Northern Lake Michigan: Easterly flow \nfills in starting this morning and throughout the day today, with \nwidespread gusts to 20 knots by noon and gusts to 25 becoming more \ncommon this evening.",
+     "label": "Gusts 20-25 kt, 4 ft waves",
+     "confidence": "medium",
+     "start": "2026-09-22T19:00:00.000Z",
+     "end": "2026-09-23T14:00:00.000Z",
+     "quote": "Easterly winds \nare gusting to around 15-20kts this afternoon, then gusts to 20-25 \nkts become more common this evening.",
      "polygon": [
       [
-       45.6,
-       -86.61
-      ],
-      [
-       45.92,
-       -86.97
-      ],
-      [
-       45.4,
-       -87.4
-      ],
-      [
        45.1,
-       -87.55
+       -87.6
       ],
       [
-       45.3,
-       -86.5
+       45.95,
+       -87
       ],
       [
-       45.5,
-       -85.5
+       46.25,
+       -85.25
       ],
       [
-       46,
+       45.6,
        -85.3
       ],
       [
-       45.9,
-       -85.9
+       45.2,
+       -86.5
       ]
      ]
     }
