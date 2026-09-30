@@ -96,6 +96,82 @@ private func tempColor(_ f: Double) -> UIColor {
 /// used exactly as specified rather than being lightened.
 private func barbColor(_ f: Double) -> UIColor { tempColor(f) }
 
+/// The upper-air barb: longer, thinner, and hollow-tipped, so it never reads as
+/// the surface barb drawn inside the station plot.
+///
+/// The surface barb hangs off a station circle and carries the temperature
+/// colour; this one stands alone on a lattice in its level's colour, with open
+/// pennants instead of filled triangles. At a glance the two are different
+/// instruments, which is the point — one is what the wind is doing at the
+/// ground, the other what it is doing five to seven miles above it.
+private func drawUpperBarb(_ ctx: CGContext, at p: CGPoint, kt: Double, dir: Double,
+                           color: UIColor, scale: CGFloat, widthBoost: CGFloat = 1) {
+    ctx.saveGState()
+    defer { ctx.restoreGState() }
+    ctx.translateBy(x: p.x, y: p.y)
+    ctx.rotate(by: CGFloat(dir) * .pi / 180)
+
+    // The halo pass reuses the same geometry at a wider stroke — a larger barb
+    // would print its own outline beside the real one rather than behind it.
+    let sw: CGFloat = 1.1 * scale * widthBoost
+    color.setStroke()
+    color.setFill()
+
+    // Calm is a ring, the standard notation, and it keeps a dead level from
+    // looking like missing data.
+    guard kt >= 5 else {
+        let ring = UIBezierPath(arcCenter: .zero, radius: 3 * scale,
+                                startAngle: 0, endAngle: .pi * 2, clockwise: true)
+        ring.lineWidth = sw
+        ring.stroke()
+        return
+    }
+
+    let staffLen: CGFloat = 17 * scale
+    let len: CGFloat = 7.5 * scale      // full barb length
+    let gap: CGFloat = 3.2 * scale      // spacing along the staff
+
+    let staff = UIBezierPath()
+    staff.move(to: .zero)
+    staff.addLine(to: CGPoint(x: 0, y: -staffLen))
+    staff.lineWidth = sw
+    staff.stroke()
+
+    var speed = Int((kt / 5).rounded() * 5)
+    var y = -staffLen                   // barbs start at the far end of the staff
+    let flags = speed / 50; speed -= flags * 50
+    let tens  = speed / 10; speed -= tens * 10
+    let fives = speed / 5
+    for _ in 0..<flags {
+        // Hollow, unlike the filled pennant on the station plot.
+        let t = UIBezierPath()
+        t.move(to: CGPoint(x: 0, y: y))
+        t.addLine(to: CGPoint(x: -len, y: y + gap * 0.55))
+        t.addLine(to: CGPoint(x: 0, y: y + gap))
+        t.close()
+        t.lineWidth = sw
+        t.stroke()
+        y += gap + 1.4 * scale
+    }
+    for _ in 0..<tens {
+        let b = UIBezierPath()
+        b.move(to: CGPoint(x: 0, y: y))
+        b.addLine(to: CGPoint(x: -len, y: y + gap * 0.7))
+        b.lineWidth = sw
+        b.stroke()
+        y += gap
+    }
+    for _ in 0..<fives {
+        let off: CGFloat = (tens == 0 && flags == 0) ? gap : 0
+        let b = UIBezierPath()
+        b.move(to: CGPoint(x: 0, y: y + off))
+        b.addLine(to: CGPoint(x: -len * 0.5, y: y + off + gap * 0.35))
+        b.lineWidth = sw
+        b.stroke()
+        y += gap
+    }
+}
+
 /// Which side of a front its symbols go on. WPC digitises fronts so that the
 /// left of the digitised direction is the leading edge.
 ///
@@ -351,7 +427,8 @@ enum RadarSnapshot {
                         showDiscussion: Bool,
                         showOutlook: Bool, showFronts: Bool, stationModel: Bool,
                         showIsobars: Bool, showMarine: Bool, showLake: Bool,
-                        showSpotter: Bool, state: String?) async -> (image: UIImage, hasEcho: Bool)? {
+                        showSpotter: Bool, upperLevel: String?,
+                        state: String?) async -> (image: UIImage, hasEcho: Bool)? {
         let half = zoom.halfDegrees
 
         // Framed as a projected rect, not a coordinate span. A degree of
@@ -433,6 +510,12 @@ enum RadarSnapshot {
         let sfc = showFronts ? await MapLayers.surface() : nil
         let isobars = showIsobars ? await MapLayers.isobars(sw: sw, ne: ne) : []
         let lake = showLake ? await StormFeed.lakeTemps(sw: sw, ne: ne) : []
+        // Upper-air winds, at whichever pressure level the app is set to. Off is
+        // the common case, and costs nothing.
+        let upperKey = (upperLevel?.isEmpty == false && upperLevel != "off") ? upperLevel : nil
+        let upper = upperKey.map { MapLayers.upperLevels[$0] != nil ? $0 : nil } ?? nil
+        let upperWinds = upper != nil
+            ? await MapLayers.upperWinds(sw: sw, ne: ne, level: upper!) : []
 
         let out = UIGraphicsImageRenderer(size: size).image { ctx in
             snap.image.draw(at: .zero)
@@ -616,6 +699,30 @@ enum RadarSnapshot {
                     mb.draw(at: CGPoint(x: p.x - mz.width / 2, y: p.y + lz.height / 2 - 2),
                             withAttributes: mAttrs)
                 }
+            }
+
+            // Upper-air barbs go over the analysis but under the station plots
+            // and the report labels: they are the field the surface sits in, and
+            // a number should never lose a contest with one.
+            if let upper, let style = MapLayers.upperLevels[upper] {
+                // Scaled off the frame so a lock-screen widget and the large one
+                // read the same; the lattice is fixed in degrees, so the barbs
+                // would otherwise crowd or float depending on the size.
+                let s = max(0.75, min(1.35, size.width / 330))
+                ctx.cgContext.setAlpha(0.92)
+                for w in upperWinds {
+                    let p = snap.point(for: w.coord)
+                    guard p.x > -10, p.y > -10, p.x < size.width + 10, p.y < size.height + 10
+                    else { continue }
+                    // A black pass first, one step wider, so a barb stays legible
+                    // over radar as well as over bare ground.
+                    drawUpperBarb(ctx.cgContext, at: p, kt: w.kt, dir: w.dir,
+                                  color: UIColor.black.withAlphaComponent(0.55),
+                                  scale: s, widthBoost: 2.8)
+                    drawUpperBarb(ctx.cgContext, at: p, kt: w.kt, dir: w.dir,
+                                  color: style.color, scale: s)
+                }
+                ctx.cgContext.setAlpha(1)
             }
 
             var afdLabels: [(bounds: CGRect, label: String, when: String, color: UIColor)] = []

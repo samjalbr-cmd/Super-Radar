@@ -34,6 +34,32 @@ enum RadarZoomOption: String, AppEnum {
     }
 }
 
+/// Upper-air level, same four the dashboard offers plus "match the app", so a
+/// widget can hold the jet stream while the map is set to the low-level jet.
+enum UpperLevelOption: String, AppEnum {
+    static var typeDisplayRepresentation = TypeDisplayRepresentation(name: "Upper-air winds")
+    static var caseDisplayRepresentations: [UpperLevelOption: DisplayRepresentation] = [
+        .followApp: "Match the app",
+        .off:  "Off",
+        .l850: "850 hPa · 5,000 ft",
+        .l700: "700 hPa · 10,000 ft",
+        .l500: "500 hPa · 18,000 ft",
+        .l250: "250 hPa · 35,000 ft",
+    ]
+    case followApp, off, l850, l700, l500, l250
+
+    func resolve(_ appSetting: String?) -> String? {
+        switch self {
+        case .followApp: return appSetting
+        case .off:  return nil
+        case .l850: return "850"
+        case .l700: return "700"
+        case .l500: return "500"
+        case .l250: return "250"
+        }
+    }
+}
+
 struct RadarConfig: WidgetConfigurationIntent {
     static var title: LocalizedStringResource = "Radar"
     static var description = IntentDescription("Live radar around your location.")
@@ -76,4 +102,7 @@ struct RadarConfig: WidgetConfigurationIntent {
 
     @Parameter(title: "Spotter report dots", default: true)
     var showSpotter: Bool
+
+    @Parameter(title: "Upper-air winds", default: .followApp)
+    var upperLevel: UpperLevelOption
 }

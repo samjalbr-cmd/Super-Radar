@@ -21,6 +21,9 @@ struct WatchLocation: Codable {
     var showMarine: Bool = false
     var showLake: Bool = true
     var showSpotter: Bool = true
+    /// Pressure level for the upper-air barbs — "850", "700", "500", "250", or
+    /// nil for off, matching the dashboard's own select.
+    var upperLevel: String? = nil
     var zoom: RadarZoom = .county
     /// Two-letter state, resolved by the app. The national station feed is
     /// 3.4 MB; one state's network is about 100 KB, and the API accepts only one.
@@ -54,6 +57,7 @@ struct WatchLocation: Codable {
         showMarine     = flag(.showMarine, false)
         showLake       = flag(.showLake, true)
         showSpotter    = flag(.showSpotter, true)
+        upperLevel = (try? c.decodeIfPresent(String.self, forKey: .upperLevel)) ?? nil
         zoom  = ((try? c.decodeIfPresent(RadarZoom.self, forKey: .zoom)) ?? nil) ?? .county
         state = (try? c.decodeIfPresent(String.self, forKey: .state)) ?? nil
     }
@@ -64,6 +68,7 @@ struct WatchLocation: Codable {
          showDiscussion: Bool = true, showOutlook: Bool = true, showFronts: Bool = true,
          stationModel: Bool = false, showIsobars: Bool = true, showMarine: Bool = false,
          showLake: Bool = true, showSpotter: Bool = true,
+         upperLevel: String? = nil,
          zoom: RadarZoom = .county, state: String? = nil) {
         self.lat = lat; self.lon = lon; self.name = name
         self.showReports = showReports; self.showTemps = showTemps; self.showAlerts = showAlerts
@@ -71,6 +76,7 @@ struct WatchLocation: Codable {
         self.showFronts = showFronts; self.stationModel = stationModel
         self.showIsobars = showIsobars; self.showMarine = showMarine
         self.showLake = showLake; self.showSpotter = showSpotter
+        self.upperLevel = upperLevel
         self.zoom = zoom; self.state = state
     }
 
@@ -81,6 +87,7 @@ struct WatchLocation: Codable {
                                         showDiscussion: true,
                                         showOutlook: true, showFronts: true, stationModel: false, showIsobars: true,
                                         showMarine: false, showLake: true, showSpotter: true,
+                                        upperLevel: nil,
                                         zoom: .county, state: "MI")
 
     static func load() -> WatchLocation {

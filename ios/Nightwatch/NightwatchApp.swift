@@ -39,6 +39,12 @@ final class SettingsBridge: NSObject, WKScriptMessageHandler {
         if let m = d["stationModel"] as? Bool { loc.stationModel = m }
         if let i = d["showIsobars"] as? Bool { loc.showIsobars = i }
         if let l = d["showLake"] as? Bool { loc.showLake = l }
+        // "off" and the empty string both mean the layer is off; anything else
+        // has to be one of the four levels, so a stale value cannot request a
+        // pressure level the feed does not serve.
+        if let u = d["upperLevel"] as? String {
+            loc.upperLevel = ["850", "700", "500", "250"].contains(u) ? u : nil
+        }
         if moved { loc.state = nil }
         loc.save()
 

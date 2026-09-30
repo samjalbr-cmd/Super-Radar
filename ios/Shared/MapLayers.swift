@@ -7,6 +7,35 @@ import UIKit
 /// surface analysis.
 enum MapLayers {
 
+    /// The index of the hour nearest now in an Open-Meteo `hourly.time` array,
+    /// matching the dashboard's currentHourIndex.
+    ///
+    /// Open-Meteo stamps hours to the minute — "2026-09-30T00:00" — and
+    /// ISO8601DateFormatter's .withInternetDateTime insists on seconds, so it
+    /// returned nil for every entry. The loop then never moved off index 0 and
+    /// each of these layers was silently drawn from 00Z GMT rather than the
+    /// current hour: up to a day stale, and wrong by a whole evening even at
+    /// best. Seconds are appended before parsing, and a plain DateFormatter
+    /// backs it up.
+    static func currentHourIndex(_ times: [String]) -> Int {
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime, .withTimeZone]
+        let plain = DateFormatter()
+        plain.locale = Locale(identifier: "en_US_POSIX")
+        plain.timeZone = TimeZone(identifier: "GMT")
+        plain.dateFormat = "yyyy-MM-dd'T'HH:mm"
+        let now = Date()
+        var idx = 0, best = Double.greatestFiniteMagnitude
+        for (i, t) in times.enumerated() {
+            let d = iso.date(from: t + ":00Z") ?? iso.date(from: t + "Z")
+                 ?? iso.date(from: t) ?? plain.date(from: t)
+            guard let d else { continue }
+            let gap = abs(d.timeIntervalSince(now))
+            if gap < best { best = gap; idx = i }
+        }
+        return idx
+    }
+
     // MARK: - SPC convective outlook
 
     /// A Day 1 categorical risk area, carrying the colours SPC ships with it
@@ -189,6 +218,119 @@ enum MapLayers {
         return Surface(fronts: fronts, centers: centers)
     }
 
+    // MARK: - Upper-air winds
+
+    /// One barb on the upper-air lattice: where it sits, and the wind there.
+    struct UpperWind {
+        let coord: CLLocationCoordinate2D
+        let kt: Double
+        let dir: Double         // degrees the wind is coming from
+    }
+
+    /// The pressure levels the dashboard offers, with the colour each is drawn
+    /// in. Keyed by the same strings the dashboard stores, so a level chosen in
+    /// the app arrives here unchanged.
+    static let upperLevels: [String: (label: String, color: UIColor)] = [
+        "850": ("850 hPa \u{00b7} 5,000 ft",  UIColor(red: 0.37, green: 0.85, blue: 0.54, alpha: 1)),
+        "700": ("700 hPa \u{00b7} 10,000 ft", UIColor(red: 0.50, green: 0.83, blue: 1.00, alpha: 1)),
+        "500": ("500 hPa \u{00b7} 18,000 ft", UIColor(red: 0.79, green: 0.63, blue: 1.00, alpha: 1)),
+        "250": ("250 hPa \u{00b7} 35,000 ft", UIColor(red: 1.00, green: 0.62, blue: 0.82, alpha: 1)),
+    ]
+
+    /// Winds at one pressure level, on a coarse lattice across the view.
+    ///
+    /// Deliberately sparse — a barb every 90-odd miles reads as flow, and any
+    /// denser is a hairball over the radar. Snapped to fixed degrees for the
+    /// same reason the isobar grid is: sampling the view itself would shift
+    /// every barb whenever the map moved a pixel.
+    static func upperWinds(sw: CLLocationCoordinate2D, ne: CLLocationCoordinate2D,
+                           level: String) async -> [UpperWind] {
+        guard upperLevels[level] != nil else { return [] }
+        let padLat = (ne.latitude - sw.latitude) * 0.08
+        let padLon = (ne.longitude - sw.longitude) * 0.08
+        let south = sw.latitude - padLat, north = ne.latitude + padLat
+        let west = sw.longitude - padLon, east = ne.longitude + padLon
+        guard north > south, east > west else { return [] }
+
+        // Pick the coarsest step that still puts at least a few barbs across the
+        // frame, so a metro view and a multi-state view both read as a field.
+        var step = 0.25
+        var c0 = 0, c1 = 0, r0 = 0, r1 = 0
+        let choices: [Double] = [0.25, 0.5, 1, 1.5, 2, 3]
+        for candidate in choices {
+            step = candidate
+            c0 = Int((west / step).rounded(.down)); c1 = Int((east / step).rounded(.up))
+            r0 = Int((south / step).rounded(.down)); r1 = Int((north / step).rounded(.up))
+            let count = (c1 - c0 + 1) * (r1 - r0 + 1)
+            if count <= 80 { break }
+        }
+        let cols = c1 - c0 + 1, rows = r1 - r0 + 1
+        guard cols > 1, rows > 1, cols * rows <= 120 else { return [] }
+
+        var lats: [String] = [], lons: [String] = []
+        var centres: [CLLocationCoordinate2D] = []
+        for r in 0..<rows {
+            for c in 0..<cols {
+                let la = Double(r0 + r) * step, lo = Double(c0 + c) * step
+                lats.append(String(format: "%.3f", la))
+                lons.append(String(format: "%.3f", lo))
+                centres.append(CLLocationCoordinate2D(latitude: la, longitude: lo))
+            }
+        }
+        var comps = URLComponents(string: "https://api.open-meteo.com/v1/forecast")!
+        comps.queryItems = [
+            .init(name: "latitude", value: lats.joined(separator: ",")),
+            .init(name: "longitude", value: lons.joined(separator: ",")),
+            .init(name: "hourly", value: "wind_speed_\(level)hPa,wind_direction_\(level)hPa"),
+            .init(name: "models", value: "ncep_hrrr_conus"),
+            .init(name: "timezone", value: "GMT"),
+            .init(name: "forecast_days", value: "1"),
+        ]
+        guard let url = comps.url else { return [] }
+        struct Point: Decodable {
+            struct Hourly: Decodable {
+                let time: [String]?
+                let speed: [Double?]?
+                let direction: [Double?]?
+                // The wire names carry the level, so they cannot be static keys.
+                init(from decoder: Decoder) throws {
+                    let c = try decoder.container(keyedBy: Key.self)
+                    var t: [String]? = nil, s: [Double?]? = nil, d: [Double?]? = nil
+                    for k in c.allKeys {
+                        if k.stringValue == "time" { t = try? c.decode([String].self, forKey: k) }
+                        else if k.stringValue.hasPrefix("wind_speed_") { s = try? c.decode([Double?].self, forKey: k) }
+                        else if k.stringValue.hasPrefix("wind_direction_") { d = try? c.decode([Double?].self, forKey: k) }
+                    }
+                    time = t; speed = s; direction = d
+                }
+                struct Key: CodingKey {
+                    var stringValue: String
+                    init?(stringValue: String) { self.stringValue = stringValue }
+                    var intValue: Int? { nil }
+                    init?(intValue: Int) { nil }
+                }
+            }
+            let hourly: Hourly?
+        }
+        var req = URLRequest(url: url); req.timeoutInterval = 25
+        guard let data = try? await URLSession.shared.data(for: req).0 else { return [] }
+        let points: [Point]
+        if let many = try? JSONDecoder().decode([Point].self, from: data) { points = many }
+        else if let one = try? JSONDecoder().decode(Point.self, from: data) { points = [one] }
+        else { return [] }
+        guard points.count == centres.count, let times = points.first?.hourly?.time else { return [] }
+
+        let idx = currentHourIndex(times)
+        var out: [UpperWind] = []
+        for (i, p) in points.enumerated() {
+            guard let h = p.hourly,
+                  let sp = h.speed, idx < sp.count, let kmh = sp[idx],
+                  let dr = h.direction, idx < dr.count, let deg = dr[idx] else { continue }
+            out.append(UpperWind(coord: centres[i], kt: kmh * 0.539957, dir: deg))
+        }
+        return out
+    }
+
     // MARK: - Isobars
 
     /// A mean-sea-level pressure contour: the line, and the level it traces.
@@ -262,16 +404,7 @@ enum MapLayers {
         else { return [] }
         guard points.count == centres.count, let times = points.first?.hourly?.time else { return [] }
 
-        // The hour nearest now, matching the dashboard's currentHourIndex.
-        let fmt = ISO8601DateFormatter()
-        fmt.formatOptions = [.withInternetDateTime, .withTimeZone]
-        let now = Date()
-        var idx = 0, best = Double.greatestFiniteMagnitude
-        for (i, t) in times.enumerated() {
-            guard let d = fmt.date(from: t + "Z") ?? fmt.date(from: t) else { continue }
-            let gap = abs(d.timeIntervalSince(now))
-            if gap < best { best = gap; idx = i }
-        }
+        let idx = currentHourIndex(times)
         let vals: [Double?] = points.map { p in
             guard let arr = p.hourly?.pressure_msl, idx < arr.count else { return nil }
             return arr[idx]
