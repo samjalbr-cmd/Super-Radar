@@ -21,9 +21,15 @@ struct WatchLocation: Codable {
     var showMarine: Bool = false
     var showLake: Bool = true
     var showSpotter: Bool = true
-    /// Pressure level for the upper-air barbs — "850", "700", "500", "250", or
-    /// nil for off, matching the dashboard's own select.
-    var upperLevel: String? = nil
+    /// Pressure level for the upper-air barbs: "850", "700", "500", "250", or
+    /// "off", matching the dashboard's own select.
+    ///
+    /// Off is the string, never nil. nil means the key was absent — a value
+    /// stored before this setting existed — which takes the 500 hPa default
+    /// like a new install does. Were off stored as nil the two would be
+    /// indistinguishable, and switching the layer off would spring back to 500
+    /// on the next decode.
+    var upperLevel: String? = "500"
     var zoom: RadarZoom = .county
     /// Two-letter state, resolved by the app. The national station feed is
     /// 3.4 MB; one state's network is about 100 KB, and the API accepts only one.
@@ -57,7 +63,7 @@ struct WatchLocation: Codable {
         showMarine     = flag(.showMarine, false)
         showLake       = flag(.showLake, true)
         showSpotter    = flag(.showSpotter, true)
-        upperLevel = (try? c.decodeIfPresent(String.self, forKey: .upperLevel)) ?? nil
+        upperLevel = ((try? c.decodeIfPresent(String.self, forKey: .upperLevel)) ?? nil) ?? "500"
         zoom  = ((try? c.decodeIfPresent(RadarZoom.self, forKey: .zoom)) ?? nil) ?? .county
         state = (try? c.decodeIfPresent(String.self, forKey: .state)) ?? nil
     }
@@ -68,7 +74,7 @@ struct WatchLocation: Codable {
          showDiscussion: Bool = true, showOutlook: Bool = true, showFronts: Bool = true,
          stationModel: Bool = false, showIsobars: Bool = true, showMarine: Bool = false,
          showLake: Bool = true, showSpotter: Bool = true,
-         upperLevel: String? = nil,
+         upperLevel: String? = "500",
          zoom: RadarZoom = .county, state: String? = nil) {
         self.lat = lat; self.lon = lon; self.name = name
         self.showReports = showReports; self.showTemps = showTemps; self.showAlerts = showAlerts
@@ -87,7 +93,7 @@ struct WatchLocation: Codable {
                                         showDiscussion: true,
                                         showOutlook: true, showFronts: true, stationModel: false, showIsobars: true,
                                         showMarine: false, showLake: true, showSpotter: true,
-                                        upperLevel: nil,
+                                        upperLevel: "500",
                                         zoom: .county, state: "MI")
 
     static func load() -> WatchLocation {

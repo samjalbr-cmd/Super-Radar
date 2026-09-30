@@ -43,7 +43,8 @@ final class SettingsBridge: NSObject, WKScriptMessageHandler {
         // has to be one of the four levels, so a stale value cannot request a
         // pressure level the feed does not serve.
         if let u = d["upperLevel"] as? String {
-            loc.upperLevel = ["850", "700", "500", "250"].contains(u) ? u : nil
+            // Off is stored as the string, so it stays off. See WatchLocation.
+            loc.upperLevel = ["850", "700", "500", "250"].contains(u) ? u : "off"
         }
         if moved { loc.state = nil }
         loc.save()
