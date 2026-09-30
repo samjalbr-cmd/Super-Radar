@@ -5307,9 +5307,25 @@ function prefKey(el){
   return el.id || '';
 }
 
+// Bumped when a shipped default changes. A saved setting always beats a new
+// default — which is right, except for someone who never chose the old one and
+// only has it because it was the default at the time. Without this, changing a
+// default reaches new visitors and nobody else.
+const PREFS_VERSION = 2;
+
+// What to forget at each step, so the new default applies once — keyed by the
+// value the old default had. A stored setting is only discardable when it still
+// equals the default it was saved under, because then nobody chose it; any
+// other value was picked on purpose and has to survive. Forgetting the key
+// outright would have reset someone who had deliberately selected 250 hPa.
+const PREF_MIGRATIONS = {
+  // Upper-air winds shipped off and now default to 500 hPa.
+  2: {upperLevel: 'off'},
+};
+
 function saveSettings(){
   if(!prefsReady) return;
-  const out = {};
+  const out = {__v: PREFS_VERSION};
   for(const el of prefControls()){
     const k = prefKey(el);
     if(!k) continue;
@@ -5330,6 +5346,14 @@ function restoreSettings(){
   let saved = null;
   try{ saved = JSON.parse(localStorage.getItem(PREFS_KEY) || 'null'); }catch(e){}
   if(saved){
+    // Drop settings whose stored value is only an old default, so the new one
+    // shows through. Runs once: the next save stamps the current version.
+    const from = Number(saved.__v) || 1;
+    for(let v = from + 1; v <= PREFS_VERSION; v++){
+      for(const [k, wasDefault] of Object.entries(PREF_MIGRATIONS[v] || {})){
+        if(String(saved[k]) === String(wasDefault)) delete saved[k];
+      }
+    }
     for(const el of prefControls()){
       const k = prefKey(el), v = saved[k];
       if(v === undefined || PREF_SKIP_RESTORE.has(k)) continue;
