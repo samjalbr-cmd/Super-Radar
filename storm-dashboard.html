@@ -3533,20 +3533,77 @@ const UPPER_LEVELS = {
 let upperLevel = 'off';
 let upperLayer = null, upperTimer = null, upperSeq = 0;
 
+// The upper-air lattice: whole multiples of a degree step, staggered row to row.
+//
+// Snapped rather than fitted to the view. A grid built from the viewport is
+// anchored to the screen, so every barb slid onto new ground each time the map
+// moved and the one you were reading left the feature it described. Fixed
+// multiples keep each barb over the same ground until it leaves the frame — the
+// same reason the isobar grid is snapped.
+//
+// Alternate rows sit half a step east. Sampling stays even, but the ranks-and-
+// files reading of a square lattice breaks up, which matters here because these
+// are model samples rather than stations and a perfect grid reads as texture.
+// The offset moves the sample itself, so a barb still sits exactly where its
+// wind was read.
+function upperLattice(bounds){
+  const padLat = (bounds.getNorth() - bounds.getSouth()) * 0.08;
+  const padLon = (bounds.getEast() - bounds.getWest()) * 0.08;
+  const south = bounds.getSouth() - padLat, north = bounds.getNorth() + padLat;
+  const west = bounds.getWest() - padLon, east = bounds.getEast() + padLon;
+  if(!(north > south) || !(east > west)) return null;
+  // The step comes from the longitude span alone, and never from the point
+  // count. Latitude span shifts slightly as you pan north or south, because
+  // Mercator degrees-per-pixel varies with latitude; choosing the step by total
+  // point count let that wobble — 0.02° was enough — flip the step between 1°
+  // and 1.5° and relocate every barb on an ordinary pan. Snapping the lattice
+  // is pointless if the thing it snaps to is bistable. Longitude span is exactly
+  // constant for a given zoom and window, so it picks the same step every time.
+  const STEPS = [0.25, 0.5, 1, 1.5, 2, 3, 5, 8, 12, 20];
+  let step = STEPS[STEPS.length - 1];
+  for(const cand of STEPS){
+    if((east - west) / cand <= 12){ step = cand; break; }
+  }
+  const c0 = Math.floor(west / step), c1 = Math.ceil(east / step);
+  const r0 = Math.floor(south / step), r1 = Math.ceil(north / step);
+  const cols = c1 - c0 + 1, rows = r1 - r0 + 1;
+  if(cols < 2 || rows < 2 || cols * rows > 200) return null;
+  const lats = [], lons = [];
+  for(let r = 0; r < rows; r++){
+    const off = (r % 2) ? step / 2 : 0;
+    for(let c = 0; c < cols; c++){
+      lats.push(((r0 + r) * step).toFixed(3));
+      lons.push(((c0 + c) * step + off).toFixed(3));
+    }
+  }
+  return {lats, lons};
+}
+
 async function fetchUpper(){
   if(upperLevel === 'off' || !upperLayer) return;
   const seq = ++upperSeq, lvl = upperLevel;
   // Coarse on purpose. A barb every 90-odd miles reads as flow; any denser and
   // it is a hairball that hides the radar underneath it.
-  const cols = 9, rows = 7;
-  const {lats, lons} = buildGrid(map.getBounds(), cols, rows);
+  const grid = upperLattice(map.getBounds());
+  if(!grid) return;
+  const {lats, lons} = grid;
   const url = 'https://api.open-meteo.com/v1/forecast'
             + `?latitude=${lats.join(',')}&longitude=${lons.join(',')}`
             + `&hourly=wind_speed_${lvl}hPa,wind_direction_${lvl}hPa`
             + '&models=ncep_hrrr_conus&timezone=GMT&forecast_days=1';
   try{
-    const res = await fetch(url);
-    const data = await res.json();
+    let data = await (await fetch(url)).json();
+    // HRRR covers CONUS and a margin around it, and one point outside that
+    // margin fails the entire request rather than coming back empty — so a view
+    // reaching into Canada lost every barb, not just the ones over Canada. Fall
+    // back to whichever model Open-Meteo has for the area.
+    //
+    // Only for that error. Retrying on any failure meant a rate-limit reply —
+    // which is the API asking for less traffic — immediately bought a second
+    // request that was going to be refused too.
+    if(data && data.error && /no data is available/i.test(data.reason || '')){
+      data = await (await fetch(url.replace('&models=ncep_hrrr_conus', ''))).json();
+    }
     if(seq !== upperSeq || upperLevel !== lvl) return;     // moved on since
     const arr = Array.isArray(data) ? data : [data];
     if(!arr.length || !arr[0].hourly) return;

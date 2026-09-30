@@ -252,26 +252,35 @@ enum MapLayers {
         let west = sw.longitude - padLon, east = ne.longitude + padLon
         guard north > south, east > west else { return [] }
 
-        // Pick the coarsest step that still puts at least a few barbs across the
-        // frame, so a metro view and a multi-state view both read as a field.
-        var step = 0.25
-        var c0 = 0, c1 = 0, r0 = 0, r1 = 0
-        let choices: [Double] = [0.25, 0.5, 1, 1.5, 2, 3]
-        for candidate in choices {
-            step = candidate
-            c0 = Int((west / step).rounded(.down)); c1 = Int((east / step).rounded(.up))
-            r0 = Int((south / step).rounded(.down)); r1 = Int((north / step).rounded(.up))
-            let count = (c1 - c0 + 1) * (r1 - r0 + 1)
-            if count <= 80 { break }
+        // The step comes from the longitude span alone, so a metro view and a
+        // multi-state view both read as a field. Never from the point count:
+        // latitude span varies with the centre latitude, because Mercator
+        // degrees-per-pixel does, and letting that pick the step makes the
+        // choice bistable — on the dashboard a 0.02° wobble from an ordinary pan
+        // flipped it between 1° and 1.5° and relocated every barb. Snapping the
+        // lattice is pointless if the thing it snaps to is not itself stable.
+        let steps: [Double] = [0.25, 0.5, 1, 1.5, 2, 3, 5, 8, 12, 20]
+        var step: Double = steps[steps.count - 1]
+        for candidate in steps {
+            if (east - west) / candidate <= 12 { step = candidate; break }
         }
+        let c0 = Int((west / step).rounded(.down)), c1 = Int((east / step).rounded(.up))
+        let r0 = Int((south / step).rounded(.down)), r1 = Int((north / step).rounded(.up))
         let cols = c1 - c0 + 1, rows = r1 - r0 + 1
-        guard cols > 1, rows > 1, cols * rows <= 120 else { return [] }
+        guard cols > 1, rows > 1, cols * rows <= 200 else { return [] }
 
         var lats: [String] = [], lons: [String] = []
         var centres: [CLLocationCoordinate2D] = []
         for r in 0..<rows {
+            // Alternate rows sit half a step east. Sampling stays even, but the
+            // ranks-and-files reading of a square lattice breaks up — which
+            // matters here because these are model samples rather than stations,
+            // and a perfect grid reads as texture instead of as data. The offset
+            // moves the sample itself, so a barb still sits exactly where its
+            // wind was read.
+            let off = r % 2 == 1 ? step / 2 : 0
             for c in 0..<cols {
-                let la = Double(r0 + r) * step, lo = Double(c0 + c) * step
+                let la = Double(r0 + r) * step, lo = Double(c0 + c) * step + off
                 lats.append(String(format: "%.3f", la))
                 lons.append(String(format: "%.3f", lo))
                 centres.append(CLLocationCoordinate2D(latitude: la, longitude: lo))
@@ -313,7 +322,26 @@ enum MapLayers {
             let hourly: Hourly?
         }
         var req = URLRequest(url: url); req.timeoutInterval = 25
-        guard let data = try? await URLSession.shared.data(for: req).0 else { return [] }
+        guard var data = try? await URLSession.shared.data(for: req).0 else { return [] }
+        // HRRR covers CONUS and a margin around it, and one point outside that
+        // margin fails the entire request rather than coming back empty — so a
+        // view reaching into Canada lost every barb, not just the ones over
+        // Canada. Fall back to whichever model Open-Meteo has for the area.
+        //
+        // Only for that error. Retrying on any failure meant a rate-limit reply
+        // — which is the API asking for less traffic — immediately bought a
+        // second request that was going to be refused too.
+        struct Failure: Decodable { let error: Bool?; let reason: String? }
+        let failure = try? JSONDecoder().decode(Failure.self, from: data)
+        if failure?.error == true,
+           (failure?.reason ?? "").lowercased().contains("no data is available") {
+            var fallback = comps
+            fallback.queryItems = comps.queryItems?.filter { $0.name != "models" }
+            guard let fbURL = fallback.url else { return [] }
+            var fbReq = URLRequest(url: fbURL); fbReq.timeoutInterval = 25
+            guard let d2 = try? await URLSession.shared.data(for: fbReq).0 else { return [] }
+            data = d2
+        }
         let points: [Point]
         if let many = try? JSONDecoder().decode([Point].self, from: data) { points = many }
         else if let one = try? JSONDecoder().decode(Point.self, from: data) { points = [one] }
