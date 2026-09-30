@@ -425,6 +425,17 @@
     text-shadow:0 0 3px #000, 0 0 2px #000, 0 1px 1px #000;
     white-space:nowrap;display:inline-block;transform:translate(-50%,-50%);
   }
+  .up-icon{ background:none; border:none; }
+  .up-barb{
+    /* The divIcon wrapper is 0x0, so the barb has to carry its own size or it
+       collapses and draws nothing. */
+    position:relative; width:52px; height:52px;
+    transform:translate(-50%,-50%); pointer-events:none;
+    filter:drop-shadow(0 0 2px #000) drop-shadow(0 0 1px #000);
+    opacity:0.92;
+  }
+  .up-barb svg{ position:absolute; top:0; left:0; }
+
   .lake-temp{
     font-family:monospace;font-weight:700;font-size:calc(8.5px * var(--lblscale, 1));line-height:1;
     text-shadow:0 0 3px #000, 0 0 2px #000, 0 1px 1px #000;
@@ -773,6 +784,16 @@
       <div class="set-body">
         <label class="set-row"><input type="checkbox" id="stationsChk" checked onchange="toggleStations(this)"><span class="sw-t"></span>Live stations (METAR)</label>
         <label class="set-row"><input type="checkbox" id="lakeChk" checked onchange="toggleLakeTemps(this)"><span class="sw-t"></span>Lake water temperature</label>
+        <label class="set-row" style="gap:8px">
+          <span style="flex:1">Upper-air wind</span>
+          <select id="upperLevel" onchange="setUpperLevel(this.value)" style="flex:0 0 auto">
+            <option value="off" selected>Off</option>
+            <option value="850">850 hPa &middot; 5,000 ft</option>
+            <option value="700">700 hPa &middot; 10,000 ft</option>
+            <option value="500">500 hPa &middot; 18,000 ft</option>
+            <option value="250">250 hPa &middot; 35,000 ft</option>
+          </select>
+        </label>
         <label class="set-row"><input type="checkbox" id="windBarbsChk" onchange="setWindBarbs(this)"><span class="sw-t"></span>Full station model</label>
         <label class="set-cap" for="stationMetric">Station metric</label>
         <select id="stationMetric" class="set-field" onchange="setStationMetric(this.value)">
@@ -959,6 +980,7 @@ function initMap(){
   alertLayerGroup = L.layerGroup().addTo(map);
   afdHazardLayer = L.layerGroup().addTo(map);
   lakeLayer = L.layerGroup().addTo(map);
+  upperLayer = L.layerGroup().addTo(map);
   sfcLayer = L.layerGroup().addTo(map);
   mcdLayer = L.layerGroup().addTo(map);
   lsrLayer = L.layerGroup().addTo(map);
@@ -986,7 +1008,8 @@ function initMap(){
   const MOVE_TASKS = [renderStations, drawIsoLines, renderSurface,
                       renderFeed, scheduleAfdRefresh, scheduleModelRefresh,
                       scheduleIsobarRefresh, scheduleNoaaRadar, schedulePrecipRefresh,
-                      syncAppSettings, scheduleHistoryRefresh, renderLakeTemps];
+                      syncAppSettings, scheduleHistoryRefresh, renderLakeTemps,
+                      renderUpper, scheduleUpperRefresh];
   const FRAME_BUDGET_MS = 8;          // leaves room in a 16 ms frame to paint
   let movePass = false, moveAgain = false;
   function runMoveTasks(){
@@ -1666,6 +1689,7 @@ const HIDEABLE = [
   ['Isobars',       () => isobarsOn],
   ['Discussion areas', () => afdAreasOn],
   ['Warnings',      () => hazardVisible.tornado || hazardVisible.thunderstorm || hazardVisible.flood],
+  // Upper air is off by default, so it is not counted as hidden.
 ];
 
 function renderHiddenStatus(){
@@ -3487,6 +3511,123 @@ function renderModelLegend(field){
   el.innerHTML = html;
 }
 
+/* ---------------- Upper air ----------------
+   Wind at altitude, on a grid rather than at stations.
+
+   The surface barbs answer "what is it doing here": they sit on real sites and
+   carry that site's temperature. These answer "where is this going", which is a
+   field rather than a set of observations, so they are drawn on a regular
+   lattice in one colour per level, longer and thinner, and they read as flow.
+
+   Three levels, each a different question. 850 is the low-level jet, where the
+   moisture and warm air are fed in. 500 is the steering flow — which way storms
+   actually move, and the reason this exists. 250 is the jet stream the whole
+   system is organised around. */
+const UPPER_LEVELS = {
+  '850': {label: '850 hPa \u00b7 5,000 ft',  color: '#5FD98A'},
+  '700': {label: '700 hPa \u00b7 10,000 ft', color: '#7FD4FF'},
+  '500': {label: '500 hPa \u00b7 18,000 ft', color: '#C9A0FF'},
+  '250': {label: '250 hPa \u00b7 35,000 ft', color: '#FF9ED2'},
+};
+let upperLevel = 'off';
+let upperLayer = null, upperTimer = null, upperSeq = 0;
+
+async function fetchUpper(){
+  if(upperLevel === 'off' || !upperLayer) return;
+  const seq = ++upperSeq, lvl = upperLevel;
+  // Coarse on purpose. A barb every 90-odd miles reads as flow; any denser and
+  // it is a hairball that hides the radar underneath it.
+  const cols = 9, rows = 7;
+  const {lats, lons} = buildGrid(map.getBounds(), cols, rows);
+  const url = 'https://api.open-meteo.com/v1/forecast'
+            + `?latitude=${lats.join(',')}&longitude=${lons.join(',')}`
+            + `&hourly=wind_speed_${lvl}hPa,wind_direction_${lvl}hPa`
+            + '&models=ncep_hrrr_conus&timezone=GMT&forecast_days=1';
+  try{
+    const res = await fetch(url);
+    const data = await res.json();
+    if(seq !== upperSeq || upperLevel !== lvl) return;     // moved on since
+    const arr = Array.isArray(data) ? data : [data];
+    if(!arr.length || !arr[0].hourly) return;
+    const idx = currentHourIndex(arr[0].hourly.time);
+    const pts = [];
+    arr.forEach((loc, i) => {
+      const h = loc.hourly || {};
+      const sp = (h['wind_speed_' + lvl + 'hPa'] || [])[idx];
+      const dr = (h['wind_direction_' + lvl + 'hPa'] || [])[idx];
+      if(sp == null || dr == null) return;
+      pts.push({lat: +lats[i], lon: +lons[i], kt: sp * 0.539957, dir: dr});
+    });
+    upperData = {level: lvl, pts};
+    renderUpper();
+  }catch(e){ console.error('upper air', e); }
+}
+
+let upperData = null;
+
+function renderUpper(){
+  if(!upperLayer) return;
+  upperLayer.clearLayers();
+  if(upperLevel === 'off' || !upperData || upperData.level !== upperLevel) return;
+  const col = (UPPER_LEVELS[upperLevel] || {}).color || '#C9A0FF';
+  const view = map.getBounds();
+  for(const p of upperData.pts){
+    if(!view.contains([p.lat, p.lon])) continue;
+    const html = `<div class="up-barb">${upperBarb(p.kt, p.dir, col)}</div>`;
+    L.marker([p.lat, p.lon], {
+      icon: L.divIcon({className: 'up-icon', html, iconSize: [0, 0], iconAnchor: [0, 0]}),
+      interactive: true, keyboard: false,
+    }).bindPopup(`<div class="alert-popup"><b>${Math.round(p.kt)} kt from ${Math.round(p.dir)}\u00b0</b>` +
+      `${(UPPER_LEVELS[upperLevel] || {}).label || ''}</div>`).addTo(upperLayer);
+  }
+}
+
+// Longer and thinner than the surface barb, and hollow-tipped, so the two never
+// read as the same instrument.
+function upperBarb(kt, dir, col){
+  const cx = 26, cy = 26, top = 3, sw = 1.4, len = 15, gap = 5.2;
+  if(kt < 5){
+    return `<svg viewBox="0 0 52 52" width="52" height="52">` +
+           `<circle cx="${cx}" cy="${cy}" r="4" fill="none" stroke="${col}" stroke-width="${sw}"/></svg>`;
+  }
+  let v = Math.round(kt / 5) * 5;
+  const parts = [`<line x1="${cx}" y1="${cy}" x2="${cx}" y2="${top}" stroke="${col}" stroke-width="${sw}"/>`];
+  let y = top;
+  const p50 = Math.floor(v / 50); v -= p50 * 50;
+  const p10 = Math.floor(v / 10); v -= p10 * 10;
+  const p5  = Math.floor(v / 5);
+  for(let i = 0; i < p50; i++){
+    parts.push(`<polygon points="${cx},${y} ${cx - len},${y + 3.4} ${cx},${y + gap}" fill="none" stroke="${col}" stroke-width="${sw}"/>`);
+    y += gap + 2.2;
+  }
+  for(let i = 0; i < p10; i++){
+    parts.push(`<line x1="${cx}" y1="${y}" x2="${cx - len}" y2="${y + 4.4}" stroke="${col}" stroke-width="${sw}"/>`);
+    y += gap;
+  }
+  for(let i = 0; i < p5; i++){
+    const off = (p10 === 0 && p50 === 0) ? gap : 0;
+    parts.push(`<line x1="${cx}" y1="${y + off}" x2="${cx - len / 2}" y2="${y + off + 2.2}" stroke="${col}" stroke-width="${sw}"/>`);
+    y += gap;
+  }
+  return `<svg viewBox="0 0 52 52" width="52" height="52">` +
+         `<g transform="rotate(${dir} ${cx} ${cy})">${parts.join('')}</g></svg>`;
+}
+
+function setUpperLevel(v){
+  upperLevel = UPPER_LEVELS[v] ? v : 'off';
+  upperData = null;
+  if(upperLevel === 'off'){ upperLayer.clearLayers(); renderHiddenStatus(); return; }
+  fetchUpper();
+  renderHiddenStatus();
+  saveSettings();
+}
+
+function scheduleUpperRefresh(){
+  if(upperLevel === 'off') return;
+  clearTimeout(upperTimer);
+  upperTimer = setTimeout(fetchUpper, 600);      // debounce panning
+}
+
 /* ---------------- Isobars ----------------
    Mean sea-level pressure contours on their own. The MSLP model layer already
    drew these, but only as a side effect of painting the whole pressure field in
@@ -5075,6 +5216,7 @@ async function boot(){
   setInterval(loadAfdAreas, 20 * 60 * 1000);
   setInterval(loadSurfaceAnalysis, 20 * 60 * 1000);
   setInterval(loadLakeTemps, 30 * 60 * 1000);   // the collector runs hourly
+  setInterval(fetchUpper, 20 * 60 * 1000);      // HRRR updates hourly
   setInterval(loadStormTracks, 5 * 60 * 1000);   // one volume scan
 }
 
