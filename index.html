@@ -761,6 +761,7 @@
         <label class="set-row"><input type="checkbox" data-hazard="heat" checked onchange="toggleHazard(this)"><span class="sw-t"></span>Heat</label>
         <label class="set-row"><input type="checkbox" data-hazard="other" checked onchange="toggleHazard(this)"><span class="sw-t"></span>Other</label>
         <label class="set-row"><input type="checkbox" data-hazard="watches" checked onchange="toggleHazard(this)"><span class="sw-t"></span>Include watches</label>
+        <label class="set-row"><input type="checkbox" data-hazard="advisories" checked onchange="toggleHazard(this)"><span class="sw-t"></span>Include advisories</label>
         <label class="set-row"><input type="checkbox" data-hazard="lightning" checked onchange="toggleHazard(this)"><span class="sw-t"></span>Lightning strikes</label>
       </div>
     </details>
@@ -1237,7 +1238,7 @@ function sevRank(sev){
   if(sev === 'watch') return 2;
   return 1;
 }
-const hazardVisible = {tornado:true, thunderstorm:true, flood:true, winter:true, heat:true, other:true, watches:true, lightning:true};
+const hazardVisible = {tornado:true, thunderstorm:true, flood:true, winter:true, heat:true, other:true, watches:true, advisories:true, lightning:true};
 let lastAlertFeats = [];
 
 // Track when each alert was first seen so brand-new ones can flash.
@@ -1297,13 +1298,38 @@ function lighten(hex, amt){
   return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
 }
 
-const zoneCache = {};
+// Zone geometry is a county or forecast-zone boundary — it does not change, so
+// it is worth keeping across reloads. In memory only, every single page load
+// paid the full resolution cost again from nothing.
+const ZONE_CACHE_KEY = 'nightwatch.zones.v1';
+const ZONE_CACHE_BUDGET = 2e6;      // bytes; a zone is ~3 KB, so roughly 650 of them
+
+const zoneCache = (() => {
+  try{ return JSON.parse(localStorage.getItem(ZONE_CACHE_KEY) || '{}') || {}; }
+  catch(e){ return {}; }
+})();
+
+let zoneCacheDirty = false;
+function persistZoneCache(){
+  if(!zoneCacheDirty) return;
+  zoneCacheDirty = false;
+  try{
+    if(JSON.stringify(zoneCache).length > ZONE_CACHE_BUDGET){
+      // Drop the oldest half rather than all of it, so a look at the far side
+      // of the country does not throw away the zones around home.
+      const keys = Object.keys(zoneCache);
+      for(const k of keys.slice(0, Math.ceil(keys.length / 2))) delete zoneCache[k];
+    }
+    localStorage.setItem(ZONE_CACHE_KEY, JSON.stringify(zoneCache));
+  }catch(e){ /* quota, or private browsing: the in-memory cache still works */ }
+}
 async function zoneGeometry(zoneUrl){
   if(zoneCache[zoneUrl] !== undefined) return zoneCache[zoneUrl];
   try{
     const res = await fetch(zoneUrl);
     const data = await res.json();
     zoneCache[zoneUrl] = data.geometry || null;
+    zoneCacheDirty = true;
   }catch(e){
     zoneCache[zoneUrl] = null;
   }
@@ -1330,7 +1356,6 @@ async function loadAlerts(){
     alertsNextTry = 0;
     const data = await res.json();
     const feats = data.features || [];
-    let zoneFetches = 0;
     const ZONE_FETCH_LIMIT = 120;   // watches span many counties and a replayed
                                     // day spans more than one moment; the cache fills over time
 
@@ -1343,6 +1368,20 @@ async function loadAlerts(){
     // claimed the layer was on. Resolved in severity order so that when the
     // per-refresh cap bites it drops advisories rather than warnings.
     const rankCls = c => c === 'warning' ? 0 : c === 'watch' ? 1 : 2;
+
+    // Which zones are worth spending the budget on. The feed is national, so
+    // ordering by severity alone spent the whole cap on warnings elsewhere in
+    // the country and left the alerts actually on screen unresolved — a frost
+    // advisory over the view lost its zone lookup to a flood warning in Texas,
+    // and the map looked as though it did not draw advisories at all.
+    const viewStates = new Set(statesInView(map.getBounds()));
+    const inView = f => (f.properties.affectedZones || []).some(z => {
+      const code = z.split('/').pop().slice(0, 2).toUpperCase();
+      if(viewStates.has(code)) return true;
+      // Marine zones carry a basin code rather than a state, so they are judged
+      // by the shores they touch.
+      return (LAKE_SHORES[code] || []).some(s => viewStates.has(s));
+    });
     for(const f of feats){
       f._cls = classify(f.properties.event);
       f._hazard = hazardOf(f.properties.event);
@@ -1350,14 +1389,34 @@ async function loadAlerts(){
       if(f.geometry) f._geoms.push(f.geometry);
     }
     const needGeom = feats.filter(f => !f._geoms.length && (f.properties.affectedZones || []).length)
-                          .sort((a, b) => rankCls(a._cls) - rankCls(b._cls));
+                          .sort((a, b) => (inView(b) - inView(a)) ||
+                                          (rankCls(a._cls) - rankCls(b._cls)));
+    // Pick the uncached zones to fetch this pass, keeping the order needGeom
+    // established: warnings first, then watches, then advisories.
+    const wanted = [], wantedSet = new Set();
+    outer:
     for(const f of needGeom){
       for(const zoneUrl of f.properties.affectedZones){
-        if(zoneCache[zoneUrl] === undefined){
-          if(zoneFetches >= ZONE_FETCH_LIMIT) continue;
-          zoneFetches++;
-        }
-        const g = await zoneGeometry(zoneUrl);
+        if(zoneCache[zoneUrl] !== undefined || wantedSet.has(zoneUrl)) continue;
+        if(wanted.length >= ZONE_FETCH_LIMIT) break outer;
+        wantedSet.add(zoneUrl); wanted.push(zoneUrl);
+      }
+    }
+    // Fetched in waves rather than one at a time. Serially, the whole alert
+    // layer waited on the slowest path — 120 lookups at ~155 ms each is
+    // nineteen seconds before anything drew at all — and advisories are
+    // resolved last by design, so they were precisely what was still missing
+    // when someone looked at the map and concluded they were not supported.
+    const ZONE_CONCURRENCY = 12;
+    for(let i = 0; i < wanted.length; i += ZONE_CONCURRENCY){
+      await Promise.all(wanted.slice(i, i + ZONE_CONCURRENCY).map(z => zoneGeometry(z)));
+    }
+    persistZoneCache();
+    // Attach whatever is resolved. Anything past the cap stays unresolved and
+    // is picked up by a later refresh, once the cache has filled.
+    for(const f of needGeom){
+      for(const zoneUrl of f.properties.affectedZones){
+        const g = zoneCache[zoneUrl];
         if(g) f._geoms.push(g);
       }
     }
@@ -1403,7 +1462,8 @@ async function loadAlerts(){
 // Respect the hazard toggles so a muted hazard doesn't pop toasts.
 function alertToastVisible(f){
   if(!hazardVisible[f._hazard]) return false;
-  if((f._cls === 'watch' || f._cls === 'advisory') && !hazardVisible.watches) return false;
+  if(f._cls === 'watch' && !hazardVisible.watches) return false;
+  if(f._cls === 'advisory' && !hazardVisible.advisories) return false;
   return true;
 }
 
@@ -1497,7 +1557,8 @@ function invalidateTimeLayers(){ sigAlerts = sigLSR = sigAfd = sigMCD = null; }
 function renderAlerts(){
   const visible = lastAlertFeats.filter(f =>
     f._geoms && f._geoms.length && alertInWindow(f) && hazardVisible[f._hazard] &&
-    !((f._cls === 'watch' || f._cls === 'advisory') && !hazardVisible.watches));
+    !(f._cls === 'watch' && !hazardVisible.watches) &&
+    !(f._cls === 'advisory' && !hazardVisible.advisories));
   const sig = visible.map(f => f.id || f.properties.id).join('|');
   if(sig === sigAlerts) return;
   sigAlerts = sig;
@@ -1508,7 +1569,7 @@ function renderAlerts(){
     if(!alertInWindow(f)) continue;
     if(!hazardVisible[f._hazard]) continue;
     if(f._cls === 'watch' && !hazardVisible.watches) continue;
-    if(f._cls === 'advisory' && !hazardVisible.watches) continue;
+    if(f._cls === 'advisory' && !hazardVisible.advisories) continue;
 
     const color = alertColor(f.properties.event, f._cls);
     const isWatch = f._cls === 'watch';
@@ -1689,7 +1750,9 @@ const HIDEABLE = [
   ['Isobars',       () => isobarsOn],
   ['Discussion areas', () => afdAreasOn],
   ['Warnings',      () => hazardVisible.tornado || hazardVisible.thunderstorm || hazardVisible.flood],
-  // Upper air is off by default, so it is not counted as hidden.
+  ['Watches',       () => hazardVisible.watches],
+  ['Advisories',    () => hazardVisible.advisories],
+  ['Upper air',     () => upperLevel !== 'off'],
 ];
 
 function renderHiddenStatus(){
@@ -2579,6 +2642,26 @@ function replayActive(){ return replayAt != null; }
 function mapNow(){ return replayAt != null ? replayAt : Date.now(); }
 
 // The states the view touches, reusing the same table the widget uses.
+// Which Great Lakes shores each marine basin touches, so a lake alert is judged
+// in view by the land around it.
+const LAKE_SHORES = {
+  LM: ['MI', 'WI', 'IL', 'IN'], LS: ['MI', 'WI', 'MN'], LH: ['MI'],
+  LE: ['MI', 'OH', 'PA', 'NY'], LO: ['NY'], LC: ['NY', 'VT'],
+};
+
+// Every state the view touches, uncapped — used to decide what is worth
+// resolving, where leaving one out means an alert on screen never draws.
+function statesInView(bounds){
+  const S = bounds.getSouth(), N = bounds.getNorth(), W = bounds.getWest(), E = bounds.getEast();
+  const hits = [];
+  for(const st in US_STATE_BOX){
+    const b = US_STATE_BOX[st];
+    if(b[2] < S || b[0] > N || b[3] < W || b[1] > E) continue;
+    hits.push(st);
+  }
+  return hits;
+}
+
 function replayStatesFor(bounds){
   const S = bounds.getSouth(), N = bounds.getNorth(), W = bounds.getWest(), E = bounds.getEast();
   const hits = [];

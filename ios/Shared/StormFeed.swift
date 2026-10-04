@@ -597,10 +597,12 @@ enum StormFeed {
         var needed: [String] = []
         let resolvable = fc.features
             .filter { $0.geometry == nil }
-            .filter { f in
-                let e = (f.properties.event ?? "").lowercased()
-                return e.contains("warning") || e.contains("watch")
-            }
+            // Advisories are resolved too. Restricting this to warnings and
+            // watches meant they could never draw: 93% of advisories carry no
+            // polygon of their own, so skipping the zone lookup left them with
+            // no geometry and they were dropped below. The cap is what protects
+            // the budget here, not the event type — rank() already sorts
+            // warnings first so advisories are what gets dropped when it bites.
             // Skipped before the zone fetches, not after: marine alerts were
             // taking 77 of a 60-zone budget on the lakes, which both wasted the
             // requests and pushed land warnings out of the cap entirely.
