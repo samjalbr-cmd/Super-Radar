@@ -2964,9 +2964,96 @@ const RIDGE_RANGE_DEG = 2.3;     // a WSR-88D's useful reach, near enough in deg
 // covers a county view and leaves a hard-edged island on a multi-state one.
 // Six decoded is still about 23 MB against the composite's 62, so the ceiling
 // is coverage, not memory.
-function ridgeMaxSites(){
-  const span = map ? map.getBounds().getEast() - map.getBounds().getWest() : 6;
-  return Math.max(2, Math.min(5, Math.round(span / 3.2)));
+function ridgeMaxSites(){ return RIDGE_SITE_LIMIT; }
+
+/* Per radar, or the national mosaic?
+
+   The per-site rasters are the sharper source and cost 4 MB apiece decoded,
+   which is fine while a handful cover the view. They do not scale: 13 radars
+   touch a state-sized view and 37 a multi-state one, and drawing those is well
+   past what hung the renderer. So beyond a threshold the whole-country mosaic
+   is the right picture — it is one image however wide the view gets, and at
+   that scale its coarser grid is below what the screen can show anyway.
+
+   The mosaic is 6000x2600, about 62 MB once decoded, and holding two of them
+   locked the main thread outright. Decoding straight to a smaller bitmap is
+   what makes it affordable: createImageBitmap takes resize options, so the
+   retained frame is a tenth of that and never exists at full size in a form we
+   keep. */
+const RIDGE_SITE_LIMIT = 8;
+const COMP_BOUNDS = [[24.0, -126.0], [50.0, -66.0]];   // from the .wld: 0.01 deg, 6000x2600 from -126,50
+const COMP_W = 2400, COMP_H = 1040;
+
+function ridgeSitesNeeded(){
+  if(!map || !nexradSites.length) return 0;
+  const b = map.getBounds(), kx = Math.cos(b.getCenter().lat * Math.PI / 180);
+  let n = 0;
+  for(const s of nexradSites){
+    const dLat = Math.max(0, b.getSouth() - s.lat, s.lat - b.getNorth());
+    const dLon = Math.max(0, b.getWest() - s.lon, s.lon - b.getEast()) * kx;
+    if(Math.hypot(dLat, dLon) <= RIDGE_RANGE_DEG) n++;
+  }
+  return n;
+}
+function useComposite(){ return ridgeSitesNeeded() > RIDGE_SITE_LIMIT; }
+
+let compFront = null, compBack = null, compShown = '', compPending = '', compObjUrls = [];
+function compUrl(ms){
+  const {path, stamp} = stampParts(new Date(Math.floor(ms / 300000) * 300000));
+  return `https://mesonet.agron.iastate.edu/archive/data/${path}/GIS/uscomp/n0r_${stamp}.png`;
+}
+
+async function showCompositeRadar(ms){
+  const url = compUrl(ms), seq = ridgeSeq;
+  if(url === compShown || url === compPending) return;
+  compPending = url;
+  let objUrl = null;
+  try{
+    const blob = await (await fetch(url)).blob();
+    const bmp = await createImageBitmap(blob, {resizeWidth: COMP_W, resizeHeight: COMP_H,
+                                               resizeQuality: 'medium'});
+    if(seq !== ridgeSeq || !replayActive()){ bmp.close(); compPending = ''; return; }
+    const cv = document.createElement('canvas');
+    cv.width = bmp.width; cv.height = bmp.height;
+    cv.getContext('2d').drawImage(bmp, 0, 0);
+    bmp.close();
+    objUrl = await new Promise(res => cv.toBlob(b => res(b ? URL.createObjectURL(b) : null), 'image/png'));
+    if(!objUrl) throw new Error('canvas encode failed');
+  }catch(e){
+    if(compPending === url) compPending = '';
+    return;                                    // a missing slice keeps the last good frame
+  }
+  if(compPending === url) compPending = '';
+  if(seq !== ridgeSeq || !replayActive()){ URL.revokeObjectURL(objUrl); return; }
+  const op = radarOpacityNow();
+  if(!compFront){
+    const mk = () => L.imageOverlay(objUrl, COMP_BOUNDS, {
+      opacity: 0, pane: 'radarPane', interactive: false, className: 'radar-archive',
+      attribution: 'NWS NEXRAD archive &copy; Iowa Environmental Mesonet',
+    }).addTo(map);
+    compFront = mk(); compBack = mk();
+    compFront.setOpacity(op);
+  }else{
+    compBack.setUrl(objUrl);
+    compBack.setOpacity(op);
+    compFront.setOpacity(0);
+    const t = compFront; compFront = compBack; compBack = t;
+  }
+  compShown = url;
+  // Blob URLs are held until revoked, so the ones no longer on screen have to
+  // be released or a long replay leaks every frame it has ever shown.
+  compObjUrls.push(objUrl);
+  while(compObjUrls.length > 3) URL.revokeObjectURL(compObjUrls.shift());
+  radarLabel = 'NEXRAD N0R archive';
+  updateRadarStatus(new Date(ms));
+}
+
+function hideCompositeRadar(){
+  if(compFront){ map.removeLayer(compFront); map.removeLayer(compBack); }
+  compFront = compBack = null;
+  compShown = ''; compPending = '';
+  for(const u of compObjUrls) URL.revokeObjectURL(u);
+  compObjUrls = [];
 }
 const RIDGE_PRODUCT = 'N0B';
 
@@ -3067,6 +3154,16 @@ async function ridgeBoundsFor(id, scan){
 async function showArchiveRadar(ms){
   if(!map) return;
   const seq = ++ridgeSeq;
+  // One source at a time, or the two draw over each other in the same pane.
+  if(useComposite()){
+    for(const id of Object.keys(ridgeLayers)){
+      map.removeLayer(ridgeLayers[id].front); map.removeLayer(ridgeLayers[id].back);
+      delete ridgeLayers[id];
+    }
+    ridgePending = {};
+    return showCompositeRadar(ms);
+  }
+  hideCompositeRadar();
   const sites = ridgeSitesForView();
   // Drop radars that have left the view, or their last frame hangs around.
   for(const id of Object.keys(ridgeLayers)){
@@ -3128,17 +3225,23 @@ async function showArchiveRadar(ms){
 // True once every site in view is showing the scan for this moment — what the
 // launcher waits on before stepping.
 function archiveRadarReady(ms){
+  if(useComposite()) return compShown === compUrl(ms);
   const sites = ridgeSitesForView();
   if(!sites.length) return true;
   return sites.every(s => {
+    // A radar whose scan list has not arrived yet is not "nothing to wait
+    // for" — it is not known yet, and reporting ready let the launcher step
+    // past a frame before part of the mosaic had drawn.
+    if(!ridgeScans[s.id]) return false;
     const scan = scanAt(s.id, ms);
-    if(!scan) return true;                         // nothing to wait for from this radar
+    if(!scan) return true;                         // this radar has no scan at that moment
     return ridgeLayers[s.id] && ridgeLayers[s.id].url === ridgeFileUrl(s.id, scan, 'png');
   });
 }
 
 function hideArchiveRadar(){
   ridgeSeq++;
+  hideCompositeRadar();
   for(const id of Object.keys(ridgeLayers)){
     map.removeLayer(ridgeLayers[id].front);
     map.removeLayer(ridgeLayers[id].back);
@@ -3165,6 +3268,8 @@ function applyReplay(){
     if(liveStationData === null) liveStationData = stationData;
     stationData = stationsAt(replayAt);
     setLiveRadarVisible(false);
+    // Zooming can cross the per-site/mosaic threshold, so this re-picks the
+    // source each time and drops whichever one is no longer right.
     showArchiveRadar(replayAt);
   }else{
     if(liveStationData !== null){ stationData = liveStationData; liveStationData = null; }
