@@ -178,6 +178,31 @@
   body.tv #radarLoop{ bottom:28px; font-size:14px; padding:11px 16px; }
   body.tv #lightningBadge{ font-size:14px; padding:9px 14px; }
 
+  /* Launcher: an ambient replay of the last couple of hours with nothing on
+     screen but the weather. Everything interactive goes, including the
+     scrubber driving it — it is not a mode you operate, it is one you watch. */
+  body.launcher #gear, body.launcher #feedTab, body.launcher #topControls,
+  body.launcher #feedPanel, body.launcher #replayBar, body.launcher #radarLoop,
+  body.launcher #metricPicker, body.launcher #settingsPanel,
+  body.launcher #statusStack, body.launcher #arrival, body.launcher #lightningBadge,
+  body.launcher .leaflet-control-zoom{ display:none !important; }
+  /* One caption, because a replay with no clock is just confusing footage. */
+  #launcherClock{
+    position:absolute; left:50%; bottom:26px; transform:translateX(-50%); z-index:560;
+    display:none; align-items:baseline; gap:11px;
+    padding:9px 17px; background:var(--panel); border:1px solid var(--border);
+    border-radius:12px; backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+    font-family:monospace; color:#F5F3EC; letter-spacing:0.04em;
+  }
+  body.launcher #launcherClock{ display:flex; }
+  #launcherClock .lc-t{ font-size:21px; font-variant-numeric:tabular-nums; }
+  #launcherClock .lc-d{ font-size:11px; color:var(--dim); text-transform:uppercase; }
+  /* A hairline of progress through the loop, so a still frame does not read as
+     a frozen page. */
+  #launcherClock .lc-bar{
+    position:absolute; left:0; bottom:0; height:2px; width:0;
+    background:var(--amber); border-radius:0 0 12px 12px; transition:width 0.3s linear;
+  }
   @media (max-width: 560px){
     #statusStack{ gap:6px; }
     #radarStatus, #precipStatus, #afdStatus{ font-size:10px; padding:6px 9px; }
@@ -711,6 +736,10 @@
 </div>
 <div id="toasts"></div>
 <div id="lightningBadge"></div>
+<div id="launcherClock">
+  <span class="lc-t" id="lcTime"></span><span class="lc-d" id="lcDate"></span>
+  <span class="lc-bar" id="lcBar"></span>
+</div>
 
 
 <div id="gear">
@@ -1564,6 +1593,9 @@ function alertInWindow(f){
 let sigAlerts = null, sigLSR = null, sigAfd = null, sigMCD = null;
 function invalidateTimeLayers(){ sigAlerts = sigLSR = sigAfd = sigMCD = null; }
 
+const alertShapeCache = new Map();   // alert key -> [L.geoJSON layers]
+let alertLabelLayers = [];           // impact labels, rebuilt each pass
+
 function renderAlerts(){
   const visible = lastAlertFeats.filter(f =>
     f._geoms && f._geoms.length && alertInWindow(f) && hazardVisible[f._hazard] &&
@@ -1572,15 +1604,18 @@ function renderAlerts(){
   const sig = visible.map(f => f.id || f.properties.id).join('|');
   if(sig === sigAlerts) return;
   sigAlerts = sig;
-  alertLayerGroup.clearLayers();
+
+  // Built once per alert and kept, rather than cleared and re-parsed on every
+  // pass. Zone-resolved alerts carry county outlines with thousands of
+  // vertices, and re-running L.geoJSON over all of them cost 413 ms a frame —
+  // the whole of a replay tick, for a set that mostly does not change between
+  // one tick and the next. Scrubbing moves which alerts are in force, so the
+  // set turns over constantly and the old signature guard almost never hit.
+  const wanted = new Set();
+  for(const mk of alertLabelLayers) alertLayerGroup.removeLayer(mk);
+  alertLabelLayers = [];
 
   for(const f of visible){
-    if(!f._geoms || !f._geoms.length) continue;
-    if(!alertInWindow(f)) continue;
-    if(!hazardVisible[f._hazard]) continue;
-    if(f._cls === 'watch' && !hazardVisible.watches) continue;
-    if(f._cls === 'advisory' && !hazardVisible.advisories) continue;
-
     const color = alertColor(f.properties.event, f._cls);
     const isWatch = f._cls === 'watch';
     const id = f.id || (f.properties && f.properties.id);
@@ -1588,12 +1623,32 @@ function renderAlerts(){
     // when you have deliberately scrubbed back to 9am to look at it.
     const isNew = !replayActive() && id &&
                   (Date.now() - (alertFirstSeen[id] || 0) < ALERT_FLASH_MS);
-    for(const g of f._geoms){
-      const layer = L.geoJSON(g, {
-        style: {color: color, weight: isWatch ? 1.5 : 2.5, fillColor: color, fillOpacity: isWatch ? 0.10 : 0.22, dashArray: isWatch ? '6 4' : null, className: isNew ? 'flash-alert' : undefined}
-      });
-      layer.bindPopup(`<div class="alert-popup"><b>${f.properties.event}</b>${f.properties.headline || ''}</div>`);
-      layer.addTo(alertLayerGroup);
+    // The flash is the only part of the look that changes over an alert's life,
+    // so it belongs in the key — everything else is fixed once it is drawn.
+    // The geometry count is part of the key because zone resolution fills an
+    // alert's shapes in over several refreshes — the per-pass cap means a
+    // 40-county watch arrives in pieces. Keyed on the id alone, the first
+    // partial version would be cached and the rest of the counties would never
+    // appear.
+    const key = (id || f.properties.event) + '|' + f._geoms.length + '|' + (isNew ? 'new' : '');
+    wanted.add(key);
+    if(!alertShapeCache.has(key)){
+      const layers = [];
+      for(const g of f._geoms){
+        const layer = L.geoJSON(g, {
+          style: {color: color, weight: isWatch ? 1.5 : 2.5, fillColor: color, fillOpacity: isWatch ? 0.10 : 0.22, dashArray: isWatch ? '6 4' : null, className: isNew ? 'flash-alert' : undefined,
+                  // These are administrative boundaries drawn at a few hundred
+                  // pixels; the extra vertices are not visible and are most of
+                  // the cost.
+                  smoothFactor: 2}
+        });
+        layer.bindPopup(`<div class="alert-popup"><b>${f.properties.event}</b>${f.properties.headline || ''}</div>`);
+        layers.push(layer);
+      }
+      alertShapeCache.set(key, layers);
+    }
+    for(const layer of alertShapeCache.get(key)){
+      if(!alertLayerGroup.hasLayer(layer)) layer.addTo(alertLayerGroup);
     }
 
     // Warnings get an impact label (wind/hail/tornado details) at center, colored
@@ -1607,9 +1662,28 @@ function renderAlerts(){
         }
         if(lb && lb.isValid()){
           const html = `<div class="alert-label" style="color:${color}">${det}</div>`;
-          L.marker(lb.getCenter(), {icon: L.divIcon({className: 'alert-icon', html, iconSize: [0, 0], iconAnchor: [0, 0]}), interactive: false, keyboard: false}).addTo(alertLayerGroup);
+          const mk = L.marker(lb.getCenter(), {icon: L.divIcon({className: 'alert-icon', html, iconSize: [0, 0], iconAnchor: [0, 0]}), interactive: false, keyboard: false});
+          alertLabelLayers.push(mk);
+          mk.addTo(alertLayerGroup);
         }
       }
+    }
+  }
+
+  // Drop the shapes that are no longer in force. Cached layers stay built, so
+  // an alert coming back into window costs an add rather than a re-parse.
+  for(const [key, layers] of alertShapeCache){
+    if(wanted.has(key)) continue;
+    for(const layer of layers) if(alertLayerGroup.hasLayer(layer)) alertLayerGroup.removeLayer(layer);
+  }
+  // The cache is keyed by alert, and a long replay session walks through a
+  // whole day of them, so it cannot grow without end.
+  if(alertShapeCache.size > 400){
+    for(const [key, layers] of alertShapeCache){
+      if(wanted.has(key)) continue;
+      for(const layer of layers) alertLayerGroup.removeLayer(layer);
+      alertShapeCache.delete(key);
+      if(alertShapeCache.size <= 300) break;
     }
   }
 }
@@ -2113,6 +2187,9 @@ function syncAppSettings(){
      ?loop=1            start the loop (implies the IEM source)
      ?tracks=0          turn storm tracks off
      ?scale=1.6         label scale, if the default TV scale is wrong for the room
+     ?replay=0          hide the scrubber entirely
+     ?launcher=1        ambient loop of the last couple of hours, no controls
+     ?hours=3           how far the launcher loop reaches back (with ?launcher=1)
 */
 const URLQ = new URLSearchParams(location.search);
 const qFlag = (k, dflt) => {
@@ -2813,24 +2890,44 @@ function stationsAt(ms){
    under this minute's echoes — the one layer you actually want to watch move
    was the one layer stuck in the present.
 
-   IEM archives the national composite every five minutes, going back years.
-   The live sources cannot do this: NOAA's image service keeps a two-hour time
-   extent, and IEM's WMS accepts a TIME parameter but ignores it — checked at
-   0h, 6h and 18h, which returned byte-identical images with real weather in
-   them. The archive PNGs are the only thing that actually moves.
+   The live sources cannot supply this. NOAA's image service keeps a two-hour
+   time extent; IEM's WMS accepts a TIME parameter and ignores it, returning
+   byte-identical images for 0h, 6h and 18h ago; and IEM's ridge tile service
+   ignores its frame-offset suffix the same way. IEM's five-minute file archive
+   is the only thing that actually moves.
 
-   n0r rather than n0q: the same mosaic at 0.01 degree instead of 0.005, which
-   is 300-600 KB a frame against 2 MB. Scrubbing fetches one frame at a time,
-   so that difference is the difference between stepping and waiting. Its
-   colour scale is the older 16-level one, so replayed echoes look slightly
-   coarser than live. */
-const ARCHIVE_RADAR_BOUNDS = [[24.0, -126.0], [50.0, -66.0]];   // from the .wld: 0.01 deg, 6000x2600 from -126,50
-let archiveRadarLayer = null, archiveRadarSeq = 0, archiveRadarShown = '';
+   Per radar site rather than the national composite. The composite is a single
+   6000x2600 PNG — 15.6 megapixels, about 62 MB once decoded — and loading two
+   of them hung the renderer outright. The per-site rasters are 1000x1000 and
+   40-70 KB, roughly 3.8 MB decoded, so three of them mosaicked still cost a
+   sixteenth of one composite frame. The trade is coverage: this draws the
+   radars near the view rather than the whole country, which is what a replay
+   of somewhere is actually looking at. */
+const RIDGE_RANGE_DEG = 2.3;     // a WSR-88D's useful reach, near enough in degrees
+// How many radars to mosaic, scaled to how much ground is on screen: three
+// covers a county view and leaves a hard-edged island on a multi-state one.
+// Six decoded is still about 23 MB against the composite's 62, so the ceiling
+// is coverage, not memory.
+function ridgeMaxSites(){
+  const span = map ? map.getBounds().getEast() - map.getBounds().getWest() : 6;
+  return Math.max(2, Math.min(5, Math.round(span / 3.2)));
+}
+const RIDGE_PRODUCT = 'N0B';
 
-// The archive is stamped in UTC on a five-minute grid, and runs about ten
-// minutes behind real time.
-function archiveRadarStamp(ms){
-  const d = new Date(Math.floor(ms / 300000) * 300000);
+let ridgeLayers = {};            // site id -> {layer, url}
+let ridgePending = {};           // site id -> url in flight
+let ridgeBoundsCache = {};       // site id -> L.LatLngBounds, fetched once
+let ridgeSeq = 0;
+
+// Radars do not share a clock. Each runs its own volume pattern — three to six
+// minutes, and drifting — so asking every site for the same five-minute stamp
+// 404s on most of them: at 00:20 one site had a scan and two did not. IEM
+// publishes the real scan times, so they are fetched once per site and the
+// moment wanted is matched to the newest scan at or before it.
+let ridgeScans = {};          // site id -> [{ms, path, stamp}], ascending
+const ridgeScansLoading = {};
+
+function stampParts(d){
   const p = n => String(n).padStart(2, '0');
   return {
     path: `${d.getUTCFullYear()}/${p(d.getUTCMonth() + 1)}/${p(d.getUTCDate())}`,
@@ -2838,60 +2935,148 @@ function archiveRadarStamp(ms){
            `${p(d.getUTCHours())}${p(d.getUTCMinutes())}`,
   };
 }
-function archiveRadarUrl(ms){
-  const {path, stamp} = archiveRadarStamp(ms);
-  return `https://mesonet.agron.iastate.edu/archive/data/${path}/GIS/uscomp/n0r_${stamp}.png`;
+
+async function loadRidgeScans(id){
+  if(ridgeScans[id] || ridgeScansLoading[id]) return ridgeScans[id];
+  ridgeScansLoading[id] = true;
+  try{
+    const end = new Date(), begin = new Date(Date.now() - REPLAY_HOURS * 3600e3);
+    const iso = d => d.toISOString().slice(0, 16) + 'Z';
+    const url = 'https://mesonet.agron.iastate.edu/json/radar.py?operation=list' +
+                `&radar=${encodeURIComponent(id)}&product=${RIDGE_PRODUCT}` +
+                `&start=${iso(begin)}&end=${iso(end)}`;
+    const data = await (await fetch(url)).json();
+    ridgeScans[id] = (data.scans || []).map(s => {
+      const d = new Date(s.ts);
+      return isNaN(d) ? null : Object.assign({ms: d.getTime()}, stampParts(d));
+    }).filter(Boolean).sort((a, b) => a.ms - b.ms);
+  }catch(e){ ridgeScans[id] = []; }
+  delete ridgeScansLoading[id];
+  return ridgeScans[id];
 }
 
-// Warm the frames just ahead of playback, so stepping does not wait on a fetch.
-const archivePrefetched = new Set();
-function prefetchArchiveRadar(ms, count){
-  for(let i = 1; i <= count; i++){
-    const u = archiveRadarUrl(ms + i * REPLAY_STEP_MIN * 60e3);
-    if(archivePrefetched.has(u)) continue;
-    archivePrefetched.add(u);
-    const img = new Image(); img.src = u;
+// The newest scan at or before the moment wanted, and not so far before it that
+// the picture is stale — a radar that went down should go blank, not keep
+// showing an hour-old scan as though it were current.
+const RIDGE_MAX_STALE = 20 * 60e3;
+function scanAt(id, ms){
+  const list = ridgeScans[id];
+  if(!list || !list.length) return null;
+  let best = null;
+  for(const s of list){ if(s.ms <= ms) best = s; else break; }
+  return best && (ms - best.ms) <= RIDGE_MAX_STALE ? best : null;
+}
+// The tile service names sites with the leading K/P/T; the archive directories
+// drop it.
+function ridgeCode(id){ return id.length === 4 ? id.slice(1) : id; }
+function ridgeFileUrl(id, scan, ext){
+  const c = ridgeCode(id);
+  return `https://mesonet.agron.iastate.edu/archive/data/${scan.path}/GIS/ridge/` +
+         `${c}/${RIDGE_PRODUCT}/${c}_${RIDGE_PRODUCT}_${scan.stamp}.${ext}`;
+}
+
+// Which radars to draw: those whose coverage reaches the view, nearest first.
+function ridgeSitesForView(){
+  if(!map || !nexradSites.length) return [];
+  const b = map.getBounds(), c = b.getCenter();
+  const kx = Math.cos(c.lat * Math.PI / 180);
+  const out = [];
+  for(const s of nexradSites){
+    // Distance from the site to the view rectangle, zero when inside it.
+    const dLat = Math.max(0, b.getSouth() - s.lat, s.lat - b.getNorth());
+    const dLon = Math.max(0, b.getWest() - s.lon, s.lon - b.getEast()) * kx;
+    if(Math.hypot(dLat, dLon) > RIDGE_RANGE_DEG) continue;
+    out.push({s, d: Math.hypot(s.lat - c.lat, (s.lon - c.lng) * kx)});
   }
-  // Unbounded, this keeps every frame of a long session decoded in memory.
-  if(archivePrefetched.size > 60) archivePrefetched.clear();
+  out.sort((a, z) => a.d - z.d);
+  return out.slice(0, ridgeMaxSites()).map(o => o.s);
 }
 
-function showArchiveRadar(ms){
+// Each site's raster sits on its own grid, so the placement comes from the
+// world file shipped beside it rather than from an assumed extent. Fetched once
+// per site: it is the same grid every scan.
+async function ridgeBoundsFor(id, scan){
+  if(ridgeBoundsCache[id]) return ridgeBoundsCache[id];
+  try{
+    const txt = await (await fetch(ridgeFileUrl(id, scan, 'wld'))).text();
+    const n = txt.trim().split(/\s+/).map(Number);
+    if(n.length < 6 || !isFinite(n[0]) || !isFinite(n[5])) return null;
+    const px = n[0], py = n[3], lon0 = n[4], lat0 = n[5], W = 1000, H = 1000;
+    const b = L.latLngBounds([lat0 + py * H, lon0], [lat0, lon0 + px * W]);
+    ridgeBoundsCache[id] = b;
+    return b;
+  }catch(e){ return null; }
+}
+
+async function showArchiveRadar(ms){
   if(!map) return;
-  const url = archiveRadarUrl(ms);
-  if(url === archiveRadarShown && archiveRadarLayer) return;   // same five-minute slice
-  const seq = ++archiveRadarSeq;
-  const ov = L.imageOverlay(url, ARCHIVE_RADAR_BOUNDS, {
-    opacity: radarOpacityNow(), pane: 'radarPane', interactive: false,
-    attribution: 'NWS NEXRAD archive &copy; Iowa Environmental Mesonet',
+  const seq = ++ridgeSeq;
+  const sites = ridgeSitesForView();
+  // Drop radars that have left the view, or their last frame hangs around.
+  for(const id of Object.keys(ridgeLayers)){
+    if(sites.some(s => s.id === id)) continue;
+    map.removeLayer(ridgeLayers[id].layer);
+    delete ridgeLayers[id];
+  }
+  for(const site of sites){
+    if(!ridgeScans[site.id]) await loadRidgeScans(site.id);
+    if(seq !== ridgeSeq) return;
+    const scan = scanAt(site.id, ms);
+    if(!scan) continue;                            // this radar has nothing for that moment
+    const url = ridgeFileUrl(site.id, scan, 'png');
+    const cur = ridgeLayers[site.id];
+    if(cur && cur.url === url) continue;           // already showing this scan
+    if(ridgePending[site.id] === url) continue;    // already downloading it
+    ridgePending[site.id] = url;
+    const bounds = await ridgeBoundsFor(site.id, scan);
+    if(seq !== ridgeSeq || !bounds){ delete ridgePending[site.id]; continue; }
+    // One overlay per radar, reused. Building and destroying six Leaflet layers
+    // a second blocked the main thread outright — 25 one-millisecond timeouts
+    // could not drain in 45 seconds. Decoding into a detached Image first and
+    // then swapping the src keeps the no-flash behaviour without the churn,
+    // because by then the bytes are in cache.
+    const pre = new Image();
+    pre.onload = () => {
+      if(ridgePending[site.id] === url) delete ridgePending[site.id];
+      if(seq !== ridgeSeq || !replayActive()) return;
+      const cur2 = ridgeLayers[site.id];
+      if(cur2){
+        cur2.layer.setUrl(url);
+        cur2.url = url;
+      }else{
+        const ov = L.imageOverlay(url, bounds, {
+          opacity: radarOpacityNow(), pane: 'radarPane', interactive: false,
+          attribution: 'NWS NEXRAD archive &copy; Iowa Environmental Mesonet',
+        }).addTo(map);
+        ridgeLayers[site.id] = {layer: ov, url};
+      }
+      radarLabel = `NEXRAD archive \u00b7 ${sites.map(s => s.id).join(' ')}`;
+      updateRadarStatus(new Date(ms));
+    };
+    // A missing scan is normal in the archive; keep the last good frame for
+    // that radar rather than blanking it.
+    pre.onerror = () => { if(ridgePending[site.id] === url) delete ridgePending[site.id]; };
+    pre.src = url;
+  }
+}
+
+// True once every site in view is showing the scan for this moment — what the
+// launcher waits on before stepping.
+function archiveRadarReady(ms){
+  const sites = ridgeSitesForView();
+  if(!sites.length) return true;
+  return sites.every(s => {
+    const scan = scanAt(s.id, ms);
+    if(!scan) return true;                         // nothing to wait for from this radar
+    return ridgeLayers[s.id] && ridgeLayers[s.id].url === ridgeFileUrl(s.id, scan, 'png');
   });
-  // Swapped only once the replacement has decoded, matching the live path, so
-  // scrubbing never flashes an empty map between frames.
-  ov.on('load', () => {
-    if(seq !== archiveRadarSeq || !replayActive()){ map.removeLayer(ov); return; }
-    if(archiveRadarLayer) map.removeLayer(archiveRadarLayer);
-    archiveRadarLayer = ov;
-    archiveRadarShown = url;
-    // Name the product honestly: this is the archived n0r mosaic, not the live
-    // N0Q the rest of the app shows.
-    radarLabel = 'NEXRAD N0R archive';
-    updateRadarStatus(new Date(ms));
-  });
-  ov.on('error', () => {
-    // A missing five-minute slice is normal in the archive; keep the last good
-    // frame rather than blanking the radar.
-    if(seq === archiveRadarSeq) map.removeLayer(ov);
-  });
-  ov.addTo(map);
-  prefetchArchiveRadar(ms, 4);
 }
 
 function hideArchiveRadar(){
-  archiveRadarSeq++;
-  if(archiveRadarShown) radarLabel = 'NEXRAD N0Q';
-  if(archiveRadarLayer){ map.removeLayer(archiveRadarLayer); archiveRadarLayer = null; }
-  archiveRadarShown = '';
-  archivePrefetched.clear();
+  ridgeSeq++;
+  for(const id of Object.keys(ridgeLayers)) map.removeLayer(ridgeLayers[id].layer);
+  ridgeLayers = {}; ridgePending = {};
+  radarLabel = 'NEXRAD N0Q';
 }
 
 // The live radar has to stand down while the archive is showing, or the two
@@ -2924,9 +3109,16 @@ function applyReplay(){
   renderAlerts();
   renderAfdAreas();
   renderMCD();
-  renderFeed();
+  // The launcher hides the events panel and the scrubber, so rendering them on
+  // every tick was pure cost — the marker pass alone is 67 ms, spent on a bar
+  // nobody can see.
+  if(LAUNCHER){
+    renderLauncherClock();
+  }else{
+    renderFeed();
+    renderReplayBar();
+  }
   loadSurfaceAnalysis();      // async; may cross a 3-hourly reissue
-  renderReplayBar();
 }
 
 let replayFrame = null;
@@ -2948,6 +3140,12 @@ function setReplay(ms){
   // Dragging the slider fires an event per pixel. Coalescing to one render per
   // frame means a fast drag costs one redraw, not forty.
   renderReplayBar();
+  // The launcher paces itself, so coalescing buys it nothing — and it costs
+  // correctness: requestAnimationFrame stops entirely in a hidden tab, so a
+  // display left on another desktop or behind a window froze on one frame and
+  // stayed there. Scrubbing by hand still coalesces, where a drag really does
+  // fire an event per pixel.
+  if(LAUNCHER){ applyReplay(); return; }
   if(replayFrame) return;
   replayFrame = requestAnimationFrame(() => { replayFrame = null; applyReplay(); });
 }
@@ -3057,6 +3255,69 @@ function renderReplayBar(){
     : d.toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'}) + ' \u00b7 -' + ago
       + (histFailed.length ? ' \u00b7 partial' : '');
   if(range) range.value = Math.round(144 - (Date.now() - replayAt) / (REPLAY_STEP_MIN * 60e3));
+}
+
+/* ---------------- Launcher ----------------
+   ?launcher=1 — the last couple of hours, playing on a loop, with nothing on
+   screen but the weather. For a wall display or a second monitor: no controls,
+   nothing to click, and it restarts itself forever.
+
+   It drives replayAt directly rather than going through replayPlayPause, so it
+   can step on the radar archive's own five-minute cadence instead of the
+   scrubber's ten — at two hours that is 24 frames rather than 12, which is the
+   difference between motion and a slideshow. */
+const LAUNCHER = (function(){
+  try{ return new URLSearchParams(location.search).get('launcher') === '1'; }
+  catch(e){ return false; }
+})();
+// ?hours= overrides the window. Bounded by what the station history covers.
+const LAUNCHER_HOURS = (function(){
+  const v = parseFloat(new URLSearchParams(location.search).get('hours'));
+  return isFinite(v) ? Math.max(0.5, Math.min(REPLAY_HOURS, v)) : 2;
+})();
+const LAUNCHER_STEP_MIN = 5;      // the archive's own cadence
+const LAUNCHER_TICK_MS = 1100;
+// The composite lands about ten minutes behind real time, so the loop ends
+// there rather than at now — otherwise the last frames are always missing.
+const LAUNCHER_LAG_MS = 12 * 60e3;
+
+let launcherTimer = null;
+function launcherStart(){
+  if(!LAUNCHER) return;
+  document.body.classList.add('launcher');
+  const begin = () => Date.now() - LAUNCHER_HOURS * 3600e3;
+  setReplay(begin());
+  clearInterval(launcherTimer);
+  launcherTimer = setInterval(() => {
+    // Hold until the frame already asked for is actually on screen. Advancing
+    // on the timer alone outran the fetches — each tick started a new overlay
+    // and invalidated the one in flight, so the clock moved and the radar sat
+    // three frames behind. The cap stops a genuinely missing slice, which the
+    // archive does have, from wedging the loop forever.
+    if(replayAt != null && !archiveRadarReady(replayAt) && launcherWaits < 10){
+      launcherWaits++; return;
+    }
+    launcherWaits = 0;
+    const end = Date.now() - LAUNCHER_LAG_MS;
+    let next = (replayAt || begin()) + LAUNCHER_STEP_MIN * 60e3;
+    if(next >= end) next = begin();            // round again
+    setReplay(next);
+  }, LAUNCHER_TICK_MS);
+}
+let launcherWaits = 0;
+
+function renderLauncherClock(){
+  if(!LAUNCHER) return;
+  const t = document.getElementById('lcTime'), d = document.getElementById('lcDate'),
+        b = document.getElementById('lcBar');
+  if(!t) return;
+  const at = new Date(mapNow());
+  t.textContent = at.toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'});
+  d.textContent = at.toLocaleDateString([], {weekday: 'short'}) +
+                  (histLoading ? ' \u00b7 loading' : '');
+  const begin = Date.now() - LAUNCHER_HOURS * 3600e3;
+  const span = (Date.now() - LAUNCHER_LAG_MS) - begin;
+  if(b) b.style.width = Math.max(0, Math.min(100, ((mapNow() - begin) / span) * 100)) + '%';
 }
 
 function replayGoLive(){
@@ -5507,6 +5768,9 @@ async function boot(){
   loadAlerts(); loadOutlook(); loadMCD(); loadLSR();
   loadStations();   // heavy national fetch — fire after the map is visible
   connectLightning();
+  // After the first live load, so the archive frames replace a drawn map rather
+  // than an empty one and the display never shows a blank screen starting up.
+  if(LAUNCHER) setTimeout(launcherStart, 2500);
   // Clean tile rebuild once the container is fully settled, to clear any
   // lighter half-rendered startup block; a second pass catches slow connections.
   setTimeout(rebuildTiles, 1500);
