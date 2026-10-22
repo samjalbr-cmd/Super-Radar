@@ -335,6 +335,9 @@
   #radarLoopTime{color:var(--dim);white-space:nowrap;font-size:10px;}
   /* Frames cross-fade rather than snap, which hides the tile pop-in. */
   .radar-frame{transition:opacity 0.12s linear;}
+  /* Same idea for the replay frames: swapping the src outright made each step
+     a hard cut, which reads as a stutter rather than as weather moving. */
+  .radar-archive{transition:opacity 0.28s linear;}
 
 
   #afdStatus{
@@ -1506,17 +1509,42 @@ function alertToastVisible(f){
   return true;
 }
 
+/* A numeric bounding box per alert, computed once and kept on the feature.
+
+   This used to build an L.geoJSON layer for each geometry purely to ask it for
+   its bounds — parsing every coordinate into Leaflet objects and throwing them
+   away again. That was affordable while only a newly-arrived alert asked, a
+   few times an hour. The scrubber's markers ask about every alert instead, and
+   they run on every pan, over the much larger set that resolving advisory
+   zones produced: several hundred alerts, each with county outlines, reparsed
+   on every map movement. */
+function alertBBox(f){
+  if(f._bbox !== undefined) return f._bbox;
+  let s = 90, n = -90, w = 180, e = -180, any = false;
+  const walk = c => {
+    if(typeof c[0] === 'number'){
+      const lon = c[0], lat = c[1];
+      if(lat < s) s = lat;
+      if(lat > n) n = lat;
+      if(lon < w) w = lon;
+      if(lon > e) e = lon;
+      any = true;
+    }else for(const x of c) walk(x);
+  };
+  for(const g of (f._geoms || [])){
+    try{ if(g && g.coordinates) walk(g.coordinates); }catch(err){}
+  }
+  f._bbox = any ? {s, n, w, e} : null;
+  return f._bbox;
+}
+
 // Only toast alerts whose area intersects the current map view.
 function alertInView(f){
-  if(!f._geoms || !f._geoms.length) return false;
+  const b = alertBBox(f);
+  if(!b || !map) return false;
   const mb = map.getBounds();
-  for(const g of f._geoms){
-    try{
-      const b = L.geoJSON(g).getBounds();
-      if(b.isValid() && mb.intersects(b)) return true;
-    }catch(e){}
-  }
-  return false;
+  return b.n >= mb.getSouth() && b.s <= mb.getNorth() &&
+         b.e >= mb.getWest()  && b.w <= mb.getEast();
 }
 
 function showAlertToast(f){
@@ -3015,7 +3043,8 @@ async function showArchiveRadar(ms){
   // Drop radars that have left the view, or their last frame hangs around.
   for(const id of Object.keys(ridgeLayers)){
     if(sites.some(s => s.id === id)) continue;
-    map.removeLayer(ridgeLayers[id].layer);
+    map.removeLayer(ridgeLayers[id].front);
+    map.removeLayer(ridgeLayers[id].back);
     delete ridgeLayers[id];
   }
   for(const site of sites){
@@ -3039,16 +3068,24 @@ async function showArchiveRadar(ms){
     pre.onload = () => {
       if(ridgePending[site.id] === url) delete ridgePending[site.id];
       if(seq !== ridgeSeq || !replayActive()) return;
-      const cur2 = ridgeLayers[site.id];
-      if(cur2){
-        cur2.layer.setUrl(url);
-        cur2.url = url;
-      }else{
-        const ov = L.imageOverlay(url, bounds, {
-          opacity: radarOpacityNow(), pane: 'radarPane', interactive: false,
+      const op = radarOpacityNow();
+      let rec = ridgeLayers[site.id];
+      if(!rec){
+        // Two overlays per radar, cross-faded between. One overlay with its src
+        // swapped is a hard cut on every step, which reads as a stutter rather
+        // than as weather moving.
+        const mk = () => L.imageOverlay(url, bounds, {
+          opacity: 0, pane: 'radarPane', interactive: false, className: 'radar-archive',
           attribution: 'NWS NEXRAD archive &copy; Iowa Environmental Mesonet',
         }).addTo(map);
-        ridgeLayers[site.id] = {layer: ov, url};
+        rec = ridgeLayers[site.id] = {front: mk(), back: mk(), url};
+        rec.front.setOpacity(op);
+      }else{
+        rec.back.setUrl(url);
+        rec.back.setOpacity(op);
+        rec.front.setOpacity(0);
+        const t = rec.front; rec.front = rec.back; rec.back = t;   // the fresh one is now in front
+        rec.url = url;
       }
       radarLabel = `NEXRAD archive \u00b7 ${sites.map(s => s.id).join(' ')}`;
       updateRadarStatus(new Date(ms));
@@ -3074,7 +3111,10 @@ function archiveRadarReady(ms){
 
 function hideArchiveRadar(){
   ridgeSeq++;
-  for(const id of Object.keys(ridgeLayers)) map.removeLayer(ridgeLayers[id].layer);
+  for(const id of Object.keys(ridgeLayers)){
+    map.removeLayer(ridgeLayers[id].front);
+    map.removeLayer(ridgeLayers[id].back);
+  }
   ridgeLayers = {}; ridgePending = {};
   radarLabel = 'NEXRAD N0Q';
 }
@@ -3276,7 +3316,7 @@ const LAUNCHER_HOURS = (function(){
   return isFinite(v) ? Math.max(0.5, Math.min(REPLAY_HOURS, v)) : 2;
 })();
 const LAUNCHER_STEP_MIN = 5;      // the archive's own cadence
-const LAUNCHER_TICK_MS = 1100;
+const LAUNCHER_TICK_MS = 650;
 // The composite lands about ten minutes behind real time, so the loop ends
 // there rather than at now — otherwise the last frames are always missing.
 const LAUNCHER_LAG_MS = 12 * 60e3;
