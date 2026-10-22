@@ -1406,7 +1406,12 @@ async function loadAlerts(){
     if(!res.ok) throw new Error('alerts HTTP ' + res.status);
     alertsNextTry = 0;
     const data = await res.json();
-    const feats = data.features || [];
+    // NWS publishes tests, exercises and system messages through the same feed,
+    // flagged only by status. One was live over Michigan while this was
+    // written, drawn as though it were a real alert. Only actual ones belong on
+    // a weather map.
+    const feats = (data.features || [])
+      .filter(f => ((f.properties && f.properties.status) || 'Actual') === 'Actual');
     const ZONE_FETCH_LIMIT = 120;   // watches span many counties and a replayed
                                     // day spans more than one moment; the cache fills over time
 
@@ -1431,7 +1436,7 @@ async function loadAlerts(){
       if(viewStates.has(code)) return true;
       // Marine zones carry a basin code rather than a state, so they are judged
       // by the shores they touch.
-      return (LAKE_SHORES[code] || []).some(s => viewStates.has(s));
+      return (MARINE_SHORES[code] || []).some(s => viewStates.has(s));
     });
     for(const f of feats){
       f._cls = classify(f.properties.event);
@@ -2773,11 +2778,22 @@ function replayActive(){ return replayAt != null; }
 function mapNow(){ return replayAt != null ? replayAt : Date.now(); }
 
 // The states the view touches, reusing the same table the widget uses.
-// Which Great Lakes shores each marine basin touches, so a lake alert is judged
-// in view by the land around it.
-const LAKE_SHORES = {
+// Which shores each marine basin touches, so a water alert is judged in view by
+// the land around it — a marine zone carries a basin code, not a state, so
+// there is otherwise nothing to match a view against.
+//
+// Every basin, not just the lakes. With only the lakes listed, a coastal view
+// pushed its own gale and storm warnings to the back of the zone budget and
+// filled it with land alerts from elsewhere: 183 Alaskan zones, 71 Atlantic,
+// 55 Pacific and 26 more off the southeast are live as this is written, and
+// none of them could ever be judged in view.
+const MARINE_SHORES = {
   LM: ['MI', 'WI', 'IL', 'IN'], LS: ['MI', 'WI', 'MN'], LH: ['MI'],
-  LE: ['MI', 'OH', 'PA', 'NY'], LO: ['NY'], LC: ['NY', 'VT'],
+  LE: ['MI', 'OH', 'PA', 'NY'], LO: ['NY'], LC: ['NY', 'VT'], SL: ['NY'],
+  PZ: ['CA', 'OR', 'WA'], PK: ['AK'], PH: ['HI'],
+  AN: ['ME', 'NH', 'MA', 'RI', 'CT', 'NY', 'NJ', 'DE', 'MD', 'VA', 'NC'],
+  AM: ['NC', 'SC', 'GA', 'FL'],
+  GM: ['TX', 'LA', 'MS', 'AL', 'FL'],
 };
 
 // Every state the view touches, uncapped — used to decide what is worth

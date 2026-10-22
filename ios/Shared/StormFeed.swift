@@ -576,7 +576,7 @@ enum StormFeed {
         guard let url = URL(string: str) else { return [] }
         struct FC: Decodable {
             struct F: Decodable {
-                struct P: Decodable { let event: String?; let affectedZones: [String]? }
+                struct P: Decodable { let event: String?; let affectedZones: [String]?; let status: String? }
                 let geometry: GeoJSONGeometry?
                 let properties: P
             }
@@ -585,6 +585,10 @@ enum StormFeed {
         var req = URLRequest(url: url); req.timeoutInterval = 20; req.cachePolicy = .reloadIgnoringLocalCacheData
         guard let data = try? await URLSession.shared.data(for: req).0,
               let fc = try? JSONDecoder().decode(FC.self, from: data) else { return [] }
+        // NWS publishes tests, exercises and system messages through the same
+        // feed, flagged only by status. One was live over Michigan while this
+        // was written, drawn as though it were a real alert.
+        let feats = fc.features.filter { ($0.properties.status ?? "Actual") == "Actual" }
 
         // Gather the zones that still need fetching, so the cap applies to real
         // network work rather than to cache hits.
@@ -598,7 +602,7 @@ enum StormFeed {
             return 2
         }
         var needed: [String] = []
-        let resolvable = fc.features
+        let resolvable = feats
             .filter { $0.geometry == nil }
             // Advisories are resolved too. Restricting this to warnings and
             // watches meant they could never draw: 93% of advisories carry no
@@ -625,7 +629,7 @@ enum StormFeed {
             for await (z, rings) in group { if let rings { zones[z] = rings } }
         }
 
-        return fc.features.compactMap { f -> AlertArea? in
+        return feats.compactMap { f -> AlertArea? in
             let event = f.properties.event ?? ""
             if !marine && isMarineEvent(event) { return nil }
             var rings: [[CLLocationCoordinate2D]] = []
