@@ -30,6 +30,8 @@ struct WatchLocation: Codable {
     /// indistinguishable, and switching the layer off would spring back to 500
     /// on the next decode.
     var upperLevel: String? = "500"
+    /// Six-hour temperature trace beside each reading.
+    var showSpark: Bool = true
     var zoom: RadarZoom = .county
     /// Two-letter state, resolved by the app. The national station feed is
     /// 3.4 MB; one state's network is about 100 KB, and the API accepts only one.
@@ -64,6 +66,7 @@ struct WatchLocation: Codable {
         showLake       = flag(.showLake, true)
         showSpotter    = flag(.showSpotter, true)
         upperLevel = ((try? c.decodeIfPresent(String.self, forKey: .upperLevel)) ?? nil) ?? "500"
+        showSpark  = flag(.showSpark, true)
         zoom  = ((try? c.decodeIfPresent(RadarZoom.self, forKey: .zoom)) ?? nil) ?? .county
         state = (try? c.decodeIfPresent(String.self, forKey: .state)) ?? nil
     }
@@ -74,7 +77,7 @@ struct WatchLocation: Codable {
          showDiscussion: Bool = true, showOutlook: Bool = true, showFronts: Bool = true,
          stationModel: Bool = false, showIsobars: Bool = true, showMarine: Bool = false,
          showLake: Bool = true, showSpotter: Bool = true,
-         upperLevel: String? = "500",
+         upperLevel: String? = "500", showSpark: Bool = true,
          zoom: RadarZoom = .county, state: String? = nil) {
         self.lat = lat; self.lon = lon; self.name = name
         self.showReports = showReports; self.showTemps = showTemps; self.showAlerts = showAlerts
@@ -82,7 +85,7 @@ struct WatchLocation: Codable {
         self.showFronts = showFronts; self.stationModel = stationModel
         self.showIsobars = showIsobars; self.showMarine = showMarine
         self.showLake = showLake; self.showSpotter = showSpotter
-        self.upperLevel = upperLevel
+        self.upperLevel = upperLevel; self.showSpark = showSpark
         self.zoom = zoom; self.state = state
     }
 
@@ -93,7 +96,7 @@ struct WatchLocation: Codable {
                                         showDiscussion: true,
                                         showOutlook: true, showFronts: true, stationModel: false, showIsobars: true,
                                         showMarine: false, showLake: true, showSpotter: true,
-                                        upperLevel: "500",
+                                        upperLevel: "500", showSpark: true,
                                         zoom: .county, state: "MI")
 
     static func load() -> WatchLocation {
@@ -817,6 +820,8 @@ enum StormFeed {
         let lat: Double
         let lon: Double
         let tempF: Double
+        /// The ASOS identifier, which is how the six-hour history joins to it.
+        var id: String? = nil
         var dewF: Double? = nil
         var mslp: Double? = nil
         var windKt: Double? = nil
@@ -829,6 +834,65 @@ enum StormFeed {
         var peakGustKt: Double? = nil
         var rainIn: Double? = nil
         var snowIn: Double? = nil
+    }
+
+    /// Six hours of temperature per station, for the trace drawn beside each
+    /// reading.
+    ///
+    /// A number alone does not say which way it is going — 48 falling behind a
+    /// front reads nothing like 48 climbing through the morning. Its own
+    /// request rather than the currents feed, which carries only the latest
+    /// observation: six hours of one field is about 120 KB a state and roughly
+    /// eighteen samples a station, which is enough shape for a few pixels.
+    static func tempHistory(states: [String]) async -> [String: [(t: Date, f: Double)]] {
+        let now = Date(), then = now.addingTimeInterval(-6 * 3600)
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "UTC")!
+        func part(_ i: Int, _ d: Date) -> String {
+            let c = cal.dateComponents([.year, .month, .day, .hour], from: d)
+            return "year\(i)=\(c.year!)&month\(i)=\(c.month!)&day\(i)=\(c.day!)&hour\(i)=\(c.hour!)"
+        }
+        return await withTaskGroup(of: [String: [(t: Date, f: Double)]].self) { group in
+            for st in states where st.count == 2 {
+                group.addTask {
+                    let s = "https://mesonet.agron.iastate.edu/cgi-bin/request/asos.py?network=\(st)_ASOS"
+                          + "&data=tmpf&" + part(1, then) + "&" + part(2, now)
+                          + "&tz=UTC&format=comma&missing=empty&trace=empty"
+                    guard let url = URL(string: s) else { return [:] }
+                    var req = URLRequest(url: url); req.timeoutInterval = 25
+                    guard let data = try? await URLSession.shared.data(for: req).0,
+                          let text = String(data: data, encoding: .utf8) else { return [:] }
+                    let fmt = DateFormatter()
+                    fmt.locale = Locale(identifier: "en_US_POSIX")
+                    fmt.timeZone = TimeZone(identifier: "UTC")
+                    fmt.dateFormat = "yyyy-MM-dd HH:mm"
+                    // Column positions come from the header rather than being
+                    // assumed: the same endpoint returns extra columns when
+                    // asked for lat/lon.
+                    var iSta = 0, iVal = 1, iT = 2
+                    var out: [String: [(t: Date, f: Double)]] = [:]
+                    for line in text.split(separator: "\n", omittingEmptySubsequences: true) {
+                        if line.hasPrefix("#") { continue }
+                        let c = line.split(separator: ",", omittingEmptySubsequences: false)
+                                    .map { $0.trimmingCharacters(in: .whitespaces) }
+                        if c.first == "station" {
+                            iSta = c.firstIndex(of: "station") ?? 0
+                            iVal = c.firstIndex(of: "valid") ?? 1
+                            iT   = c.firstIndex(of: "tmpf") ?? 2
+                            continue
+                        }
+                        guard c.count > max(iT, iVal), let f = Double(c[iT]),
+                              let when = fmt.date(from: c[iVal]) else { continue }
+                        out[c[iSta], default: []].append((when, f))
+                    }
+                    return out
+                }
+            }
+            var all: [String: [(t: Date, f: Double)]] = [:]
+            for await part in group { all.merge(part) { a, _ in a } }
+            for k in all.keys { all[k]!.sort { $0.t < $1.t } }
+            return all
+        }
     }
 
     /// The ground each state's ASOS network covers, derived once from the
@@ -961,6 +1025,7 @@ enum StormFeed {
             struct F: Decodable {
                 struct G: Decodable { let coordinates: [Double] }
                 struct P: Decodable {
+                    let station: String?
                     let tmpf: Double?; let dwpf: Double?; let mslp: Double?
                     let sknt: Double?; let drct: Double?
                     let skyc1: String?; let wxcodes: WxCodes?
@@ -1008,6 +1073,7 @@ enum StormFeed {
                             peak = max(mg, peak ?? 0)
                         }
                         return Station(lat: c[1], lon: c[0], tempF: t,
+                                       id: p.station,
                                        dewF: p.dwpf, mslp: p.mslp,
                                        windKt: p.sknt, windDir: p.drct,
                                        sky: (sky?.isEmpty ?? true) ? nil : sky,

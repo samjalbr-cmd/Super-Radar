@@ -2209,6 +2209,7 @@ function syncAppSettings(){
         showIsobars: !!isobarsOn,
         showLake: !!lakeOn,
         upperLevel: upperLevel,
+        showSpark: !!sparkOn,
       });
     }catch(e){}
   }, 400);
@@ -3742,10 +3743,35 @@ function scheduleTempHistory(){
   tempHistTimer = setTimeout(loadTempHistory, 700);     // debounce panning
 }
 
+/* Which six hours the trace covers: the six before whatever moment the map is
+   showing, not the six before now.
+
+   Scrubbed back to 3am, the reading beside it is 3am's — a trace still running
+   up to the present would be describing a future the rest of the map has not
+   reached. While replaying the samples come from the 24-hour history already
+   loaded for the scrubber, so there is no second fetch; live, it is the
+   six-hour feed. */
+function sparkSeries(id){
+  if(replayActive()){
+    const rows = histRows && histRows[id];
+    if(!rows) return null;
+    const end = mapNow(), start = end - TEMP_HIST_HOURS * 3600e3;
+    const out = [];
+    for(const r of rows){
+      if(r.t < start) continue;
+      if(r.t > end) break;
+      const f = r.p && r.p.tmpf;
+      if(f != null && isFinite(f)) out.push({t: r.t, f});
+    }
+    return out;
+  }
+  return tempHist[id] || null;
+}
+
 let sparkSeq = 0;
 function tempSpark(id){
   if(!sparkOn || !id) return '';
-  const h = tempHist[id];
+  const h = sparkSeries(id);
   if(!h || h.length < 3) return '';
   // Thinned to keep the markup small — a 26px trace cannot show 19 points.
   const stride = Math.ceil(h.length / SPARK_MAX_PTS);

@@ -105,4 +105,7 @@ struct RadarConfig: WidgetConfigurationIntent {
 
     @Parameter(title: "Upper-air winds", default: .followApp)
     var upperLevel: UpperLevelOption
+
+    @Parameter(title: "6-hour temp trace", default: true)
+    var showSpark: Bool
 }

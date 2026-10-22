@@ -42,6 +42,7 @@ final class SettingsBridge: NSObject, WKScriptMessageHandler {
         // "off" and the empty string both mean the layer is off; anything else
         // has to be one of the four levels, so a stale value cannot request a
         // pressure level the feed does not serve.
+        if let sp = d["showSpark"] as? Bool { loc.showSpark = sp }
         if let u = d["upperLevel"] as? String {
             // Off is stored as the string, so it stays off. See WatchLocation.
             loc.upperLevel = ["850", "700", "500", "250"].contains(u) ? u : "off"

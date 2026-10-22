@@ -96,6 +96,60 @@ private func tempColor(_ f: Double) -> UIColor {
 /// used exactly as specified rather than being lightened.
 private func barbColor(_ f: Double) -> UIColor { tempColor(f) }
 
+/// The six-hour temperature trace drawn beside a reading.
+///
+/// Coloured along its length by the same ramp as everything else on the plot,
+/// so the line is the temperature it is drawing: a cold start that warms up
+/// runs cyan into green, a frontal drop runs the other way. Core Graphics has
+/// no gradient stroke along a path, so each segment is stroked in its own
+/// colour — at this size the join is the gradient.
+private let sparkSize = CGSize(width: 20, height: 7)
+private func drawSpark(_ ctx: CGContext, series: [(t: Date, f: Double)], at origin: CGPoint) {
+    guard series.count >= 3 else { return }
+    // Thinned to what a twenty-pixel trace can actually show.
+    let maxPts = 12
+    let stride = max(1, Int((Double(series.count) / Double(maxPts)).rounded(.up)))
+    var pts = stride <= 1 ? series : series.enumerated().filter { $0.offset % stride == 0 }.map { $0.element }
+    if let last = series.last, pts.last?.t != last.t { pts.append(last) }
+    guard pts.count >= 3 else { return }
+
+    let lo = pts.map(\.f).min()!, hi = pts.map(\.f).max()!
+    // A steady six hours is a real answer, so a flat trace gets a floor on its
+    // range and sits mid-height rather than being amplified into noise.
+    let span = max(4.0, hi - lo), mid = (hi + lo) / 2
+    let bot = mid - span / 2, top = mid + span / 2
+
+    func at(_ i: Int) -> CGPoint {
+        let x = origin.x + CGFloat(i) / CGFloat(pts.count - 1) * sparkSize.width
+        var y = origin.y + sparkSize.height
+              - CGFloat((pts[i].f - bot) / (top - bot)) * sparkSize.height
+        y = min(max(y, origin.y + 0.6), origin.y + sparkSize.height - 0.6)
+        return CGPoint(x: x, y: y)
+    }
+
+    ctx.saveGState()
+    ctx.setLineCap(.round)
+    ctx.setLineJoin(.round)
+    // A dark pass underneath, so the trace holds up over radar as well as over
+    // bare ground — the same trick the figures use.
+    ctx.setStrokeColor(UIColor.black.withAlphaComponent(0.55).cgColor)
+    ctx.setLineWidth(2.6)
+    ctx.move(to: at(0))
+    for i in 1..<pts.count { ctx.addLine(to: at(i)) }
+    ctx.strokePath()
+
+    ctx.setLineWidth(1.2)
+    for i in 1..<pts.count {
+        // The segment takes the colour of the warmer-in-time end, so the line
+        // reads left to right as the temperature did.
+        ctx.setStrokeColor(tempColor(pts[i].f).cgColor)
+        ctx.move(to: at(i - 1))
+        ctx.addLine(to: at(i))
+        ctx.strokePath()
+    }
+    ctx.restoreGState()
+}
+
 /// The upper-air barb: longer, thinner, and hollow-tipped, so it never reads as
 /// the surface barb drawn inside the station plot.
 ///
@@ -427,7 +481,7 @@ enum RadarSnapshot {
                         showDiscussion: Bool,
                         showOutlook: Bool, showFronts: Bool, stationModel: Bool,
                         showIsobars: Bool, showMarine: Bool, showLake: Bool,
-                        showSpotter: Bool, upperLevel: String?,
+                        showSpotter: Bool, upperLevel: String?, showSpark: Bool,
                         state: String?) async -> (image: UIImage, hasEcho: Bool)? {
         let half = zoom.halfDegrees
 
@@ -487,6 +541,10 @@ enum RadarSnapshot {
         let observed: [StormFeed.Station] = needStations
             ? await StormFeed.stations(states: states, sw: sw, ne: ne) : []
         let temps: [StormFeed.Station] = wantTemps ? observed : []
+        // Only when there are readings to hang a trace on, so a map with
+        // temperatures switched off does not pay for six hours of them.
+        let sparks: [String: [(t: Date, f: Double)]] = (showSpark && !temps.isEmpty)
+            ? await StormFeed.tempHistory(states: states) : [:]
         // What stations have measured reads as a report on the map, so it joins
         // them and is packed in the same pass — worst first, so a 70 mph gust
         // keeps its label over a 42 mph one.
@@ -849,6 +907,11 @@ enum RadarSnapshot {
                     if placed.contains(where: { $0.intersects(rect) }) { continue }
                     placed.append(rect)
                     drawStationModel(st, at: p)
+                    if let id = st.id, let series = sparks[id] {
+                        drawSpark(ctx.cgContext, series: series,
+                                  at: CGPoint(x: p.x - sparkSize.width / 2,
+                                              y: p.y + stationPlotSize.height / 2 - 1))
+                    }
                     continue
                 }
                 let text = "\(Int(st.tempF.rounded()))" as NSString
@@ -865,6 +928,12 @@ enum RadarSnapshot {
                 let y = min(max(p.y - sz.height / 2, 1), size.height - sz.height - 1)
                 claimed.insert(key)
                 text.draw(at: CGPoint(x: x, y: y), withAttributes: attrs)
+                if let id = st.id, let series = sparks[id],
+                   x + sz.width + 2 + sparkSize.width < size.width {
+                    drawSpark(ctx.cgContext, series: series,
+                              at: CGPoint(x: x + sz.width + 2,
+                                          y: y + sz.height / 2 - sparkSize.height / 2))
+                }
             }
 
             // Discussion text last, over everything: the hazard over the window
