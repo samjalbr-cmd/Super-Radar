@@ -275,7 +275,13 @@
     font-family:monospace;font-size:11px;color:#F5F3EC;
   }
   #replayBar.live{ opacity:0.82; }
-  #replayBar input[type=range]{ flex:1; accent-color:var(--amber); min-width:80px; }
+  #replayBar input[type=range]{ width:100%; accent-color:var(--amber); min-width:80px; margin:0; }
+  /* The marks sit above the track rather than on it, so the thumb stays
+     grabbable and a dense hour does not turn the slider into a solid bar. */
+  .rp-track{ position:relative; flex:1; min-width:80px; display:flex; align-items:center; }
+  #rpMarks{ position:absolute; left:7px; right:7px; top:-1px; height:5px; pointer-events:none; }
+  #rpMarks i{ position:absolute; top:0; width:2px; height:5px; border-radius:1px;
+              margin-left:-1px; opacity:0.9; }
   #replayBar button{
     background:rgba(255,255,255,0.06);border:1px solid var(--border);color:#F5F3EC;
     border-radius:7px;padding:4px 9px;font-family:monospace;font-size:11px;cursor:pointer;
@@ -654,8 +660,11 @@
 </div>
 <div id="replayBar" class="live">
   <button id="rpPlay" onclick="replayPlayPause()" title="Play the last 24 hours">&#9654;</button>
-  <input type="range" id="rpRange" min="0" max="144" value="144" step="1"
-         oninput="onReplayScrub(this.value)" title="Scrub back 24 hours">
+  <div class="rp-track">
+    <div id="rpMarks"></div>
+    <input type="range" id="rpRange" min="0" max="144" value="144" step="1"
+           oninput="onReplayScrub(this.value)" title="Scrub back 24 hours">
+  </div>
   <span class="rp-t" id="rpTime">LIVE</span>
   <button id="rpLive" onclick="replayGoLive()" title="Back to now">NOW</button>
 </div>
@@ -1010,7 +1019,7 @@ function initMap(){
                       renderFeed, scheduleAfdRefresh, scheduleModelRefresh,
                       scheduleIsobarRefresh, scheduleNoaaRadar, schedulePrecipRefresh,
                       syncAppSettings, scheduleHistoryRefresh, renderLakeTemps,
-                      renderUpper, scheduleUpperRefresh];
+                      renderUpper, scheduleUpperRefresh, renderReplayMarks];
   const FRAME_BUDGET_MS = 8;          // leaves room in a 16 ms frame to paint
   let movePass = false, moveAgain = false;
   function runMoveTasks(){
@@ -1450,6 +1459,7 @@ async function loadAlerts(){
     lastAlertFeats = feats;
     renderAlerts();
     renderFeed();
+    renderReplayMarks();
   }catch(e){
     // Back off rather than retrying at once. Progressive loading calls this
     // once per state as each arrives, so a refused request became several more
@@ -1878,6 +1888,7 @@ async function loadLSR(){
     lsrData = data.features || [];
     renderLSR();
     renderFeed();
+    renderReplayMarks();
   }catch(e){ console.error('lsr error', e); }
 }
 
@@ -2618,13 +2629,16 @@ const US_STATE_BOX = {
    frames ourselves, which is a server, which this project does not have. So the
    radar stays live and the scrubber says so. */
 
-// Off the main screen for now: the scrubber only exists with ?replay=1 on the
-// URL. Everything below is inert without it — replayAt stays null, so mapNow()
-// is Date.now(), every window test passes, and each layer behaves exactly as it
-// did before any of this was written.
+// On the main screen. It was held behind ?replay=1 while the station loading it
+// leans on was unreliable; that is fixed, and the radar now scrubs with
+// everything else, so there is something worth showing.
+//
+// ?replay=0 still turns it off. Without it everything below is inert: replayAt
+// stays null, so mapNow() is Date.now(), every window test passes, and each
+// layer behaves exactly as it did before any of this was written.
 const REPLAY_ENABLED = (function(){
-  try{ return new URLSearchParams(location.search).get('replay') === '1'; }
-  catch(e){ return false; }
+  try{ return new URLSearchParams(location.search).get('replay') !== '0'; }
+  catch(e){ return true; }
 })();
 
 let replayAt = null;            // ms epoch while scrubbing, null when live
@@ -2794,12 +2808,116 @@ function stationsAt(ms){
   return out;
 }
 
+/* ---------------- Historical radar ----------------
+   Everything else scrubbed and the radar did not, so a storm at 3am was drawn
+   under this minute's echoes — the one layer you actually want to watch move
+   was the one layer stuck in the present.
+
+   IEM archives the national composite every five minutes, going back years.
+   The live sources cannot do this: NOAA's image service keeps a two-hour time
+   extent, and IEM's WMS accepts a TIME parameter but ignores it — checked at
+   0h, 6h and 18h, which returned byte-identical images with real weather in
+   them. The archive PNGs are the only thing that actually moves.
+
+   n0r rather than n0q: the same mosaic at 0.01 degree instead of 0.005, which
+   is 300-600 KB a frame against 2 MB. Scrubbing fetches one frame at a time,
+   so that difference is the difference between stepping and waiting. Its
+   colour scale is the older 16-level one, so replayed echoes look slightly
+   coarser than live. */
+const ARCHIVE_RADAR_BOUNDS = [[24.0, -126.0], [50.0, -66.0]];   // from the .wld: 0.01 deg, 6000x2600 from -126,50
+let archiveRadarLayer = null, archiveRadarSeq = 0, archiveRadarShown = '';
+
+// The archive is stamped in UTC on a five-minute grid, and runs about ten
+// minutes behind real time.
+function archiveRadarStamp(ms){
+  const d = new Date(Math.floor(ms / 300000) * 300000);
+  const p = n => String(n).padStart(2, '0');
+  return {
+    path: `${d.getUTCFullYear()}/${p(d.getUTCMonth() + 1)}/${p(d.getUTCDate())}`,
+    stamp: `${d.getUTCFullYear()}${p(d.getUTCMonth() + 1)}${p(d.getUTCDate())}` +
+           `${p(d.getUTCHours())}${p(d.getUTCMinutes())}`,
+  };
+}
+function archiveRadarUrl(ms){
+  const {path, stamp} = archiveRadarStamp(ms);
+  return `https://mesonet.agron.iastate.edu/archive/data/${path}/GIS/uscomp/n0r_${stamp}.png`;
+}
+
+// Warm the frames just ahead of playback, so stepping does not wait on a fetch.
+const archivePrefetched = new Set();
+function prefetchArchiveRadar(ms, count){
+  for(let i = 1; i <= count; i++){
+    const u = archiveRadarUrl(ms + i * REPLAY_STEP_MIN * 60e3);
+    if(archivePrefetched.has(u)) continue;
+    archivePrefetched.add(u);
+    const img = new Image(); img.src = u;
+  }
+  // Unbounded, this keeps every frame of a long session decoded in memory.
+  if(archivePrefetched.size > 60) archivePrefetched.clear();
+}
+
+function showArchiveRadar(ms){
+  if(!map) return;
+  const url = archiveRadarUrl(ms);
+  if(url === archiveRadarShown && archiveRadarLayer) return;   // same five-minute slice
+  const seq = ++archiveRadarSeq;
+  const ov = L.imageOverlay(url, ARCHIVE_RADAR_BOUNDS, {
+    opacity: radarOpacityNow(), pane: 'radarPane', interactive: false,
+    attribution: 'NWS NEXRAD archive &copy; Iowa Environmental Mesonet',
+  });
+  // Swapped only once the replacement has decoded, matching the live path, so
+  // scrubbing never flashes an empty map between frames.
+  ov.on('load', () => {
+    if(seq !== archiveRadarSeq || !replayActive()){ map.removeLayer(ov); return; }
+    if(archiveRadarLayer) map.removeLayer(archiveRadarLayer);
+    archiveRadarLayer = ov;
+    archiveRadarShown = url;
+    // Name the product honestly: this is the archived n0r mosaic, not the live
+    // N0Q the rest of the app shows.
+    radarLabel = 'NEXRAD N0R archive';
+    updateRadarStatus(new Date(ms));
+  });
+  ov.on('error', () => {
+    // A missing five-minute slice is normal in the archive; keep the last good
+    // frame rather than blanking the radar.
+    if(seq === archiveRadarSeq) map.removeLayer(ov);
+  });
+  ov.addTo(map);
+  prefetchArchiveRadar(ms, 4);
+}
+
+function hideArchiveRadar(){
+  archiveRadarSeq++;
+  if(archiveRadarShown) radarLabel = 'NEXRAD N0Q';
+  if(archiveRadarLayer){ map.removeLayer(archiveRadarLayer); archiveRadarLayer = null; }
+  archiveRadarShown = '';
+  archivePrefetched.clear();
+}
+
+// The live radar has to stand down while the archive is showing, or the two
+// draw on top of each other in the same pane.
+function setLiveRadarVisible(on){
+  if(!map || !radarLayer) return;
+  if(on){ if(!map.hasLayer(radarLayer)) radarLayer.addTo(map); }
+  else if(map.hasLayer(radarLayer)) map.removeLayer(radarLayer);
+  if(noaaLayer){
+    if(on){ if(!map.hasLayer(noaaLayer)) noaaLayer.addTo(map); }
+    else if(map.hasLayer(noaaLayer)) map.removeLayer(noaaLayer);
+  }
+  if(!on && radarLoopOn) destroyRadarFrames();
+}
+
 function applyReplay(){
   if(replayActive()){
     if(liveStationData === null) liveStationData = stationData;
     stationData = stationsAt(replayAt);
-  }else if(liveStationData !== null){
-    stationData = liveStationData; liveStationData = null;
+    setLiveRadarVisible(false);
+    showArchiveRadar(replayAt);
+  }else{
+    if(liveStationData !== null){ stationData = liveStationData; liveStationData = null; }
+    hideArchiveRadar();
+    setLiveRadarVisible(true);
+    loadRadar();
   }
   renderStations();
   renderLSR();
@@ -2860,6 +2978,60 @@ function onReplayScrub(v){
 // bulk day of observations.
 function scheduleHistoryRefresh(){ if(REPLAY_ENABLED && replayActive()) loadHistory(); }
 
+/* Where things happened, drawn over the scrubber.
+
+   144 identical steps gave no clue which of them were worth stopping at, so
+   finding the moment a warning went out meant dragging and watching. These are
+   the issuances and the reports, in the colours the map already uses for them,
+   so the interesting minutes are visible before you scrub to them.
+
+   Only what is in view: a national feed would mark almost every step and say
+   nothing. */
+let sigMarks = '';
+function renderReplayMarks(){
+  const host = document.getElementById('rpMarks');
+  if(!host || !map) return;
+  if(!REPLAY_ENABLED){ host.innerHTML = ''; return; }
+  const span = REPLAY_HOURS * 3600e3, end = Date.now(), start = end - span;
+  const view = map.getBounds().pad(0.15);
+  const marks = [];
+
+  for(const f of (lastAlertFeats || [])){
+    const p = f.properties || {};
+    const t = Date.parse(p.onset || p.effective || p.sent);
+    if(!isFinite(t) || t < start || t > end) continue;
+    if(f._cls === 'advisory' && !hazardVisible.advisories) continue;
+    if(f._cls === 'watch' && !hazardVisible.watches) continue;
+    if(!hazardVisible[f._hazard]) continue;
+    if(!alertInView(f)) continue;                 // needs resolved geometry, which is the point
+    marks.push({t, color: alertColor(p.event, f._cls), rank: f._cls === 'warning' ? 2 : 1});
+  }
+  for(const f of (lsrData || [])){
+    const p = f.properties || {};
+    if(!f.geometry || !lsrKeep(p)) continue;
+    const c = f.geometry.coordinates;
+    if(!view.contains([c[1], c[0]])) continue;
+    const t = feedTimeMs(p.valid);
+    if(!t || t < start || t > end) continue;
+    marks.push({t, color: lsrColor(p.typetext), rank: 3});
+  }
+
+  // One mark per pixel-ish bucket, keeping the most significant, or a busy hour
+  // paints a solid band that hides the rest.
+  const buckets = new Map();
+  for(const m of marks){
+    const k = Math.round(((m.t - start) / span) * 200);
+    const prev = buckets.get(k);
+    if(!prev || m.rank > prev.rank) buckets.set(k, m);
+  }
+  const sig = [...buckets.keys()].sort((a, b) => a - b).join(',');
+  if(sig === sigMarks) return;                     // scrubbing does not move these
+  sigMarks = sig;
+  host.innerHTML = [...buckets.entries()]
+    .map(([k, m]) => `<i style="left:${(k / 2).toFixed(2)}%;background:${m.color}"></i>`)
+    .join('');
+}
+
 function renderReplayBar(){
   const bar = document.getElementById('replayBar');
   if(!bar) return;
@@ -2868,6 +3040,7 @@ function renderReplayBar(){
   const play = document.getElementById('rpPlay');
   const range = document.getElementById('rpRange');
   bar.classList.toggle('live', !replayActive());
+  renderReplayMarks();
   play.textContent = replayPlaying ? '\u2016' : '\u25B6';
   play.classList.toggle('on', replayPlaying);
   if(!replayActive()){
