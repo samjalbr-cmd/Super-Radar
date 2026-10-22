@@ -187,6 +187,14 @@
   body.launcher #statusStack, body.launcher #arrival, body.launcher #lightningBadge,
   body.launcher .leaflet-control-zoom{ display:none !important; }
   /* One caption, because a replay with no clock is just confusing footage. */
+  /* The trace sits beside the reading, baseline-aligned, so the pair reads as
+     one thing: the number now and the six hours behind it. */
+  .stn-wrap{ display:inline-flex; align-items:center; gap:3px; white-space:nowrap; }
+  .stn-spark{ display:block; overflow:visible; opacity:0.95;
+              filter:drop-shadow(0 0 2px #000) drop-shadow(0 0 1px #000); }
+  /* On the full station plot it hangs below the model, clear of the figures. */
+  .sm-s{ position:absolute; left:50%; top:30px; transform:translateX(-50%); pointer-events:none; }
+
   #launcherClock{
     position:absolute; left:50%; bottom:26px; transform:translateX(-50%); z-index:560;
     display:none; align-items:baseline; gap:11px;
@@ -826,6 +834,7 @@
       <div class="set-body">
         <label class="set-row"><input type="checkbox" id="stationsChk" checked onchange="toggleStations(this)"><span class="sw-t"></span>Live stations (METAR)</label>
         <label class="set-row"><input type="checkbox" id="lakeChk" checked onchange="toggleLakeTemps(this)"><span class="sw-t"></span>Lake water temperature</label>
+        <label class="set-row"><input type="checkbox" id="sparkChk" checked onchange="toggleSpark(this)"><span class="sw-t"></span>6-hour temp trace</label>
         <label class="set-row" style="gap:8px">
           <span style="flex:1">Upper-air wind</span>
           <select id="upperLevel" onchange="setUpperLevel(this.value)" style="flex:0 0 auto">
@@ -1051,7 +1060,8 @@ function initMap(){
                       renderFeed, scheduleAfdRefresh, scheduleModelRefresh,
                       scheduleIsobarRefresh, scheduleNoaaRadar, schedulePrecipRefresh,
                       syncAppSettings, scheduleHistoryRefresh, renderLakeTemps,
-                      renderUpper, scheduleUpperRefresh, renderReplayMarks];
+                      renderUpper, scheduleUpperRefresh, renderReplayMarks,
+                      scheduleTempHistory];
   const FRAME_BUDGET_MS = 8;          // leaves room in a 16 ms frame to paint
   let movePass = false, moveAgain = false;
   function runMoveTasks(){
@@ -1864,6 +1874,7 @@ const HIDEABLE = [
   ['Warnings',      () => hazardVisible.tornado || hazardVisible.thunderstorm || hazardVisible.flood],
   ['Watches',       () => hazardVisible.watches],
   ['Advisories',    () => hazardVisible.advisories],
+  ['Temp traces',   () => sparkOn],
   ['Upper air',     () => upperLevel !== 'off'],
 ];
 
@@ -3659,6 +3670,115 @@ function stationTieBreak(id){
   return (stationTieCache[id] = (h % 1000) / 1000);
 }
 
+/* ---------------- Six-hour temperature sparkline ----------------
+   A trace beside each station, so a number becomes a direction: 48 on the way
+   down off a front reads nothing like 48 climbing through the morning, and the
+   map could not tell you which it was.
+
+   Coloured along its length by the same ramp the station plots use, so the
+   line is literally the temperature it is drawing — a cold start that warms up
+   runs cyan into green, and a frontal drop runs the other way.
+
+   Its own fetch rather than the replay history: that one pulls 24 hours of
+   seven fields per state and only runs while scrubbing. Six hours of one field
+   is 123 KB a state and about 18 samples a station, which is enough shape. */
+const TEMP_HIST_HOURS = 6;
+const SPARK_W = 26, SPARK_H = 10, SPARK_MAX_PTS = 14;
+let tempHist = {};                 // station id -> [{t, f}] ascending
+let tempHistStates = '', tempHistAt = 0, tempHistLoading = false, tempHistTimer = null;
+let sparkOn = true;
+
+async function loadTempHistory(){
+  if(!sparkOn || !stationsOn || tempHistLoading || !map) return;
+  const states = replayStatesFor(map.getBounds());
+  if(!states.length) return;
+  const key = states.join(',');
+  // Observations arrive hourly for most sites, so re-asking faster than that
+  // buys nothing but traffic.
+  if(key === tempHistStates && Date.now() - tempHistAt < 10 * 60e3) return;
+  tempHistLoading = true;
+  const now = new Date(), then = new Date(now.getTime() - TEMP_HIST_HOURS * 3600e3);
+  const d = (i, x) => `year${i}=${x.getUTCFullYear()}&month${i}=${x.getUTCMonth() + 1}` +
+                      `&day${i}=${x.getUTCDate()}&hour${i}=${x.getUTCHours()}`;
+  const next = {};
+  for(const st of states){
+    const u = 'https://mesonet.agron.iastate.edu/cgi-bin/request/asos.py?network=' + st + '_ASOS' +
+              '&data=tmpf&' + d(1, then) + '&' + d(2, now) +
+              '&tz=UTC&format=comma&missing=empty&trace=empty';
+    try{
+      const res = await fetch(u);
+      if(!res.ok) continue;
+      const lines = (await res.text()).split('\n');
+      // Column positions come from the header rather than being assumed: the
+      // same endpoint returns extra columns when asked for lat/lon, and the
+      // replay loader does ask for them.
+      let iSta = 0, iVal = 1, iT = 2;
+      for(const line of lines){
+        if(!line || line[0] === '#') continue;
+        const c = line.split(',');
+        if(c[0] === 'station'){
+          iSta = c.indexOf('station'); iVal = c.indexOf('valid'); iT = c.indexOf('tmpf');
+          continue;
+        }
+        if(iT < 0 || c.length <= iT) continue;
+        const f = parseFloat(c[iT]);
+        if(!isFinite(f)) continue;
+        const t = Date.parse(c[iVal].trim().replace(' ', 'T') + 'Z');
+        if(!isFinite(t)) continue;
+        (next[c[iSta]] = next[c[iSta]] || []).push({t, f});
+      }
+    }catch(e){ /* a state that fails just has no traces */ }
+    await new Promise(r => setTimeout(r, 250));
+  }
+  for(const k in next) next[k].sort((a, b) => a.t - b.t);
+  tempHist = next; tempHistStates = key; tempHistAt = Date.now();
+  tempHistLoading = false;
+  renderStations();
+}
+
+function scheduleTempHistory(){
+  if(!sparkOn) return;
+  clearTimeout(tempHistTimer);
+  tempHistTimer = setTimeout(loadTempHistory, 700);     // debounce panning
+}
+
+let sparkSeq = 0;
+function tempSpark(id){
+  if(!sparkOn || !id) return '';
+  const h = tempHist[id];
+  if(!h || h.length < 3) return '';
+  // Thinned to keep the markup small — a 26px trace cannot show 19 points.
+  const stride = Math.ceil(h.length / SPARK_MAX_PTS);
+  const pts = stride <= 1 ? h : h.filter((_, i) => i % stride === 0 || i === h.length - 1);
+  if(pts.length < 3) return '';
+  let lo = Infinity, hi = -Infinity;
+  for(const q of pts){ if(q.f < lo) lo = q.f; if(q.f > hi) hi = q.f; }
+  // A steady six hours is a real answer, so a flat trace gets a floor on its
+  // range and sits mid-height rather than being amplified into noise.
+  const span = Math.max(4, hi - lo), mid = (hi + lo) / 2;
+  const bot = mid - span / 2, top = mid + span / 2;
+  const gid = 'sp' + (++sparkSeq);
+  const last = pts.length - 1;
+  let d = '', stops = '';
+  pts.forEach((q, i) => {
+    const x = (i / last) * SPARK_W;
+    let y = SPARK_H - ((q.f - bot) / (top - bot)) * SPARK_H;
+    y = Math.max(0.8, Math.min(SPARK_H - 0.8, y));
+    d += (i ? 'L' : 'M') + x.toFixed(1) + ' ' + y.toFixed(1) + ' ';
+    stops += `<stop offset="${((i / last) * 100).toFixed(1)}%" stop-color="${tempColor(q.f)}"/>`;
+  });
+  return `<svg class="stn-spark" width="${SPARK_W}" height="${SPARK_H}" viewBox="0 0 ${SPARK_W} ${SPARK_H}">` +
+         `<defs><linearGradient id="${gid}" x1="0" y1="0" x2="1" y2="0">${stops}</linearGradient></defs>` +
+         `<path d="${d.trim()}" fill="none" stroke="url(#${gid})" stroke-width="1.4" ` +
+         `stroke-linejoin="round" stroke-linecap="round"/></svg>`;
+}
+
+function toggleSpark(cb){
+  sparkOn = cb.checked;
+  if(sparkOn) loadTempHistory(); else renderStations();
+  renderHiddenStatus();
+}
+
 function renderStations(){
   if(!stationLayer) return;
   stationLayer.clearLayers();
@@ -3710,9 +3830,11 @@ function renderStations(){
         `<span class="sm-t" style="color:${tc}">${t}</span>` +
         `<span class="sm-d" style="color:${tc}">${dp}</span>` +
         `<span class="sm-p" style="color:${tc}">${pr}</span>` +
-        (wx ? `<span class="sm-w" style="color:${tc}">${wx}</span>` : '') + `</div>`;
+        (wx ? `<span class="sm-w" style="color:${tc}">${wx}</span>` : '') +
+        `<span class="sm-s">${tempSpark(p.station)}</span></div>`;
     }else{
-      html = `<span class="stn-label" style="color:${color}">${text}</span>`;
+      html = `<span class="stn-wrap"><span class="stn-label" style="color:${color}">${text}</span>` +
+             `${tempSpark(s.p.station)}</span>`;
     }
     const icon = L.divIcon({className: 'stn-icon', html, iconSize: [0, 0], iconAnchor: [0, 0]});
     L.marker([s.lat, s.lon], {icon, keyboard: false}).bindPopup(stationPopup(s)).addTo(stationLayer);
@@ -5836,6 +5958,8 @@ async function boot(){
   setInterval(loadAfdAreas, 20 * 60 * 1000);
   setInterval(loadSurfaceAnalysis, 20 * 60 * 1000);
   setInterval(loadLakeTemps, 30 * 60 * 1000);   // the collector runs hourly
+  loadTempHistory();
+  setInterval(loadTempHistory, 10 * 60 * 1000); // most sites report hourly
   fetchUpper();                                 // the interval below is the refresh, not the first draw
   setInterval(fetchUpper, 20 * 60 * 1000);      // HRRR updates hourly
   setInterval(loadStormTracks, 5 * 60 * 1000);   // one volume scan
