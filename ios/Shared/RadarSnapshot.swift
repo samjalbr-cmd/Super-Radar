@@ -103,11 +103,13 @@ private func barbColor(_ f: Double) -> UIColor { tempColor(f) }
 /// runs cyan into green, a frontal drop runs the other way. Core Graphics has
 /// no gradient stroke along a path, so each segment is stroked in its own
 /// colour — at this size the join is the gradient.
-private let sparkSize = CGSize(width: 20, height: 7)
+// Small enough to sit beside a reading without competing with it — the trace
+// is context for the number, not a chart in its own right.
+private let sparkSize = CGSize(width: 14, height: 5)
 private func drawSpark(_ ctx: CGContext, series: [(t: Date, f: Double)], at origin: CGPoint) {
     guard series.count >= 3 else { return }
     // Thinned to what a twenty-pixel trace can actually show.
-    let maxPts = 12
+    let maxPts = 9
     let stride = max(1, Int((Double(series.count) / Double(maxPts)).rounded(.up)))
     var pts = stride <= 1 ? series : series.enumerated().filter { $0.offset % stride == 0 }.map { $0.element }
     if let last = series.last, pts.last?.t != last.t { pts.append(last) }
@@ -123,7 +125,7 @@ private func drawSpark(_ ctx: CGContext, series: [(t: Date, f: Double)], at orig
         let x = origin.x + CGFloat(i) / CGFloat(pts.count - 1) * sparkSize.width
         var y = origin.y + sparkSize.height
               - CGFloat((pts[i].f - bot) / (top - bot)) * sparkSize.height
-        y = min(max(y, origin.y + 0.6), origin.y + sparkSize.height - 0.6)
+        y = min(max(y, origin.y + 0.5), origin.y + sparkSize.height - 0.5)
         return CGPoint(x: x, y: y)
     }
 
@@ -133,12 +135,12 @@ private func drawSpark(_ ctx: CGContext, series: [(t: Date, f: Double)], at orig
     // A dark pass underneath, so the trace holds up over radar as well as over
     // bare ground — the same trick the figures use.
     ctx.setStrokeColor(UIColor.black.withAlphaComponent(0.55).cgColor)
-    ctx.setLineWidth(2.6)
+    ctx.setLineWidth(2.2)
     ctx.move(to: at(0))
     for i in 1..<pts.count { ctx.addLine(to: at(i)) }
     ctx.strokePath()
 
-    ctx.setLineWidth(1.2)
+    ctx.setLineWidth(1.0)
     for i in 1..<pts.count {
         // The segment takes the colour of the warmer-in-time end, so the line
         // reads left to right as the temperature did.

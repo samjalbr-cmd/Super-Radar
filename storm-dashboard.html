@@ -193,7 +193,7 @@
   .stn-spark{ display:block; overflow:visible; opacity:0.95;
               filter:drop-shadow(0 0 2px #000) drop-shadow(0 0 1px #000); }
   /* On the full station plot it hangs below the model, clear of the figures. */
-  .sm-s{ position:absolute; left:50%; top:30px; transform:translateX(-50%); pointer-events:none; }
+  .sm-s{ position:absolute; left:50%; top:27px; transform:translateX(-50%); pointer-events:none; }
 
   #launcherClock{
     position:absolute; left:50%; bottom:26px; transform:translateX(-50%); z-index:560;
@@ -3805,7 +3805,9 @@ function stationTieBreak(id){
    seven fields per state and only runs while scrubbing. Six hours of one field
    is 123 KB a state and about 18 samples a station, which is enough shape. */
 const TEMP_HIST_HOURS = 6;
-const SPARK_W = 26, SPARK_H = 10, SPARK_MAX_PTS = 14;
+// Small enough to sit beside a reading without competing with it — the trace
+// is context for the number, not a chart in its own right.
+const SPARK_W = 18, SPARK_H = 7, SPARK_MAX_PTS = 10;
 let tempHist = {};                 // station id -> [{t, f}] ascending
 let tempHistStates = '', tempHistAt = 0, tempHistLoading = false, tempHistTimer = null;
 let sparkOn = true;
@@ -3910,13 +3912,13 @@ function tempSpark(id){
   pts.forEach((q, i) => {
     const x = (i / last) * SPARK_W;
     let y = SPARK_H - ((q.f - bot) / (top - bot)) * SPARK_H;
-    y = Math.max(0.8, Math.min(SPARK_H - 0.8, y));
+    y = Math.max(0.6, Math.min(SPARK_H - 0.6, y));
     d += (i ? 'L' : 'M') + x.toFixed(1) + ' ' + y.toFixed(1) + ' ';
     stops += `<stop offset="${((i / last) * 100).toFixed(1)}%" stop-color="${tempColor(q.f)}"/>`;
   });
   return `<svg class="stn-spark" width="${SPARK_W}" height="${SPARK_H}" viewBox="0 0 ${SPARK_W} ${SPARK_H}">` +
          `<defs><linearGradient id="${gid}" x1="0" y1="0" x2="1" y2="0">${stops}</linearGradient></defs>` +
-         `<path d="${d.trim()}" fill="none" stroke="url(#${gid})" stroke-width="1.4" ` +
+         `<path d="${d.trim()}" fill="none" stroke="url(#${gid})" stroke-width="1.2" ` +
          `stroke-linejoin="round" stroke-linecap="round"/></svg>`;
 }
 
