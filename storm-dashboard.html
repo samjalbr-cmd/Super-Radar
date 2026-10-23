@@ -659,9 +659,18 @@
   .alert-label{
     display:inline-block;    /* see .afd-area-lbl — zero-width box, dead translateX */
     transform:translate(-50%,-50%);text-align:center;font-family:sans-serif;
-    font-weight:800;font-size:9px;letter-spacing:0.02em;
+    font-weight:800;font-size:calc(9px * var(--lblscale, 1));letter-spacing:0.02em;
     text-shadow:0 0 3px #000, 0 0 2px #000, 0 1px 1px #000;white-space:nowrap;pointer-events:none;
   }
+  /* Replay names what each polygon is: the colour alone means nothing to
+     someone who did not watch it go up. */
+  /* Named labels sit over the station plots, so they get their own backing. */
+  .alert-label.named{
+    padding:3px 8px 4px;border-radius:7px;border:1px solid currentColor;
+    background:rgba(10,14,26,0.82);text-shadow:none;
+  }
+  .alert-label .al-name{display:block;font-size:1.15em;letter-spacing:0.05em;text-transform:uppercase;}
+  .alert-label .al-sub{display:block;font-weight:700;opacity:0.9;margin-top:1px;}
 
   .strike{
     width:3px;height:3px;border-radius:50%;
@@ -1642,6 +1651,54 @@ function invalidateTimeLayers(){ sigAlerts = sigLSR = sigAfd = sigMCD = null; }
 const alertShapeCache = new Map();   // alert key -> [L.geoJSON layers]
 let alertLabelLayers = [];           // impact labels, rebuilt each pass
 
+// Live, warnings carry an impact label (wind/hail/tornado details) and the
+// colour says what they are. In replay every watch and warning is named too —
+// scrubbing back is looking at what happened, and nobody reads a polygon's
+// colour as "severe thunderstorm watch" from across a room. Labels that would
+// overlap give way in order of how much they matter.
+const ALERT_LABEL_RANK = ev => /Tornado Warning/.test(ev) ? 0 : /Severe Thunderstorm Warning/.test(ev) ? 1 :
+  /Flash Flood Warning/.test(ev) ? 2 : /Warning/.test(ev) ? 3 : /Tornado Watch/.test(ev) ? 4 : 5;
+const alertShortName = ev => ev.replace('Severe Thunderstorm', 'Severe T-Storm');
+function alertUntil(props){
+  const t = Date.parse(props.ends || props.expires);
+  return isFinite(t) ? 'until ' + new Date(t).toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'}) : '';
+}
+function renderAlertLabels(visible){
+  const named = replayActive();
+  const scale = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--lblscale')) || 1;
+  const placed = [];
+  const list = visible.filter(f => f._cls === 'warning' || (named && f._cls === 'watch'))
+    .sort((a, z) => ALERT_LABEL_RANK(a.properties.event) - ALERT_LABEL_RANK(z.properties.event));
+  for(const f of list){
+    const p = f.properties, b = alertBBox(f);
+    if(!b) continue;
+    const det = f._cls === 'warning' ? alertDetails(p) : '';
+    let html;
+    if(named){
+      const sub = [det, alertUntil(p)].filter(Boolean).join(' \u00b7 ');
+      html = `<span class="al-name">${alertShortName(p.event)}</span>` + (sub ? `<span class="al-sub">${sub}</span>` : '');
+    }else if(det){
+      html = det;
+    }else continue;
+    const center = L.latLng((b.s + b.n) / 2, (b.w + b.e) / 2);
+    // Rough footprint from the text length, enough to keep two labels from
+    // printing over each other.
+    const pt = map.latLngToLayerPoint(center);
+    const chars = Math.max(alertShortName(p.event).length * 1.15, det.length + 16);
+    const hw = chars * 3.1 * scale + (named ? 14 : 6), hh = (named ? 17 : 7) * scale;
+    const r = {l: pt.x - hw, r: pt.x + hw, t: pt.y - hh, b: pt.y + hh};
+    if(placed.some(q => !(r.r <= q.l || r.l >= q.r || r.b <= q.t || r.t >= q.b))) continue;
+    placed.push(r);
+    const color = alertColor(p.event, f._cls);
+    const mk = L.marker(center, {icon: L.divIcon({className: 'alert-icon',
+      html: `<div class="alert-label${named ? ' named' : ''}" style="color:${color}">${html}</div>`, iconSize: [0, 0], iconAnchor: [0, 0]}),
+      // Above the station plots, which share the marker pane.
+      interactive: false, keyboard: false, zIndexOffset: named ? 5000 : 0});
+    alertLabelLayers.push(mk);
+    mk.addTo(alertLayerGroup);
+  }
+}
+
 function renderAlerts(){
   const visible = lastAlertFeats.filter(f =>
     f._geoms && f._geoms.length && alertInWindow(f) && hazardVisible[f._hazard] &&
@@ -1697,24 +1754,8 @@ function renderAlerts(){
       if(!alertLayerGroup.hasLayer(layer)) layer.addTo(alertLayerGroup);
     }
 
-    // Warnings get an impact label (wind/hail/tornado details) at center, colored
-    // by hazard — the event name is redundant since the polygon is color-coded.
-    if(f._cls === 'warning'){
-      const det = alertDetails(f.properties);
-      if(det){
-        let lb = null;
-        for(const g of f._geoms){
-          try{ const gb = L.geoJSON(g).getBounds(); lb = lb ? lb.extend(gb) : gb; }catch(e){}
-        }
-        if(lb && lb.isValid()){
-          const html = `<div class="alert-label" style="color:${color}">${det}</div>`;
-          const mk = L.marker(lb.getCenter(), {icon: L.divIcon({className: 'alert-icon', html, iconSize: [0, 0], iconAnchor: [0, 0]}), interactive: false, keyboard: false});
-          alertLabelLayers.push(mk);
-          mk.addTo(alertLayerGroup);
-        }
-      }
-    }
   }
+  renderAlertLabels(visible);
 
   // Drop the shapes that are no longer in force. Cached layers stay built, so
   // an alert coming back into window costs an add rather than a re-parse.
