@@ -564,6 +564,7 @@ enum RadarSnapshot {
             ? states + (showMarine ? StormFeed.marineCovering(sw: sw, ne: ne) : []) : []
         let alerts = showAlerts
             ? await StormFeed.alerts(states: alertAreas, sw: sw, ne: ne, marine: showMarine) : []
+        let spcWatches = showAlerts ? await StormFeed.spcWatches(sw: sw, ne: ne) : []
         let afd = showDiscussion ? await StormFeed.afdAreas(sw: sw, ne: ne) : []
         let outlook = showOutlook ? await MapLayers.outlook(sw: sw, ne: ne) : []
         let mcds = showOutlook ? await MapLayers.mesoscaleDiscussions(sw: sw, ne: ne) : []
@@ -639,14 +640,54 @@ enum RadarSnapshot {
                         path.lineWidth = 1
                         if a.isWatch { path.setLineDash([5, 4], count: 2, phase: 0) }
                     } else {
-                        a.color.withAlphaComponent(a.isWatch ? 0.10 : 0.22).setFill()
+                        // A county-by-county alert is one area, not twenty.
+                        // Stroking every zone at full weight drew all the
+                        // internal borders and turned a single watch into a
+                        // quilt, so a many-zone alert gets a lighter outline and
+                        // leans on its fill to read as one region.
+                        let many = a.rings.count >= 3
+                        a.color.withAlphaComponent(a.isWatch ? (many ? 0.13 : 0.10) : 0.22).setFill()
                         path.fill()
-                        a.color.setStroke()
-                        path.lineWidth = a.isWatch ? 1.5 : 2.5
-                        if a.isWatch { path.setLineDash([6, 4], count: 2, phase: 0) }
+                        a.color.withAlphaComponent(many ? 0.45 : 1).setStroke()
+                        path.lineWidth = a.isWatch ? (many ? 0.8 : 1.5) : (many ? 1.2 : 2.5)
+                        if a.isWatch && !many { path.setLineDash([6, 4], count: 2, phase: 0) }
                     }
                     path.stroke()
                 }
+            }
+
+            // The real SPC watch boxes, in place of the county lists the feed
+            // would otherwise have supplied.
+            for w in spcWatches {
+                var bounds: CGRect = .null
+                for ring in w.rings {
+                    let path = UIBezierPath()
+                    for (i, c) in ring.enumerated() {
+                        let p = snap.point(for: c)
+                        i == 0 ? path.move(to: p) : path.addLine(to: p)
+                    }
+                    path.close()
+                    w.color.withAlphaComponent(0.07).setFill()
+                    path.fill()
+                    w.color.setStroke()
+                    path.lineWidth = 2
+                    path.setLineDash([7, 5], count: 2, phase: 0)
+                    path.stroke()
+                    bounds = bounds.isNull ? path.bounds : bounds.union(path.bounds)
+                }
+                // Numbered, the way they are referred to on air and in the
+                // discussions. Only when the box is big enough to carry it.
+                guard !w.label.isEmpty, bounds.width > 54, bounds.height > 20,
+                      inFrame(CGPoint(x: bounds.midX, y: bounds.midY), size) else { continue }
+                let text = w.label as NSString
+                let attrs: [NSAttributedString.Key: Any] = [
+                    .font: UIFont.systemFont(ofSize: 7, weight: .heavy),
+                    .foregroundColor: w.color,
+                    .strokeColor: UIColor.black, .strokeWidth: -3.0,
+                ]
+                let sz = text.size(withAttributes: attrs)
+                text.draw(at: CGPoint(x: bounds.midX - sz.width / 2, y: bounds.midY - sz.height / 2),
+                          withAttributes: attrs)
             }
 
             if let d = render?.data, render?.hasEcho == true, let radar = UIImage(data: d) {

@@ -497,6 +497,63 @@ enum StormFeed {
         let color: UIColor
         let isWatch: Bool
         let isMarine: Bool
+        /// A label drawn in the middle of the area — the watch number, for the
+        /// SPC boxes. Empty for everything else.
+        var label: String = ""
+    }
+
+    /* SPC issues tornado and severe thunderstorm watches as one box. The NWS
+       alert feed hands them over as the list of counties the box covers
+       instead, and drawing those is what made a watch look like a patchwork
+       quilt: twenty outlined county shapes with every internal border drawn,
+       rather than the single parallelogram a forecaster actually drew. IEM
+       serves the real geometry, with the watch number on it.
+
+       Only tornado and severe watches are SPC products — a flood or freeze
+       watch genuinely is a collection of counties. */
+    static let spcWatchEvents: Set<String> = ["Tornado Watch", "Severe Thunderstorm Watch"]
+
+    static func spcWatches(sw: CLLocationCoordinate2D, ne: CLLocationCoordinate2D) async -> [AlertArea] {
+        guard let url = URL(string: "https://mesonet.agron.iastate.edu/json/spcwatch.py")
+        else { return [] }
+        struct FC: Decodable {
+            struct F: Decodable {
+                struct P: Decodable {
+                    let type: String?; let number: Int?
+                    let issue: String?; let expire: String?
+                    let is_pds: Bool?
+                }
+                let geometry: GeoJSONGeometry?
+                let properties: P
+            }
+            let features: [F]
+        }
+        var req = URLRequest(url: url); req.timeoutInterval = 20
+        req.cachePolicy = .reloadIgnoringLocalCacheData
+        guard let data = try? await URLSession.shared.data(for: req).0,
+              let fc = try? JSONDecoder().decode(FC.self, from: data) else { return [] }
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime]
+        let now = Date()
+        return fc.features.compactMap { f -> AlertArea? in
+            let p = f.properties
+            // Issued but not yet expired, judged the same way the dashboard
+            // judges it so the two agree on what is in force.
+            if let s = p.issue, let d = iso.date(from: s), now < d { return nil }
+            if let s = p.expire, let d = iso.date(from: s), now > d { return nil }
+            guard let g = f.geometry else { return nil }
+            let rings = g.coordinates.rings.map { ring in
+                ring.compactMap { c in
+                    c.count >= 2 ? CLLocationCoordinate2D(latitude: c[1], longitude: c[0]) : nil }
+            }.filter { $0.count >= 3 }.filter { boxOverlaps($0, sw: sw, ne: ne) }
+            guard !rings.isEmpty else { return nil }
+            let tor = (p.type ?? "") == "TOR"
+            let n = p.number.map(String.init) ?? ""
+            return AlertArea(rings: rings,
+                             color: alertColor(tor ? "Tornado Watch" : "Severe Thunderstorm Watch"),
+                             isWatch: true, isMarine: false,
+                             label: "\((p.is_pds ?? false) ? "PDS " : "")\(tor ? "TOR" : "SVR") WATCH \(n)")
+        }
     }
 
     /// Whether an event is a warning for boats rather than for land.
@@ -632,6 +689,8 @@ enum StormFeed {
         return feats.compactMap { f -> AlertArea? in
             let event = f.properties.event ?? ""
             if !marine && isMarineEvent(event) { return nil }
+            // The SPC box replaces the county list, not joins it.
+            if spcWatchEvents.contains(event) { return nil }
             var rings: [[CLLocationCoordinate2D]] = []
             if let g = f.geometry {
                 rings = g.coordinates.rings.map { ring in
