@@ -2240,6 +2240,7 @@ function syncAppSettings(){
      ?hours=3           how far the launcher loop reaches back (with ?launcher=1)
      ?step=10           minutes per frame of the launcher loop, multiples of 5 (default 5)
      ?spacing=20        px of space kept between station plots (launcher default 20)
+     ?plotstep=30       minutes of launcher replay between station redraws (default 30)
      ?tick=400          ms per frame of the launcher loop (default 650)
 */
 const URLQ = new URLSearchParams(location.search);
@@ -3194,21 +3195,27 @@ function drawCompFrame(url){
   const bmp = compFrames.get(url);
   if(!bmp || !compCrop) return false;
   const op = radarOpacityNow();
+  // The launcher draws straight into one canvas. Two crossfading canvases,
+  // each larger than the screen, doubled the GPU's blending on every frame of
+  // every fade, and at a few frames a second the steps read as motion anyway.
+  const fade = !LAUNCHER;
   if(!compFront){
     const mk = () => compCanvasOverlay(L.latLngBounds(compCrop.bounds), compCrop.w, compCrop.h, {
-      opacity: 0, pane: 'radarPane', interactive: false, className: 'radar-archive',
+      opacity: fade ? 0 : op, pane: 'radarPane', interactive: false, className: fade ? 'radar-archive' : '',
       attribution: 'NWS NEXRAD archive &copy; Iowa Environmental Mesonet',
     }).addTo(map);
-    compFront = mk(); compBack = mk();
+    compFront = mk(); compBack = fade ? mk() : compFront;
   }
-  // Drawn into the hidden one, then swapped, so a frame never shows half drawn
-  // and the archive layer's opacity transition crossfades the two.
+  // Otherwise drawn into the hidden one, then swapped, so a frame never shows
+  // half drawn and the archive layer's opacity transition crossfades the two.
   const cv = compBack.getElement(), ctx = cv.getContext('2d');
   ctx.clearRect(0, 0, cv.width, cv.height);
   ctx.drawImage(bmp, 0, 0);
-  compBack.setOpacity(op);
-  compFront.setOpacity(0);
-  const t = compFront; compFront = compBack; compBack = t;
+  if(fade){
+    compBack.setOpacity(op);
+    compFront.setOpacity(0);
+    const t = compFront; compFront = compBack; compBack = t;
+  }
   compShown = url;
   radarLabel = 'NEXRAD N0R archive';
   updateRadarStatus(new Date(replayAt != null ? replayAt : Date.now()));
@@ -3226,7 +3233,7 @@ function showCompositeRadar(ms){
   if(recropped) launcherPrefetch();
 }
 function hideCompositeRadar(){
-  if(compFront){ map.removeLayer(compFront); map.removeLayer(compBack); }
+  if(compFront){ map.removeLayer(compFront); if(compBack !== compFront) map.removeLayer(compBack); }
   compFront = compBack = null;
   compShown = ''; compWanted = '';
   compQueue = [];
@@ -3445,7 +3452,16 @@ function setLiveRadarVisible(on){
 function applyReplay(){
   if(replayActive()){
     if(liveStationData === null) liveStationData = stationData;
-    stationData = stationsAt(replayAt);
+    // The launcher redraws station plots once per slot of replay time rather
+    // than every step. Rewriting ~30 plots a step was most of what a TV spent
+    // per frame; at 30-minute slots a step reached the screen in ~85 ms rather
+    // than ~230, and most sites only report hourly anyway.
+    const slot = LAUNCHER ? Math.floor(replayAt / (LAUNCHER_PLOT_MIN * 60e3)) : null;
+    if(!LAUNCHER || slot !== launcherPlotSlot || !stationData.length){
+      launcherPlotSlot = slot;
+      stationData = stationsAt(replayAt);
+      renderStations();
+    }
     setLiveRadarVisible(false);
     // Zooming can cross the per-site/mosaic threshold, so this re-picks the
     // source each time and drops whichever one is no longer right.
@@ -3455,8 +3471,8 @@ function applyReplay(){
     hideArchiveRadar();
     setLiveRadarVisible(true);
     loadRadar();
+    renderStations();
   }
-  renderStations();
   renderLSR();
   renderAlerts();
   renderAfdAreas();
@@ -3645,6 +3661,12 @@ const LAUNCHER_LAG_MS = 12 * 60e3;
 // The newest frame holds before the loop starts over, so "now" reads as the
 // end of the story rather than one more frame flicking past.
 const LAUNCHER_HOLD_MS = 1600;
+// ?plotstep= sets how many minutes of replay pass between station redraws.
+const LAUNCHER_PLOT_MIN = (function(){
+  const v = parseFloat(new URLSearchParams(location.search).get('plotstep'));
+  return isFinite(v) ? Math.max(5, Math.min(120, v)) : 30;
+})();
+let launcherPlotSlot = null;
 
 // The loop's frames, on a fixed grid of clock times. Stepping from whenever
 // the loop happened to start put each pass on different minutes, so nothing
@@ -3671,6 +3693,8 @@ let launcherTimer = null, launcherFrameList = [], launcherIdx = 0, launcherHoldU
 function launcherStart(){
   if(!LAUNCHER) return;
   document.body.classList.add('launcher');
+  const spark = document.getElementById('sparkChk');
+  if(spark) spark.checked = sparkOn;
   launcherFrameList = launcherFrames();
   launcherIdx = 0;
   setReplay(launcherFrameList[0]);
@@ -4039,7 +4063,10 @@ const TEMP_HIST_HOURS = 6;
 const SPARK_W = 18, SPARK_H = 7, SPARK_MAX_PTS = 10;
 let tempHist = {};                 // station id -> [{t, f}] ascending
 let tempHistStates = '', tempHistAt = 0, tempHistLoading = false, tempHistTimer = null;
-let sparkOn = true;
+// Off in the launcher. A gradient-stroked SVG per station, redrawn as the
+// window slides, had to be re-rasterised on every step: on a TV that took the
+// loop from 24 fps to under 4, for a trace too small to read across a room.
+let sparkOn = !LAUNCHER;
 
 async function loadTempHistory(){
   if(!sparkOn || !stationsOn || tempHistLoading || !map) return;
