@@ -29,6 +29,9 @@
      radar/alert colors keep the contrast they had on the old CARTO dark tiles.
      Only the base is filtered — the label layer stays crisp. */
   .basemap-base{filter:brightness(0.5) saturate(0.7) contrast(1.05);}
+  /* A TV crushes the low end that a monitor shows, so at half brightness the
+     launcher's map read as black. */
+  body.launcher .basemap-base{filter:brightness(0.85) saturate(0.8) contrast(1.05);}
   .leaflet-control-attribution{background:rgba(10,14,26,0.6)!important;color:var(--dim)!important;font-size:9px!important;}
   .leaflet-control-attribution a{color:var(--dim)!important;}
   .leaflet-control-zoom{display:none;}
@@ -2235,7 +2238,9 @@ function syncAppSettings(){
      ?replay=0          hide the scrubber entirely
      ?launcher=1        ambient loop of the last couple of hours, no controls
      ?hours=3           how far the launcher loop reaches back (with ?launcher=1)
-     ?tick=400          ms per five-minute step of the launcher loop (default 650)
+     ?step=10           minutes per frame of the launcher loop, multiples of 5 (default 5)
+     ?spacing=20        px of space kept between station plots (launcher default 20)
+     ?tick=400          ms per frame of the launcher loop (default 650)
 */
 const URLQ = new URLSearchParams(location.search);
 const qFlag = (k, dflt) => {
@@ -2824,7 +2829,17 @@ function replayStatesFor(bounds){
     hits.push([st, area]);
   }
   hits.sort((a, z) => z[1] - a[1]);
-  return hits.slice(0, 4).map(h => h[0]);   // a bulk day is ~700 KB per state
+  // A bulk day is ~700 KB per state, so scrubbing by hand takes the four that
+  // matter most. The launcher fills a whole screen and asks for only the hours
+  // its loop needs, so it takes every state in view — capped at four, the
+  // stations stopped at a state line and a third of a TV sat empty.
+  return hits.slice(0, LAUNCHER ? 16 : 4).map(h => h[0]);
+}
+
+// How far back the station history reaches: the scrubber's whole day, or for
+// the launcher just its loop plus the six hours each sparkline looks back.
+function historyHours(){
+  return LAUNCHER ? Math.min(REPLAY_HOURS, LAUNCHER_HOURS + TEMP_HIST_HOURS + 1) : REPLAY_HOURS;
 }
 
 async function loadHistory(){
@@ -2834,7 +2849,7 @@ async function loadHistory(){
   if(histLoading || (histRows && histStates === key)) return;
   histLoading = true;
   renderReplayBar();
-  const now = new Date(), then = new Date(now.getTime() - REPLAY_HOURS * 3600e3);
+  const now = new Date(), then = new Date(now.getTime() - historyHours() * 3600e3);
   const d = x => `year${x[0]}=${x[1].getUTCFullYear()}&month${x[0]}=${x[1].getUTCMonth()+1}&day${x[0]}=${x[1].getUTCDate()}&hour${x[0]}=${x[1].getUTCHours()}`;
   // One state at a time with a pause between. A day of observations is a real
   // query for IEM to run, and four at once reliably draws a 503 — which used to
@@ -2985,8 +3000,6 @@ function ridgeMaxSites(){ return RIDGE_SITE_LIMIT; }
    retained frame is a tenth of that and never exists at full size in a form we
    keep. */
 const RIDGE_SITE_LIMIT = 8;
-const COMP_BOUNDS = [[24.0, -126.0], [50.0, -66.0]];   // from the .wld: 0.01 deg, 6000x2600 from -126,50
-const COMP_W = 2400, COMP_H = 1040;
 
 function ridgeSitesNeeded(){
   if(!map || !nexradSites.length) return 0;
@@ -3001,24 +3014,167 @@ function ridgeSitesNeeded(){
 }
 function useComposite(){ return ridgeSitesNeeded() > RIDGE_SITE_LIMIT; }
 
-let compFront = null, compBack = null, compShown = '', compPending = '';
+let compFront = null, compBack = null, compShown = '';
 // The frame the replay currently wants. A decode in flight is only stale once
 // this moves on — not whenever anything re-runs applyReplay, which bumps
-// ridgeSeq several times a step and discarded every ~2 s mosaic decode on a TV
-// before it could land, so the launcher waited out its cap on every frame.
+// ridgeSeq several times a step.
 let compWanted = '';
 function compUrl(ms){
   const {path, stamp} = stampParts(new Date(Math.floor(ms / 300000) * 300000));
   return `https://mesonet.agron.iastate.edu/archive/data/${path}/GIS/uscomp/n0r_${stamp}.png`;
 }
 
-// An image overlay whose element is a canvas we draw into. The decoded frame
-// used to be re-encoded to a PNG blob just so Leaflet's image overlay had a URL
-// to load, and on a TV that encode was 3.5 s a frame — five times the
-// launcher's step — so the loop sat waiting on every frame. Drawing the bitmap
-// into the overlay's own canvas takes about a millisecond.
+/* Decoded frames, kept for the loop.
+
+   Decoding the mosaic is about 0.6 s on a TV however small the output, because
+   the whole 6000x2600 PNG has to be inflated. Done per step, that capped the
+   launcher at under two frames a second and every decode was a long task. So
+   each frame is decoded once, in a worker, cropped to the area on screen, and
+   kept: after the first pass the loop draws from memory at whatever pace it
+   likes, and only the newest frame is ever decoded again.
+
+   The crop is what makes keeping them affordable. A multi-state view is about
+   a tenth of the country, and at 1200 px wide a frame is ~2.5 MB, so a six-hour
+   loop at ten-minute steps holds ~90 MB rather than the gigabytes the whole
+   mosaic would. The crop is padded and snapped to a 2-degree grid so it only
+   changes, flushing the cache, when the view leaves it. */
+const COMP_SRC = {west: -126, north: 50, res: 0.01, w: 6000, h: 2600};
+const COMP_OUT_MAX_W = 1200;
+const COMP_CACHE_MAX = 80;
+const compFrames = new Map();     // url -> ImageBitmap for compCrop, oldest first
+let compCrop = null;              // {key, sx, sy, sw, sh, w, h, bounds}
+const compInFlight = new Set();   // urls the worker is decoding
+let compQueue = [];               // urls to decode next, front first
+
+function compCropFor(bounds){
+  const S = COMP_SRC, snap = 200;               // 2 degrees of source pixels
+  const b = bounds.pad(0.2);
+  const clampX = v => Math.max(0, Math.min(S.w, v)), clampY = v => Math.max(0, Math.min(S.h, v));
+  const sx = clampX(Math.floor((b.getWest() - S.west) / S.res / snap) * snap);
+  const ex = clampX(Math.ceil((b.getEast() - S.west) / S.res / snap) * snap);
+  const sy = clampY(Math.floor((S.north - b.getNorth()) / S.res / snap) * snap);
+  const ey = clampY(Math.ceil((S.north - b.getSouth()) / S.res / snap) * snap);
+  const sw = ex - sx, sh = ey - sy;
+  if(sw <= 0 || sh <= 0) return null;
+  const scale = Math.min(1, COMP_OUT_MAX_W / sw);
+  const w = Math.max(1, Math.round(sw * scale)), h = Math.max(1, Math.round(sh * scale));
+  const bnds = [[S.north - ey * S.res, S.west + sx * S.res], [S.north - sy * S.res, S.west + ex * S.res]];
+  return {key: [sx, sy, sw, sh, w, h].join(','), sx, sy, sw, sh, w, h, bounds: bnds};
+}
+
+// Keeps the current crop while the view still sits inside it, so panning a
+// little or returning from full screen to the tile reuses every cached frame.
+function ensureCompCrop(){
+  const view = map.getBounds();
+  if(compCrop){
+    const cb = L.latLngBounds(compCrop.bounds);
+    const zoomedIn = compCrop.sw / compCrop.w > 1 && map.getZoom() > compCrop.zoom;
+    if(cb.contains(view) && !zoomedIn) return false;
+  }
+  const next = compCropFor(view);
+  if(!next || (compCrop && next.key === compCrop.key)) return false;
+  next.zoom = map.getZoom();
+  compCrop = next;
+  for(const bmp of compFrames.values()) bmp.close();
+  compFrames.clear();
+  compQueue = []; compShown = '';
+  for(const ov of [compFront, compBack]){
+    if(!ov) continue;
+    const cv = ov.getElement();
+    cv.width = next.w; cv.height = next.h;
+    ov.setBounds(L.latLngBounds(next.bounds));
+  }
+  return true;
+}
+
+// One worker, decoding one frame at a time, so the page never blocks on it.
+// Falls back to decoding on the page where workers or cropped decodes are not
+// available.
+let compWorker;
+function compDecoder(){
+  if(compWorker !== undefined) return compWorker;
+  try{
+    const src = `onmessage = async e => {
+      const d = e.data;
+      try{
+        const r = await fetch(d.url);
+        if(!r.ok) throw new Error('HTTP ' + r.status);
+        const bmp = await createImageBitmap(await r.blob(), d.sx, d.sy, d.sw, d.sh,
+          {resizeWidth: d.w, resizeHeight: d.h, resizeQuality: 'medium'});
+        postMessage({url: d.url, key: d.key, bmp}, [bmp]);
+      }catch(err){ postMessage({url: d.url, key: d.key, err: String(err)}); }
+    };`;
+    compWorker = new Worker(URL.createObjectURL(new Blob([src], {type: 'text/javascript'})));
+    compWorker.onmessage = e => compDecoded(e.data);
+  }catch(e){ compWorker = null; }
+  return compWorker;
+}
+
+async function compDecodeOnPage(job){
+  try{
+    const r = await fetch(job.url);
+    if(!r.ok) throw new Error('HTTP ' + r.status);
+    const bmp = await createImageBitmap(await r.blob(), job.sx, job.sy, job.sw, job.sh,
+      {resizeWidth: job.w, resizeHeight: job.h, resizeQuality: 'medium'});
+    compDecoded({url: job.url, key: job.key, bmp});
+  }catch(err){ compDecoded({url: job.url, key: job.key, err: String(err)}); }
+}
+
+function compPump(){
+  if(compInFlight.size || !compCrop) return;
+  while(compQueue.length){
+    const url = compQueue.shift();
+    if(compFrames.has(url)) continue;
+    const c = compCrop;
+    const job = {url, key: c.key, sx: c.sx, sy: c.sy, sw: c.sw, sh: c.sh, w: c.w, h: c.h};
+    compInFlight.add(url);
+    const w = compDecoder();
+    if(w) w.postMessage(job); else compDecodeOnPage(job);
+    return;
+  }
+}
+
+function compDecoded(msg){
+  compInFlight.delete(msg.url);
+  if(msg.bmp){
+    // A frame cut for a crop that has since changed is the wrong shape.
+    if(!compCrop || msg.key !== compCrop.key){ msg.bmp.close(); }
+    else{
+      compFrames.set(msg.url, msg.bmp);
+      while(compFrames.size > COMP_CACHE_MAX){
+        const [old, b] = compFrames.entries().next().value;
+        if(old === compShown || old === compWanted) break;
+        b.close(); compFrames.delete(old);
+      }
+      if(msg.url === compWanted && replayActive()) drawCompFrame(msg.url);
+    }
+  }
+  compPump();
+}
+
+// Ask for frames: the wanted one first, then the rest in order.
+function compRequest(urls, front){
+  const fresh = urls.filter(u => !compFrames.has(u) && !compInFlight.has(u));
+  if(front) compQueue = fresh.concat(compQueue.filter(u => !fresh.includes(u)));
+  else compQueue = compQueue.concat(fresh.filter(u => !compQueue.includes(u)));
+  compPump();
+}
+
+// Frames outside the loop are released, so the cache follows the window as
+// it moves forward instead of growing by a frame every five minutes.
+function compKeepOnly(urls){
+  const keep = new Set(urls);
+  for(const [u, b] of compFrames){
+    if(keep.has(u) || u === compShown) continue;
+    b.close(); compFrames.delete(u);
+  }
+  compQueue = compQueue.filter(u => keep.has(u));
+}
+
+// An image overlay whose element is a canvas we draw into. Re-encoding each
+// frame to a PNG blob for a plain image overlay was 3.5 s a frame on a TV.
 let CompCanvasOverlay = null;
-function compCanvasOverlay(bounds, opts){
+function compCanvasOverlay(bounds, w, h, opts){
   if(!CompCanvasOverlay){
     CompCanvasOverlay = L.ImageOverlay.extend({
       _initImage(){
@@ -3030,50 +3186,53 @@ function compCanvasOverlay(bounds, opts){
     });
   }
   const cv = document.createElement('canvas');
-  cv.width = COMP_W; cv.height = COMP_H;
+  cv.width = w; cv.height = h;
   return new CompCanvasOverlay(cv, bounds, opts);
 }
 
-async function showCompositeRadar(ms){
-  const url = compUrl(ms);
-  compWanted = url;
-  if(url === compShown || url === compPending) return;
-  compPending = url;
-  let bmp = null;
-  try{
-    const blob = await (await fetch(url)).blob();
-    bmp = await createImageBitmap(blob, {resizeWidth: COMP_W, resizeHeight: COMP_H,
-                                         resizeQuality: 'medium'});
-  }catch(e){
-    if(compPending === url) compPending = '';
-    return;                                    // a missing slice keeps the last good frame
-  }
-  if(compPending === url) compPending = '';
-  if(compWanted !== url || !replayActive()){ bmp.close(); return; }
+function drawCompFrame(url){
+  const bmp = compFrames.get(url);
+  if(!bmp || !compCrop) return false;
   const op = radarOpacityNow();
   if(!compFront){
-    const mk = () => compCanvasOverlay(COMP_BOUNDS, {
+    const mk = () => compCanvasOverlay(L.latLngBounds(compCrop.bounds), compCrop.w, compCrop.h, {
       opacity: 0, pane: 'radarPane', interactive: false, className: 'radar-archive',
       attribution: 'NWS NEXRAD archive &copy; Iowa Environmental Mesonet',
     }).addTo(map);
     compFront = mk(); compBack = mk();
   }
-  // Drawn into the hidden one, then swapped, so a frame never shows half drawn.
+  // Drawn into the hidden one, then swapped, so a frame never shows half drawn
+  // and the archive layer's opacity transition crossfades the two.
   const cv = compBack.getElement(), ctx = cv.getContext('2d');
   ctx.clearRect(0, 0, cv.width, cv.height);
   ctx.drawImage(bmp, 0, 0);
-  bmp.close();
   compBack.setOpacity(op);
   compFront.setOpacity(0);
   const t = compFront; compFront = compBack; compBack = t;
   compShown = url;
   radarLabel = 'NEXRAD N0R archive';
-  updateRadarStatus(new Date(ms));
+  updateRadarStatus(new Date(replayAt != null ? replayAt : Date.now()));
+  return true;
+}
+
+function showCompositeRadar(ms){
+  // A new crop flushed every decoded frame; queue the loop again behind the
+  // one wanted now.
+  const recropped = ensureCompCrop();
+  const url = compUrl(ms);
+  compWanted = url;
+  if(url === compShown) return;
+  if(!drawCompFrame(url)) compRequest([url], true);
+  if(recropped) launcherPrefetch();
 }
 function hideCompositeRadar(){
   if(compFront){ map.removeLayer(compFront); map.removeLayer(compBack); }
   compFront = compBack = null;
-  compShown = ''; compPending = ''; compWanted = '';
+  compShown = ''; compWanted = '';
+  compQueue = [];
+  for(const b of compFrames.values()) b.close();
+  compFrames.clear();
+  compCrop = null;
 }
 const RIDGE_PRODUCT = 'N0B';
 
@@ -3468,39 +3627,85 @@ const LAUNCHER_HOURS = (function(){
   const v = parseFloat(new URLSearchParams(location.search).get('hours'));
   return isFinite(v) ? Math.max(0.5, Math.min(REPLAY_HOURS, v)) : 2;
 })();
-const LAUNCHER_STEP_MIN = 5;      // the archive's own cadence
-// ?tick= sets the pace in ms per five-minute step. The loop still waits on
-// each radar frame, so a short tick cannot outrun the archive.
+// ?step= sets minutes per frame, in multiples of the archive's five. Six hours
+// at five-minute steps is 72 frames; at ten it is 36, which loops in seconds.
+const LAUNCHER_STEP_MIN = (function(){
+  const v = parseFloat(new URLSearchParams(location.search).get('step'));
+  return isFinite(v) ? Math.max(5, Math.min(60, Math.round(v / 5) * 5)) : 5;
+})();
+// ?tick= sets the pace in ms per frame. The loop still waits on each radar
+// frame, so a short tick cannot outrun the archive.
 const LAUNCHER_TICK_MS = (function(){
   const v = parseFloat(new URLSearchParams(location.search).get('tick'));
-  return isFinite(v) ? Math.max(200, Math.min(5000, v)) : 650;
+  return isFinite(v) ? Math.max(150, Math.min(5000, v)) : 650;
 })();
 // The composite lands about ten minutes behind real time, so the loop ends
 // there rather than at now — otherwise the last frames are always missing.
 const LAUNCHER_LAG_MS = 12 * 60e3;
+// The newest frame holds before the loop starts over, so "now" reads as the
+// end of the story rather than one more frame flicking past.
+const LAUNCHER_HOLD_MS = 1600;
 
-let launcherTimer = null;
+// The loop's frames, on a fixed grid of clock times. Stepping from whenever
+// the loop happened to start put each pass on different minutes, so nothing
+// decoded on one pass could be reused on the next.
+function launcherFrames(){
+  const step = LAUNCHER_STEP_MIN * 60e3;
+  const last = Math.floor((Date.now() - LAUNCHER_LAG_MS) / step) * step;
+  const first = last - Math.floor(LAUNCHER_HOURS * 3600e3 / step) * step;
+  const out = [];
+  for(let t = first; t <= last; t += step) out.push(t);
+  return out;
+}
+
+// Decode the whole loop ahead of the playhead, and let go of frames that have
+// fallen out of it.
+function launcherPrefetch(){
+  if(!LAUNCHER || !launcherFrameList.length || !useComposite()) return;
+  const urls = launcherFrameList.map(compUrl);
+  compKeepOnly(urls);
+  compRequest(urls.slice(launcherIdx).concat(urls.slice(0, launcherIdx)), false);
+}
+
+let launcherTimer = null, launcherFrameList = [], launcherIdx = 0, launcherHoldUntil = 0;
 function launcherStart(){
   if(!LAUNCHER) return;
   document.body.classList.add('launcher');
-  const begin = () => Date.now() - LAUNCHER_HOURS * 3600e3;
-  setReplay(begin());
+  launcherFrameList = launcherFrames();
+  launcherIdx = 0;
+  setReplay(launcherFrameList[0]);
+  launcherPrefetch();
   clearInterval(launcherTimer);
-  launcherTimer = setInterval(() => {
-    // Hold until the frame already asked for is actually on screen. Advancing
-    // on the timer alone outran the fetches — each tick started a new overlay
-    // and invalidated the one in flight, so the clock moved and the radar sat
-    // three frames behind. The cap stops a genuinely missing slice, which the
-    // archive does have, from wedging the loop forever.
-    if(replayAt != null && !archiveRadarReady(replayAt) && launcherWaits < 10){
-      launcherWaits++; return;
-    }
-    launcherWaits = 0;
-    const end = Date.now() - LAUNCHER_LAG_MS;
-    let next = (replayAt || begin()) + LAUNCHER_STEP_MIN * 60e3;
-    if(next >= end) next = begin();            // round again
-    setReplay(next);
-  }, LAUNCHER_TICK_MS);
+  launcherTimer = setInterval(launcherTick, LAUNCHER_TICK_MS);
+}
+function launcherTick(){
+  // Hold until the frame already asked for is actually on screen. The cap stops
+  // a genuinely missing slice, which the archive does have, from wedging the
+  // loop forever.
+  if(replayAt != null && !archiveRadarReady(replayAt) && launcherWaits < 10){
+    launcherWaits++; return;
+  }
+  launcherWaits = 0;
+  if(launcherIdx >= launcherFrameList.length - 1){
+    const now = performance.now();
+    if(!launcherHoldUntil){ launcherHoldUntil = now + LAUNCHER_HOLD_MS; return; }
+    if(now < launcherHoldUntil) return;
+    launcherHoldUntil = 0;
+    // Round again, on a frame list that has moved forward with the clock.
+    launcherFrameList = launcherFrames();
+    launcherIdx = 0;
+    launcherPrefetch();
+  }else{
+    launcherIdx++;
+  }
+  setReplay(launcherFrameList[launcherIdx]);
+}
+// Pause and resume where it stopped — for a remote's play/pause key.
+function launcherToggle(){
+  if(!LAUNCHER) return;
+  if(launcherTimer){ clearInterval(launcherTimer); launcherTimer = null; }
+  else launcherTimer = setInterval(launcherTick, LAUNCHER_TICK_MS);
+  renderLauncherClock();
 }
 let launcherWaits = 0;
 
@@ -3513,9 +3718,8 @@ function renderLauncherClock(){
   t.textContent = at.toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'});
   d.textContent = at.toLocaleDateString([], {weekday: 'short'}) +
                   (histLoading ? ' \u00b7 loading' : '');
-  const begin = Date.now() - LAUNCHER_HOURS * 3600e3;
-  const span = (Date.now() - LAUNCHER_LAG_MS) - begin;
-  if(b) b.style.width = Math.max(0, Math.min(100, ((mapNow() - begin) / span) * 100)) + '%';
+  const n = launcherFrameList.length;
+  if(b) b.style.width = (n > 1 ? (launcherIdx / (n - 1)) * 100 : 100) + '%';
 }
 
 function replayGoLive(){
@@ -3987,6 +4191,15 @@ function packWidth(s){
 // removed.
 const stationMarkers = new Map();   // station id -> {marker, html, s}
 
+// Extra room, in px, kept around each station plot. ?spacing= sets it; the
+// launcher defaults to a sparser field than the desktop, which a viewer can
+// zoom into.
+const STATION_GAP = (function(){
+  const v = parseFloat(new URLSearchParams(location.search).get('spacing'));
+  if(isFinite(v)) return Math.max(0, Math.min(60, v)) / 2;
+  return LAUNCHER ? 10 : 0;
+})();
+
 function renderStations(){
   if(!stationLayer) return;
   if(!stationsOn || map.getZoom() < 6){
@@ -4015,7 +4228,10 @@ function renderStations(){
       // anywhere inside it, so a station near a corner blocks the space its
       // neighbour could have used; testing the real footprint fits more in
       // without any of them overlapping.
-      const half = packWidth(s) / 2, halfV = PLOT_H / 2;
+      // Plus a margin, so plots sit apart rather than tiling the map edge to
+      // edge — on a whole screen of states that packed in ~150 and read as a
+      // carpet of digits.
+      const half = packWidth(s) / 2 + STATION_GAP, halfV = PLOT_H / 2 + STATION_GAP;
       const r = {l: pt.x - half, t: pt.y - halfV, r: pt.x + half, b: pt.y + halfV};
       if(placed.some(q => !(r.r <= q.l || r.l >= q.r || r.b <= q.t || r.t >= q.b))) continue;
       placed.push(r);
