@@ -29,6 +29,9 @@
      radar/alert colors keep the contrast they had on the old CARTO dark tiles.
      Only the base is filtered — the label layer stays crisp. */
   .basemap-base{filter:brightness(0.5) saturate(0.7) contrast(1.05);}
+  /* A TV crushes the low end that a monitor shows, so at half brightness the
+     launcher's map read as black. */
+  body.launcher .basemap-base{filter:brightness(0.85) saturate(0.8) contrast(1.05);}
   .leaflet-control-attribution{background:rgba(10,14,26,0.6)!important;color:var(--dim)!important;font-size:9px!important;}
   .leaflet-control-attribution a{color:var(--dim)!important;}
   .leaflet-control-zoom{display:none;}
@@ -656,9 +659,18 @@
   .alert-label{
     display:inline-block;    /* see .afd-area-lbl — zero-width box, dead translateX */
     transform:translate(-50%,-50%);text-align:center;font-family:sans-serif;
-    font-weight:800;font-size:9px;letter-spacing:0.02em;
+    font-weight:800;font-size:calc(9px * var(--lblscale, 1));letter-spacing:0.02em;
     text-shadow:0 0 3px #000, 0 0 2px #000, 0 1px 1px #000;white-space:nowrap;pointer-events:none;
   }
+  /* Replay names what each polygon is: the colour alone means nothing to
+     someone who did not watch it go up. */
+  /* Named labels sit over the station plots, so they get their own backing. */
+  .alert-label.named{
+    padding:3px 8px 4px;border-radius:7px;border:1px solid currentColor;
+    background:rgba(10,14,26,0.82);text-shadow:none;
+  }
+  .alert-label .al-name{display:block;font-size:1.15em;letter-spacing:0.05em;text-transform:uppercase;}
+  .alert-label .al-sub{display:block;font-weight:700;opacity:0.9;margin-top:1px;}
 
   .strike{
     width:3px;height:3px;border-radius:50%;
@@ -1672,6 +1684,54 @@ function spcWatchInWindow(w){
   return true;
 }
 
+// Live, warnings carry an impact label (wind/hail/tornado details) and the
+// colour says what they are. In replay every watch and warning is named too —
+// scrubbing back is looking at what happened, and nobody reads a polygon's
+// colour as "severe thunderstorm watch" from across a room. Labels that would
+// overlap give way in order of how much they matter.
+const ALERT_LABEL_RANK = ev => /Tornado Warning/.test(ev) ? 0 : /Severe Thunderstorm Warning/.test(ev) ? 1 :
+  /Flash Flood Warning/.test(ev) ? 2 : /Warning/.test(ev) ? 3 : /Tornado Watch/.test(ev) ? 4 : 5;
+const alertShortName = ev => ev.replace('Severe Thunderstorm', 'Severe T-Storm');
+function alertUntil(props){
+  const t = Date.parse(props.ends || props.expires);
+  return isFinite(t) ? 'until ' + new Date(t).toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'}) : '';
+}
+function renderAlertLabels(visible){
+  const named = replayActive();
+  const scale = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--lblscale')) || 1;
+  const placed = [];
+  const list = visible.filter(f => f._cls === 'warning' || (named && f._cls === 'watch'))
+    .sort((a, z) => ALERT_LABEL_RANK(a.properties.event) - ALERT_LABEL_RANK(z.properties.event));
+  for(const f of list){
+    const p = f.properties, b = alertBBox(f);
+    if(!b) continue;
+    const det = f._cls === 'warning' ? alertDetails(p) : '';
+    let html;
+    if(named){
+      const sub = [det, alertUntil(p)].filter(Boolean).join(' \u00b7 ');
+      html = `<span class="al-name">${alertShortName(p.event)}</span>` + (sub ? `<span class="al-sub">${sub}</span>` : '');
+    }else if(det){
+      html = det;
+    }else continue;
+    const center = L.latLng((b.s + b.n) / 2, (b.w + b.e) / 2);
+    // Rough footprint from the text length, enough to keep two labels from
+    // printing over each other.
+    const pt = map.latLngToLayerPoint(center);
+    const chars = Math.max(alertShortName(p.event).length * 1.15, det.length + 16);
+    const hw = chars * 3.1 * scale + (named ? 14 : 6), hh = (named ? 17 : 7) * scale;
+    const r = {l: pt.x - hw, r: pt.x + hw, t: pt.y - hh, b: pt.y + hh};
+    if(placed.some(q => !(r.r <= q.l || r.l >= q.r || r.b <= q.t || r.t >= q.b))) continue;
+    placed.push(r);
+    const color = alertColor(p.event, f._cls);
+    const mk = L.marker(center, {icon: L.divIcon({className: 'alert-icon',
+      html: `<div class="alert-label${named ? ' named' : ''}" style="color:${color}">${html}</div>`, iconSize: [0, 0], iconAnchor: [0, 0]}),
+      // Above the station plots, which share the marker pane.
+      interactive: false, keyboard: false, zIndexOffset: named ? 5000 : 0});
+    alertLabelLayers.push(mk);
+    mk.addTo(alertLayerGroup);
+  }
+}
+
 function renderAlerts(){
   const visible = lastAlertFeats.filter(f =>
     f._geoms && f._geoms.length && alertInWindow(f) && hazardVisible[f._hazard] &&
@@ -1740,24 +1800,8 @@ function renderAlerts(){
       if(!alertLayerGroup.hasLayer(layer)) layer.addTo(alertLayerGroup);
     }
 
-    // Warnings get an impact label (wind/hail/tornado details) at center, colored
-    // by hazard — the event name is redundant since the polygon is color-coded.
-    if(f._cls === 'warning'){
-      const det = alertDetails(f.properties);
-      if(det){
-        let lb = null;
-        for(const g of f._geoms){
-          try{ const gb = L.geoJSON(g).getBounds(); lb = lb ? lb.extend(gb) : gb; }catch(e){}
-        }
-        if(lb && lb.isValid()){
-          const html = `<div class="alert-label" style="color:${color}">${det}</div>`;
-          const mk = L.marker(lb.getCenter(), {icon: L.divIcon({className: 'alert-icon', html, iconSize: [0, 0], iconAnchor: [0, 0]}), interactive: false, keyboard: false});
-          alertLabelLayers.push(mk);
-          mk.addTo(alertLayerGroup);
-        }
-      }
-    }
   }
+  renderAlertLabels(visible);
 
   // The real watch boxes, drawn in place of the county lists suppressed above.
   for(const w of spcWatchData){
@@ -2314,6 +2358,10 @@ function syncAppSettings(){
      ?replay=0          hide the scrubber entirely
      ?launcher=1        ambient loop of the last couple of hours, no controls
      ?hours=3           how far the launcher loop reaches back (with ?launcher=1)
+     ?step=10           minutes per frame of the launcher loop, multiples of 5 (default 5)
+     ?spacing=20        px of space kept between station plots (launcher default 20)
+     ?plotstep=30       minutes of launcher replay between station redraws (default 30)
+     ?tick=400          ms per frame of the launcher loop (default 650)
 */
 const URLQ = new URLSearchParams(location.search);
 const qFlag = (k, dflt) => {
@@ -2902,7 +2950,17 @@ function replayStatesFor(bounds){
     hits.push([st, area]);
   }
   hits.sort((a, z) => z[1] - a[1]);
-  return hits.slice(0, 4).map(h => h[0]);   // a bulk day is ~700 KB per state
+  // A bulk day is ~700 KB per state, so scrubbing by hand takes the four that
+  // matter most. The launcher fills a whole screen and asks for only the hours
+  // its loop needs, so it takes every state in view — capped at four, the
+  // stations stopped at a state line and a third of a TV sat empty.
+  return hits.slice(0, LAUNCHER ? 16 : 4).map(h => h[0]);
+}
+
+// How far back the station history reaches: the scrubber's whole day, or for
+// the launcher just its loop plus the six hours each sparkline looks back.
+function historyHours(){
+  return LAUNCHER ? Math.min(REPLAY_HOURS, LAUNCHER_HOURS + TEMP_HIST_HOURS + 1) : REPLAY_HOURS;
 }
 
 async function loadHistory(){
@@ -2912,7 +2970,7 @@ async function loadHistory(){
   if(histLoading || (histRows && histStates === key)) return;
   histLoading = true;
   renderReplayBar();
-  const now = new Date(), then = new Date(now.getTime() - REPLAY_HOURS * 3600e3);
+  const now = new Date(), then = new Date(now.getTime() - historyHours() * 3600e3);
   const d = x => `year${x[0]}=${x[1].getUTCFullYear()}&month${x[0]}=${x[1].getUTCMonth()+1}&day${x[0]}=${x[1].getUTCDate()}&hour${x[0]}=${x[1].getUTCHours()}`;
   // One state at a time with a pause between. A day of observations is a real
   // query for IEM to run, and four at once reliably draws a 503 — which used to
@@ -3017,7 +3075,10 @@ function stationsAt(ms){
     if(ms - r.t > 2 * 3600e3) continue;        // stale: the site stopped reporting
     out.push({lat: r.lat, lon: r.lon, p: r.p});
   }
-  return out;
+  // Same order as the live list, which renderStations relies on: the declutter
+  // keeps whichever station reaches a cell first, so an unsorted list let minor
+  // sites win cells the major hubs hold when live.
+  return out.sort((a, z) => stationScore(z.p) - stationScore(a.p));
 }
 
 /* ---------------- Historical radar ----------------
@@ -3060,8 +3121,6 @@ function ridgeMaxSites(){ return RIDGE_SITE_LIMIT; }
    retained frame is a tenth of that and never exists at full size in a form we
    keep. */
 const RIDGE_SITE_LIMIT = 8;
-const COMP_BOUNDS = [[24.0, -126.0], [50.0, -66.0]];   // from the .wld: 0.01 deg, 6000x2600 from -126,50
-const COMP_W = 2400, COMP_H = 1040;
 
 function ridgeSitesNeeded(){
   if(!map || !nexradSites.length) return 0;
@@ -3076,63 +3135,231 @@ function ridgeSitesNeeded(){
 }
 function useComposite(){ return ridgeSitesNeeded() > RIDGE_SITE_LIMIT; }
 
-let compFront = null, compBack = null, compShown = '', compPending = '', compObjUrls = [];
+let compFront = null, compBack = null, compShown = '';
+// The frame the replay currently wants. A decode in flight is only stale once
+// this moves on — not whenever anything re-runs applyReplay, which bumps
+// ridgeSeq several times a step.
+let compWanted = '';
 function compUrl(ms){
   const {path, stamp} = stampParts(new Date(Math.floor(ms / 300000) * 300000));
   return `https://mesonet.agron.iastate.edu/archive/data/${path}/GIS/uscomp/n0r_${stamp}.png`;
 }
 
-async function showCompositeRadar(ms){
-  const url = compUrl(ms), seq = ridgeSeq;
-  if(url === compShown || url === compPending) return;
-  compPending = url;
-  let objUrl = null;
-  try{
-    const blob = await (await fetch(url)).blob();
-    const bmp = await createImageBitmap(blob, {resizeWidth: COMP_W, resizeHeight: COMP_H,
-                                               resizeQuality: 'medium'});
-    if(seq !== ridgeSeq || !replayActive()){ bmp.close(); compPending = ''; return; }
-    const cv = document.createElement('canvas');
-    cv.width = bmp.width; cv.height = bmp.height;
-    cv.getContext('2d').drawImage(bmp, 0, 0);
-    bmp.close();
-    objUrl = await new Promise(res => cv.toBlob(b => res(b ? URL.createObjectURL(b) : null), 'image/png'));
-    if(!objUrl) throw new Error('canvas encode failed');
-  }catch(e){
-    if(compPending === url) compPending = '';
-    return;                                    // a missing slice keeps the last good frame
+/* Decoded frames, kept for the loop.
+
+   Decoding the mosaic is about 0.6 s on a TV however small the output, because
+   the whole 6000x2600 PNG has to be inflated. Done per step, that capped the
+   launcher at under two frames a second and every decode was a long task. So
+   each frame is decoded once, in a worker, cropped to the area on screen, and
+   kept: after the first pass the loop draws from memory at whatever pace it
+   likes, and only the newest frame is ever decoded again.
+
+   The crop is what makes keeping them affordable. A multi-state view is about
+   a tenth of the country, and at 1200 px wide a frame is ~2.5 MB, so a six-hour
+   loop at ten-minute steps holds ~90 MB rather than the gigabytes the whole
+   mosaic would. The crop is padded and snapped to a 2-degree grid so it only
+   changes, flushing the cache, when the view leaves it. */
+const COMP_SRC = {west: -126, north: 50, res: 0.01, w: 6000, h: 2600};
+const COMP_OUT_MAX_W = 1200;
+const COMP_CACHE_MAX = 80;
+const compFrames = new Map();     // url -> ImageBitmap for compCrop, oldest first
+let compCrop = null;              // {key, sx, sy, sw, sh, w, h, bounds}
+const compInFlight = new Set();   // urls the worker is decoding
+let compQueue = [];               // urls to decode next, front first
+
+function compCropFor(bounds){
+  const S = COMP_SRC, snap = 200;               // 2 degrees of source pixels
+  const b = bounds.pad(0.2);
+  const clampX = v => Math.max(0, Math.min(S.w, v)), clampY = v => Math.max(0, Math.min(S.h, v));
+  const sx = clampX(Math.floor((b.getWest() - S.west) / S.res / snap) * snap);
+  const ex = clampX(Math.ceil((b.getEast() - S.west) / S.res / snap) * snap);
+  const sy = clampY(Math.floor((S.north - b.getNorth()) / S.res / snap) * snap);
+  const ey = clampY(Math.ceil((S.north - b.getSouth()) / S.res / snap) * snap);
+  const sw = ex - sx, sh = ey - sy;
+  if(sw <= 0 || sh <= 0) return null;
+  const scale = Math.min(1, COMP_OUT_MAX_W / sw);
+  const w = Math.max(1, Math.round(sw * scale)), h = Math.max(1, Math.round(sh * scale));
+  const bnds = [[S.north - ey * S.res, S.west + sx * S.res], [S.north - sy * S.res, S.west + ex * S.res]];
+  return {key: [sx, sy, sw, sh, w, h].join(','), sx, sy, sw, sh, w, h, bounds: bnds};
+}
+
+// Keeps the current crop while the view still sits inside it, so panning a
+// little or returning from full screen to the tile reuses every cached frame.
+function ensureCompCrop(){
+  const view = map.getBounds();
+  if(compCrop){
+    const cb = L.latLngBounds(compCrop.bounds);
+    const zoomedIn = compCrop.sw / compCrop.w > 1 && map.getZoom() > compCrop.zoom;
+    if(cb.contains(view) && !zoomedIn) return false;
   }
-  if(compPending === url) compPending = '';
-  if(seq !== ridgeSeq || !replayActive()){ URL.revokeObjectURL(objUrl); return; }
+  const next = compCropFor(view);
+  if(!next || (compCrop && next.key === compCrop.key)) return false;
+  next.zoom = map.getZoom();
+  compCrop = next;
+  for(const bmp of compFrames.values()) bmp.close();
+  compFrames.clear();
+  compQueue = []; compShown = '';
+  for(const ov of [compFront, compBack]){
+    if(!ov) continue;
+    const cv = ov.getElement();
+    cv.width = next.w; cv.height = next.h;
+    ov.setBounds(L.latLngBounds(next.bounds));
+  }
+  return true;
+}
+
+// One worker, decoding one frame at a time, so the page never blocks on it.
+// Falls back to decoding on the page where workers or cropped decodes are not
+// available.
+let compWorker;
+function compDecoder(){
+  if(compWorker !== undefined) return compWorker;
+  try{
+    const src = `onmessage = async e => {
+      const d = e.data;
+      try{
+        const r = await fetch(d.url);
+        if(!r.ok) throw new Error('HTTP ' + r.status);
+        const bmp = await createImageBitmap(await r.blob(), d.sx, d.sy, d.sw, d.sh,
+          {resizeWidth: d.w, resizeHeight: d.h, resizeQuality: 'medium'});
+        postMessage({url: d.url, key: d.key, bmp}, [bmp]);
+      }catch(err){ postMessage({url: d.url, key: d.key, err: String(err)}); }
+    };`;
+    compWorker = new Worker(URL.createObjectURL(new Blob([src], {type: 'text/javascript'})));
+    compWorker.onmessage = e => compDecoded(e.data);
+  }catch(e){ compWorker = null; }
+  return compWorker;
+}
+
+async function compDecodeOnPage(job){
+  try{
+    const r = await fetch(job.url);
+    if(!r.ok) throw new Error('HTTP ' + r.status);
+    const bmp = await createImageBitmap(await r.blob(), job.sx, job.sy, job.sw, job.sh,
+      {resizeWidth: job.w, resizeHeight: job.h, resizeQuality: 'medium'});
+    compDecoded({url: job.url, key: job.key, bmp});
+  }catch(err){ compDecoded({url: job.url, key: job.key, err: String(err)}); }
+}
+
+function compPump(){
+  if(compInFlight.size || !compCrop) return;
+  while(compQueue.length){
+    const url = compQueue.shift();
+    if(compFrames.has(url)) continue;
+    const c = compCrop;
+    const job = {url, key: c.key, sx: c.sx, sy: c.sy, sw: c.sw, sh: c.sh, w: c.w, h: c.h};
+    compInFlight.add(url);
+    const w = compDecoder();
+    if(w) w.postMessage(job); else compDecodeOnPage(job);
+    return;
+  }
+}
+
+function compDecoded(msg){
+  compInFlight.delete(msg.url);
+  if(msg.bmp){
+    // A frame cut for a crop that has since changed is the wrong shape.
+    if(!compCrop || msg.key !== compCrop.key){ msg.bmp.close(); }
+    else{
+      compFrames.set(msg.url, msg.bmp);
+      while(compFrames.size > COMP_CACHE_MAX){
+        const [old, b] = compFrames.entries().next().value;
+        if(old === compShown || old === compWanted) break;
+        b.close(); compFrames.delete(old);
+      }
+      if(msg.url === compWanted && replayActive()) drawCompFrame(msg.url);
+    }
+  }
+  compPump();
+}
+
+// Ask for frames: the wanted one first, then the rest in order.
+function compRequest(urls, front){
+  const fresh = urls.filter(u => !compFrames.has(u) && !compInFlight.has(u));
+  if(front) compQueue = fresh.concat(compQueue.filter(u => !fresh.includes(u)));
+  else compQueue = compQueue.concat(fresh.filter(u => !compQueue.includes(u)));
+  compPump();
+}
+
+// Frames outside the loop are released, so the cache follows the window as
+// it moves forward instead of growing by a frame every five minutes.
+function compKeepOnly(urls){
+  const keep = new Set(urls);
+  for(const [u, b] of compFrames){
+    if(keep.has(u) || u === compShown) continue;
+    b.close(); compFrames.delete(u);
+  }
+  compQueue = compQueue.filter(u => keep.has(u));
+}
+
+// An image overlay whose element is a canvas we draw into. Re-encoding each
+// frame to a PNG blob for a plain image overlay was 3.5 s a frame on a TV.
+let CompCanvasOverlay = null;
+function compCanvasOverlay(bounds, w, h, opts){
+  if(!CompCanvasOverlay){
+    CompCanvasOverlay = L.ImageOverlay.extend({
+      _initImage(){
+        const cv = this._image = this._url;
+        L.DomUtil.addClass(cv, 'leaflet-image-layer');
+        if(this._zoomAnimated) L.DomUtil.addClass(cv, 'leaflet-zoom-animated');
+        if(this.options.className) L.DomUtil.addClass(cv, this.options.className);
+      },
+    });
+  }
+  const cv = document.createElement('canvas');
+  cv.width = w; cv.height = h;
+  return new CompCanvasOverlay(cv, bounds, opts);
+}
+
+function drawCompFrame(url){
+  const bmp = compFrames.get(url);
+  if(!bmp || !compCrop) return false;
   const op = radarOpacityNow();
+  // The launcher draws straight into one canvas. Two crossfading canvases,
+  // each larger than the screen, doubled the GPU's blending on every frame of
+  // every fade, and at a few frames a second the steps read as motion anyway.
+  const fade = !LAUNCHER;
   if(!compFront){
-    const mk = () => L.imageOverlay(objUrl, COMP_BOUNDS, {
-      opacity: 0, pane: 'radarPane', interactive: false, className: 'radar-archive',
+    const mk = () => compCanvasOverlay(L.latLngBounds(compCrop.bounds), compCrop.w, compCrop.h, {
+      opacity: fade ? 0 : op, pane: 'radarPane', interactive: false, className: fade ? 'radar-archive' : '',
       attribution: 'NWS NEXRAD archive &copy; Iowa Environmental Mesonet',
     }).addTo(map);
-    compFront = mk(); compBack = mk();
-    compFront.setOpacity(op);
-  }else{
-    compBack.setUrl(objUrl);
+    compFront = mk(); compBack = fade ? mk() : compFront;
+  }
+  // Otherwise drawn into the hidden one, then swapped, so a frame never shows
+  // half drawn and the archive layer's opacity transition crossfades the two.
+  const cv = compBack.getElement(), ctx = cv.getContext('2d');
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  ctx.drawImage(bmp, 0, 0);
+  if(fade){
     compBack.setOpacity(op);
     compFront.setOpacity(0);
     const t = compFront; compFront = compBack; compBack = t;
   }
   compShown = url;
-  // Blob URLs are held until revoked, so the ones no longer on screen have to
-  // be released or a long replay leaks every frame it has ever shown.
-  compObjUrls.push(objUrl);
-  while(compObjUrls.length > 3) URL.revokeObjectURL(compObjUrls.shift());
   radarLabel = 'NEXRAD N0R archive';
-  updateRadarStatus(new Date(ms));
+  updateRadarStatus(new Date(replayAt != null ? replayAt : Date.now()));
+  return true;
 }
 
+function showCompositeRadar(ms){
+  // A new crop flushed every decoded frame; queue the loop again behind the
+  // one wanted now.
+  const recropped = ensureCompCrop();
+  const url = compUrl(ms);
+  compWanted = url;
+  if(url === compShown) return;
+  if(!drawCompFrame(url)) compRequest([url], true);
+  if(recropped) launcherPrefetch();
+}
 function hideCompositeRadar(){
-  if(compFront){ map.removeLayer(compFront); map.removeLayer(compBack); }
+  if(compFront){ map.removeLayer(compFront); if(compBack !== compFront) map.removeLayer(compBack); }
   compFront = compBack = null;
-  compShown = ''; compPending = '';
-  for(const u of compObjUrls) URL.revokeObjectURL(u);
-  compObjUrls = [];
+  compShown = ''; compWanted = '';
+  compQueue = [];
+  for(const b of compFrames.values()) b.close();
+  compFrames.clear();
+  compCrop = null;
 }
 const RIDGE_PRODUCT = 'N0B';
 
@@ -3345,7 +3572,16 @@ function setLiveRadarVisible(on){
 function applyReplay(){
   if(replayActive()){
     if(liveStationData === null) liveStationData = stationData;
-    stationData = stationsAt(replayAt);
+    // The launcher redraws station plots once per slot of replay time rather
+    // than every step. Rewriting ~30 plots a step was most of what a TV spent
+    // per frame; at 30-minute slots a step reached the screen in ~85 ms rather
+    // than ~230, and most sites only report hourly anyway.
+    const slot = LAUNCHER ? Math.floor(replayAt / (LAUNCHER_PLOT_MIN * 60e3)) : null;
+    if(!LAUNCHER || slot !== launcherPlotSlot || !stationData.length){
+      launcherPlotSlot = slot;
+      stationData = stationsAt(replayAt);
+      renderStations();
+    }
     setLiveRadarVisible(false);
     // Zooming can cross the per-site/mosaic threshold, so this re-picks the
     // source each time and drops whichever one is no longer right.
@@ -3355,8 +3591,8 @@ function applyReplay(){
     hideArchiveRadar();
     setLiveRadarVisible(true);
     loadRadar();
+    renderStations();
   }
-  renderStations();
   renderLSR();
   renderAlerts();
   renderAfdAreas();
@@ -3527,34 +3763,93 @@ const LAUNCHER_HOURS = (function(){
   const v = parseFloat(new URLSearchParams(location.search).get('hours'));
   return isFinite(v) ? Math.max(0.5, Math.min(REPLAY_HOURS, v)) : 2;
 })();
-const LAUNCHER_STEP_MIN = 5;      // the archive's own cadence
-const LAUNCHER_TICK_MS = 650;
+// ?step= sets minutes per frame, in multiples of the archive's five. Six hours
+// at five-minute steps is 72 frames; at ten it is 36, which loops in seconds.
+const LAUNCHER_STEP_MIN = (function(){
+  const v = parseFloat(new URLSearchParams(location.search).get('step'));
+  return isFinite(v) ? Math.max(5, Math.min(60, Math.round(v / 5) * 5)) : 5;
+})();
+// ?tick= sets the pace in ms per frame. The loop still waits on each radar
+// frame, so a short tick cannot outrun the archive.
+const LAUNCHER_TICK_MS = (function(){
+  const v = parseFloat(new URLSearchParams(location.search).get('tick'));
+  return isFinite(v) ? Math.max(150, Math.min(5000, v)) : 650;
+})();
 // The composite lands about ten minutes behind real time, so the loop ends
 // there rather than at now — otherwise the last frames are always missing.
 const LAUNCHER_LAG_MS = 12 * 60e3;
+// The newest frame holds before the loop starts over, so "now" reads as the
+// end of the story rather than one more frame flicking past.
+const LAUNCHER_HOLD_MS = 1600;
+// ?plotstep= sets how many minutes of replay pass between station redraws.
+const LAUNCHER_PLOT_MIN = (function(){
+  const v = parseFloat(new URLSearchParams(location.search).get('plotstep'));
+  return isFinite(v) ? Math.max(5, Math.min(120, v)) : 30;
+})();
+let launcherPlotSlot = null;
 
-let launcherTimer = null;
+// The loop's frames, on a fixed grid of clock times. Stepping from whenever
+// the loop happened to start put each pass on different minutes, so nothing
+// decoded on one pass could be reused on the next.
+function launcherFrames(){
+  const step = LAUNCHER_STEP_MIN * 60e3;
+  const last = Math.floor((Date.now() - LAUNCHER_LAG_MS) / step) * step;
+  const first = last - Math.floor(LAUNCHER_HOURS * 3600e3 / step) * step;
+  const out = [];
+  for(let t = first; t <= last; t += step) out.push(t);
+  return out;
+}
+
+// Decode the whole loop ahead of the playhead, and let go of frames that have
+// fallen out of it.
+function launcherPrefetch(){
+  if(!LAUNCHER || !launcherFrameList.length || !useComposite()) return;
+  const urls = launcherFrameList.map(compUrl);
+  compKeepOnly(urls);
+  compRequest(urls.slice(launcherIdx).concat(urls.slice(0, launcherIdx)), false);
+}
+
+let launcherTimer = null, launcherFrameList = [], launcherIdx = 0, launcherHoldUntil = 0;
 function launcherStart(){
   if(!LAUNCHER) return;
   document.body.classList.add('launcher');
-  const begin = () => Date.now() - LAUNCHER_HOURS * 3600e3;
-  setReplay(begin());
+  const spark = document.getElementById('sparkChk');
+  if(spark) spark.checked = sparkOn;
+  launcherFrameList = launcherFrames();
+  launcherIdx = 0;
+  setReplay(launcherFrameList[0]);
+  launcherPrefetch();
   clearInterval(launcherTimer);
-  launcherTimer = setInterval(() => {
-    // Hold until the frame already asked for is actually on screen. Advancing
-    // on the timer alone outran the fetches — each tick started a new overlay
-    // and invalidated the one in flight, so the clock moved and the radar sat
-    // three frames behind. The cap stops a genuinely missing slice, which the
-    // archive does have, from wedging the loop forever.
-    if(replayAt != null && !archiveRadarReady(replayAt) && launcherWaits < 10){
-      launcherWaits++; return;
-    }
-    launcherWaits = 0;
-    const end = Date.now() - LAUNCHER_LAG_MS;
-    let next = (replayAt || begin()) + LAUNCHER_STEP_MIN * 60e3;
-    if(next >= end) next = begin();            // round again
-    setReplay(next);
-  }, LAUNCHER_TICK_MS);
+  launcherTimer = setInterval(launcherTick, LAUNCHER_TICK_MS);
+}
+function launcherTick(){
+  // Hold until the frame already asked for is actually on screen. The cap stops
+  // a genuinely missing slice, which the archive does have, from wedging the
+  // loop forever.
+  if(replayAt != null && !archiveRadarReady(replayAt) && launcherWaits < 10){
+    launcherWaits++; return;
+  }
+  launcherWaits = 0;
+  if(launcherIdx >= launcherFrameList.length - 1){
+    const now = performance.now();
+    if(!launcherHoldUntil){ launcherHoldUntil = now + LAUNCHER_HOLD_MS; return; }
+    if(now < launcherHoldUntil) return;
+    launcherHoldUntil = 0;
+    // Round again, on a frame list that has moved forward with the clock.
+    launcherFrameList = launcherFrames();
+    launcherIdx = 0;
+    launcherPrefetch();
+  }else{
+    launcherIdx++;
+  }
+  setReplay(launcherFrameList[launcherIdx]);
+}
+// Pause and resume where it stopped — for a remote's play/pause key.
+function launcherToggle(){
+  if(!LAUNCHER) return;
+  if(launcherTimer){ clearInterval(launcherTimer); launcherTimer = null; }
+  else launcherTimer = setInterval(launcherTick, LAUNCHER_TICK_MS);
+  renderLauncherClock();
 }
 let launcherWaits = 0;
 
@@ -3567,9 +3862,8 @@ function renderLauncherClock(){
   t.textContent = at.toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'});
   d.textContent = at.toLocaleDateString([], {weekday: 'short'}) +
                   (histLoading ? ' \u00b7 loading' : '');
-  const begin = Date.now() - LAUNCHER_HOURS * 3600e3;
-  const span = (Date.now() - LAUNCHER_LAG_MS) - begin;
-  if(b) b.style.width = Math.max(0, Math.min(100, ((mapNow() - begin) / span) * 100)) + '%';
+  const n = launcherFrameList.length;
+  if(b) b.style.width = (n > 1 ? (launcherIdx / (n - 1)) * 100 : 100) + '%';
 }
 
 function replayGoLive(){
@@ -3889,7 +4183,10 @@ const TEMP_HIST_HOURS = 6;
 const SPARK_W = 18, SPARK_H = 7, SPARK_MAX_PTS = 10;
 let tempHist = {};                 // station id -> [{t, f}] ascending
 let tempHistStates = '', tempHistAt = 0, tempHistLoading = false, tempHistTimer = null;
-let sparkOn = true;
+// Off in the launcher. A gradient-stroked SVG per station, redrawn as the
+// window slides, had to be re-rasterised on every step: on a TV that took the
+// loop from 24 fps to under 4, for a trace too small to read across a room.
+let sparkOn = !LAUNCHER;
 
 async function loadTempHistory(){
   if(!sparkOn || !stationsOn || tempHistLoading || !map) return;
@@ -3970,14 +4267,21 @@ function sparkSeries(id){
   return tempHist[id] || null;
 }
 
-let sparkSeq = 0;
 function tempSpark(id){
   if(!sparkOn || !id) return '';
   const h = sparkSeries(id);
   if(!h || h.length < 3) return '';
   // Thinned to keep the markup small — a 26px trace cannot show 19 points.
-  const stride = Math.ceil(h.length / SPARK_MAX_PTS);
-  const pts = stride <= 1 ? h : h.filter((_, i) => i % stride === 0 || i === h.length - 1);
+  // By fixed slots of clock time rather than every nth sample: in replay the
+  // window slides each tick, and an index stride picked a different subset each
+  // time, so every trace on the map was redrawn every tick for no new data.
+  const slot = TEMP_HIST_HOURS * 3600e3 / SPARK_MAX_PTS;
+  const pts = [];
+  let lastSlot = null;
+  for(const q of h){
+    const k = Math.floor(q.t / slot);
+    if(k === lastSlot) pts[pts.length - 1] = q; else { pts.push(q); lastSlot = k; }
+  }
   if(pts.length < 3) return '';
   let lo = Infinity, hi = -Infinity;
   for(const q of pts){ if(q.f < lo) lo = q.f; if(q.f > hi) hi = q.f; }
@@ -3985,7 +4289,10 @@ function tempSpark(id){
   // range and sits mid-height rather than being amplified into noise.
   const span = Math.max(4, hi - lo), mid = (hi + lo) / 2;
   const bot = mid - span / 2, top = mid + span / 2;
-  const gid = 'sp' + (++sparkSeq);
+  // Named for the station rather than numbered per call. A fresh id on every
+  // render made every plot's markup differ from the last pass, so the station
+  // layer could never tell an unchanged plot from a changed one.
+  const gid = 'sp-' + String(id).replace(/[^A-Za-z0-9_-]/g, '_');
   const last = pts.length - 1;
   let d = '', stops = '';
   pts.forEach((q, i) => {
@@ -4007,10 +4314,47 @@ function toggleSpark(cb){
   renderHiddenStatus();
 }
 
+// In replay a site's pressure comes and goes with the age of its observation,
+// and the plot's width with it, so the packer's answer changed tick to tick and
+// whole neighbourhoods of plots swapped at once. Packing each site at the
+// widest it gets anywhere in the replay window keeps the same plots on screen.
+const replayWidthCache = new WeakMap();   // history array -> width
+function packWidth(s){
+  const arr = replayActive() && histRows ? histRows[s.p.station] : null;
+  if(!arr) return plotWidth(s.p);
+  let w = replayWidthCache.get(arr);
+  if(w == null){
+    w = arr.some(r => r.p.mslp != null) ? plotWidth({mslp: 0}) : plotWidth({});
+    replayWidthCache.set(arr, w);
+  }
+  return w;
+}
+
+// Markers kept between passes, keyed by station. Replay redraws on every tick,
+// and clearing and rebuilding every plot made a TV re-rasterise the whole field
+// each time — it visibly blinked, and the rebuild was 80-210 ms a tick there —
+// for a pass where most plots had not changed. Now only plots whose content
+// changed are rewritten, and only stations entering or leaving are added or
+// removed.
+const stationMarkers = new Map();   // station id -> {marker, html, s}
+
+// Extra room, in px, kept around each station plot. ?spacing= sets it; the
+// launcher defaults to a sparser field than the desktop, which a viewer can
+// zoom into.
+const STATION_GAP = (function(){
+  const v = parseFloat(new URLSearchParams(location.search).get('spacing'));
+  if(isFinite(v)) return Math.max(0, Math.min(60, v)) / 2;
+  return LAUNCHER ? 10 : 0;
+})();
+
 function renderStations(){
   if(!stationLayer) return;
-  stationLayer.clearLayers();
-  if(!stationsOn || map.getZoom() < 6) return;
+  if(!stationsOn || map.getZoom() < 6){
+    stationLayer.clearLayers();
+    stationMarkers.clear();
+    return;
+  }
+  const seen = new Set();
   const b = map.getBounds();
   const metric = METRICS[stationMetric] || METRICS.temp;
 
@@ -4031,7 +4375,10 @@ function renderStations(){
       // anywhere inside it, so a station near a corner blocks the space its
       // neighbour could have used; testing the real footprint fits more in
       // without any of them overlapping.
-      const half = plotWidth(s.p) / 2, halfV = PLOT_H / 2;
+      // Plus a margin, so plots sit apart rather than tiling the map edge to
+      // edge — on a whole screen of states that packed in ~150 and read as a
+      // carpet of digits.
+      const half = packWidth(s) / 2 + STATION_GAP, halfV = PLOT_H / 2 + STATION_GAP;
       const r = {l: pt.x - half, t: pt.y - halfV, r: pt.x + half, b: pt.y + halfV};
       if(placed.some(q => !(r.r <= q.l || r.l >= q.r || r.b <= q.t || r.t >= q.b))) continue;
       placed.push(r);
@@ -4064,8 +4411,34 @@ function renderStations(){
       html = `<span class="stn-wrap"><span class="stn-label" style="color:${color}">${text}</span>` +
              `${tempSpark(s.p.station)}</span>`;
     }
-    const icon = L.divIcon({className: 'stn-icon', html, iconSize: [0, 0], iconAnchor: [0, 0]});
-    L.marker([s.lat, s.lon], {icon, keyboard: false}).bindPopup(stationPopup(s)).addTo(stationLayer);
+    const id = s.p.station || (s.lat + ',' + s.lon);
+    seen.add(id);
+    const cur = stationMarkers.get(id);
+    if(cur){
+      cur.s = s;
+      if(cur.html !== html){
+        // Rewrite the existing element rather than swapping it for a new one,
+        // and keep the icon option current in case Leaflet rebuilds it later.
+        const icon = L.divIcon({className: 'stn-icon', html, iconSize: [0, 0], iconAnchor: [0, 0]});
+        cur.marker.options.icon = icon;
+        const el = cur.marker.getElement();
+        if(el) el.innerHTML = html; else cur.marker.setIcon(icon);
+        cur.html = html;
+      }
+    }else{
+      const icon = L.divIcon({className: 'stn-icon', html, iconSize: [0, 0], iconAnchor: [0, 0]});
+      const entry = {html, s, marker: null};
+      // The popup reads the entry when opened, so it shows the observation the
+      // plot is showing now rather than the one it was created with.
+      entry.marker = L.marker([s.lat, s.lon], {icon, keyboard: false})
+        .bindPopup(() => stationPopup(entry.s)).addTo(stationLayer);
+      stationMarkers.set(id, entry);
+    }
+  }
+  for(const [id, entry] of stationMarkers){
+    if(seen.has(id)) continue;
+    stationLayer.removeLayer(entry.marker);
+    stationMarkers.delete(id);
   }
 }
 
