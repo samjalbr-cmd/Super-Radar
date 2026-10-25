@@ -206,6 +206,8 @@
     font-family:monospace; color:#F5F3EC; letter-spacing:0.04em;
   }
   body.launcher #launcherClock{ display:flex; }
+  /* A still launcher shows the live map; a caption saying "now" says nothing. */
+  body.launcher.launcher-still #launcherClock{ display:none; }
   #launcherClock .lc-t{ font-size:21px; font-variant-numeric:tabular-nums; }
   #launcherClock .lc-d{ font-size:11px; color:var(--dim); text-transform:uppercase; }
   /* A hairline of progress through the loop, so a still frame does not read as
@@ -1675,10 +1677,13 @@ function alertUntil(props){
   return isFinite(t) ? 'until ' + new Date(t).toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'}) : '';
 }
 function renderAlertLabels(visible){
-  const named = replayActive();
+  // The launcher names them too, looping or not: it is read from across a room.
+  const named = replayActive() || LAUNCHER;
   const scale = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--lblscale')) || 1;
   const placed = [];
-  const list = visible.filter(f => f._cls === 'warning' || (named && f._cls === 'watch'))
+  // Only alerts that reach into the view: the edge clamp below would otherwise
+  // pull labels for alerts a thousand miles off onto the screen.
+  const list = visible.filter(f => (f._cls === 'warning' || (named && f._cls === 'watch')) && alertInView(f))
     .sort((a, z) => ALERT_LABEL_RANK(a.properties.event) - ALERT_LABEL_RANK(z.properties.event));
   for(const f of list){
     const p = f.properties, b = alertBBox(f);
@@ -1691,12 +1696,18 @@ function renderAlertLabels(visible){
     }else if(det){
       html = det;
     }else continue;
-    const center = L.latLng((b.s + b.n) / 2, (b.w + b.e) / 2);
     // Rough footprint from the text length, enough to keep two labels from
     // printing over each other.
-    const pt = map.latLngToLayerPoint(center);
     const chars = Math.max(alertShortName(p.event).length * 1.15, det.length + 16);
     const hw = chars * 3.1 * scale + (named ? 14 : 6), hh = (named ? 17 : 7) * scale;
+    // An alert reaching past the edge of the view has its middle near or past
+    // that edge, so the label is pulled in until it is wholly on screen.
+    const size = map.getSize(), pad = 8;
+    let cp = map.latLngToContainerPoint(L.latLng((b.s + b.n) / 2, (b.w + b.e) / 2));
+    cp = L.point(Math.max(hw + pad, Math.min(size.x - hw - pad, cp.x)),
+                 Math.max(hh + pad, Math.min(size.y - hh - pad, cp.y)));
+    const center = map.containerPointToLatLng(cp);
+    const pt = map.latLngToLayerPoint(center);
     const r = {l: pt.x - hw, r: pt.x + hw, t: pt.y - hh, b: pt.y + hh};
     if(placed.some(q => !(r.r <= q.l || r.l >= q.r || r.b <= q.t || r.t >= q.b))) continue;
     placed.push(r);
@@ -3733,6 +3744,8 @@ const LAUNCHER = (function(){
   try{ return new URLSearchParams(location.search).get('launcher') === '1'; }
   catch(e){ return false; }
 })();
+// ?launcher=1&replay=0 is the launcher held still: the live map, with no loop.
+const LAUNCHER_LOOP = LAUNCHER && REPLAY_ENABLED;
 // ?hours= overrides the window. Bounded by what the station history covers.
 const LAUNCHER_HOURS = (function(){
   const v = parseFloat(new URLSearchParams(location.search).get('hours'));
@@ -3790,6 +3803,10 @@ function launcherStart(){
   document.body.classList.add('launcher');
   const spark = document.getElementById('sparkChk');
   if(spark) spark.checked = sparkOn;
+  if(!LAUNCHER_LOOP){
+    document.body.classList.add('launcher-still');
+    return;
+  }
   launcherFrameList = launcherFrames();
   launcherIdx = 0;
   setReplay(launcherFrameList[0]);
@@ -3821,7 +3838,7 @@ function launcherTick(){
 }
 // Pause and resume where it stopped — for a remote's play/pause key.
 function launcherToggle(){
-  if(!LAUNCHER) return;
+  if(!LAUNCHER_LOOP) return;
   if(launcherTimer){ clearInterval(launcherTimer); launcherTimer = null; }
   else launcherTimer = setInterval(launcherTick, LAUNCHER_TICK_MS);
   renderLauncherClock();
@@ -4158,10 +4175,10 @@ const TEMP_HIST_HOURS = 6;
 const SPARK_W = 18, SPARK_H = 7, SPARK_MAX_PTS = 10;
 let tempHist = {};                 // station id -> [{t, f}] ascending
 let tempHistStates = '', tempHistAt = 0, tempHistLoading = false, tempHistTimer = null;
-// Off in the launcher. A gradient-stroked SVG per station, redrawn as the
-// window slides, had to be re-rasterised on every step: on a TV that took the
-// loop from 24 fps to under 4, for a trace too small to read across a room.
-let sparkOn = !LAUNCHER;
+// Off while the launcher loops. A gradient-stroked SVG per station, redrawn as
+// the window slides, had to be re-rasterised on every step: on a TV that took
+// the loop from 24 fps to under 4. A still launcher draws them once a refresh.
+let sparkOn = !LAUNCHER_LOOP;
 
 async function loadTempHistory(){
   if(!sparkOn || !stationsOn || tempHistLoading || !map) return;
