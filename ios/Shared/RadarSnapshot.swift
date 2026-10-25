@@ -480,7 +480,6 @@ enum RadarSnapshot {
     @MainActor
     static func compose(lat: Double, lon: Double, zoom: RadarZoom, size: CGSize,
                         showReports: Bool, showTemps: Bool, showAlerts: Bool,
-                        showDiscussion: Bool,
                         showOutlook: Bool, showFronts: Bool, stationModel: Bool,
                         showIsobars: Bool, showMarine: Bool, showLake: Bool,
                         showSpotter: Bool, upperLevel: String?, showSpark: Bool,
@@ -565,7 +564,6 @@ enum RadarSnapshot {
         let alerts = showAlerts
             ? await StormFeed.alerts(states: alertAreas, sw: sw, ne: ne, marine: showMarine) : []
         let spcWatches = showAlerts ? await StormFeed.spcWatches(sw: sw, ne: ne) : []
-        let afd = showDiscussion ? await StormFeed.afdAreas(sw: sw, ne: ne) : []
         let outlook = showOutlook ? await MapLayers.outlook(sw: sw, ne: ne) : []
         let mcds = showOutlook ? await MapLayers.mesoscaleDiscussions(sw: sw, ne: ne) : []
         let sfc = showFronts ? await MapLayers.surface() : nil
@@ -826,33 +824,6 @@ enum RadarSnapshot {
                 ctx.cgContext.setAlpha(1)
             }
 
-            var afdLabels: [(bounds: CGRect, label: String, when: String, color: UIColor)] = []
-            // Forecast-discussion areas sit above the radar, since the point is
-            // the forecaster's outline against the echoes it refers to. Live
-            // areas are solid, ones still ahead of their window are dashed —
-            // the same distinction the dashboard draws.
-            for a in afd {
-                let path = UIBezierPath()
-                for (i, c) in a.ring.enumerated() {
-                    let p = snap.point(for: c)
-                    i == 0 ? path.move(to: p) : path.addLine(to: p)
-                }
-                path.close()
-                a.color.withAlphaComponent(a.live ? 0.12 : 0.06).setFill()
-                path.fill()
-                a.color.setStroke()
-                path.lineWidth = a.live ? 2.0 : 1.4
-                if !a.live { path.setLineDash([7, 5], count: 2, phase: 0) }
-                path.stroke()
-
-                // The outline belongs here in the stack, but its text does not:
-                // it is the one label that has to survive whatever is drawn over
-                // the area, so it is held back and painted last.
-                let bounds = path.bounds
-                guard bounds.width > 44, bounds.height > 22, !a.label.isEmpty else { continue }
-                afdLabels.append((bounds, a.label, a.when, a.color))
-            }
-
             // Every report keeps its dot; the labels are packed. On a busy day
             // in the Plains 52 reports landed in one state-zoom view and 88% of
             // the labels overlapped another, which reads as a smear rather than
@@ -982,34 +953,6 @@ enum RadarSnapshot {
             // Discussion text last, over everything: the hazard over the window
             // it applies to, as two centred lines in the middle of the outline.
             // The window line is dropped before the hazard when only one fits.
-            for l in afdLabels {
-                let text = l.label.uppercased() as NSString
-                let attrs: [NSAttributedString.Key: Any] = [
-                    .font: UIFont.systemFont(ofSize: 6.5, weight: .heavy),
-                    .foregroundColor: l.color,
-                    .strokeColor: UIColor.black, .strokeWidth: -3.0,
-                ]
-                let whenAttrs: [NSAttributedString.Key: Any] = [
-                    .font: UIFont.systemFont(ofSize: 5.5, weight: .bold),
-                    .foregroundColor: UIColor.white.withAlphaComponent(0.92),
-                    .strokeColor: UIColor.black, .strokeWidth: -3.0,
-                ]
-                let sz = text.size(withAttributes: attrs)
-                let when = l.when.isEmpty ? nil : l.when as NSString
-                let wz = when?.size(withAttributes: whenAttrs) ?? .zero
-                let gap: CGFloat = 1
-                let showWhen = when != nil && l.bounds.height > sz.height + wz.height + gap + 8
-                let block = showWhen ? sz.height + gap + wz.height : sz.height
-                let top = l.bounds.midY - block / 2
-                let at = CGPoint(x: l.bounds.midX - sz.width / 2, y: top)
-                guard at.x > 2, at.x + sz.width < size.width - 2, at.y > 2 else { continue }
-                text.draw(at: at, withAttributes: attrs)
-                if showWhen, let when {
-                    when.draw(at: CGPoint(x: l.bounds.midX - wz.width / 2,
-                                          y: top + sz.height + gap),
-                              withAttributes: whenAttrs)
-                }
-            }
         }
         return (out, render?.hasEcho ?? false)
     }

@@ -80,9 +80,9 @@
     -webkit-tap-highlight-color:transparent; overscroll-behavior:none;
   }
   button, summary, label, select, input, .set-row, .tab, .feed-item,
-  #gear, #feedTab, #afdTab{ touch-action:manipulation; }
+  #gear, #feedTab{ touch-action:manipulation; }
   /* Readable text stays selectable, so a forecast quote can still be copied. */
-  .alert-popup, .feed-item, #feedPanel, #afdPanel{
+  .alert-popup, .feed-item, #feedPanel{
     -webkit-user-select:text; user-select:text;
   }
 
@@ -167,7 +167,7 @@
   /* TV display mode: the set is across the room and nobody is holding it, so
      the controls go and everything that carries information gets bigger. */
   body.tv #gear, body.tv #feedTab, body.tv #topControls, body.tv #feedPanel{ display:none !important; }
-  body.tv #radarStatus, body.tv #precipStatus, body.tv #afdStatus{
+  body.tv #radarStatus, body.tv #precipStatus{
     font-size:15px; padding:10px 16px; border-radius:13px;
   }
   body.tv #statusStack{ top:28px; left:28px; max-width:min(520px, calc(100vw - 56px)); }
@@ -216,7 +216,7 @@
   }
   @media (max-width: 560px){
     #statusStack{ gap:6px; }
-    #radarStatus, #precipStatus, #afdStatus{ font-size:10px; padding:6px 9px; }
+    #radarStatus, #precipStatus{ font-size:10px; padding:6px 9px; }
     #arrival{ padding:8px 11px; }
     .arr-head{ font-size:11px; }
     .arr-eta{ font-size:14px; }
@@ -258,7 +258,7 @@
   #settingsPanel .dotsw{width:11px;height:11px;border-radius:50%;flex-shrink:0;}
 
   /* The status pills stack rather than each carrying a hand-set top offset,
-     which is what let two of them land on the same pixel: afdStatus and the
+     which is what let two of them land on the same pixel: the status chips and the
      arrival card were both pinned at top:112px, so one always covered the
      other. The stack also caps its own width, so long lines wrap instead of
      running off a phone. */
@@ -277,7 +277,7 @@
     font-family:monospace;font-size:11px;color:#F5F3EC;letter-spacing:0.03em;
   }
   #radarStatus.show{display:flex;}
-  #radarStatus, #precipStatus, #afdStatus{ flex-wrap:wrap; row-gap:2px; }
+  #radarStatus, #precipStatus{ flex-wrap:wrap; row-gap:2px; }
   /* Second pill under the radar status: which precipitation-accumulation layer
      is live and the exact window it measures. */
   #precipStatus{
@@ -351,13 +351,6 @@
   .radar-archive{transition:opacity 0.28s linear;}
 
 
-  #afdStatus{
-    padding:7px 11px;display:none;align-items:center;gap:7px;align-self:flex-start;max-width:100%;
-    background:var(--panel);border:1px solid var(--border);border-radius:10px;
-    backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
-    font-family:monospace;font-size:11px;color:var(--dim);letter-spacing:0.03em;
-  }
-  #afdStatus.show{display:flex;}
   #hiddenStatus{
     display:none; pointer-events:auto; cursor:pointer;
     font-family:monospace; font-size:11px; color:var(--dim);
@@ -531,18 +524,6 @@
   .feed-note b{display:block;font-size:11px;color:#F5F3EC;}
 
   /* Caption on a discussion area or the office outline. */
-  .afd-area-icon{ background:none; border:none; }
-  .afd-area-lbl{
-    /* inline-block, so the box shrink-wraps the text. As a block it inherited
-       the marker's zero width, which made translateX(-50%) a no-op and left
-       every label starting at the centroid instead of centred on it. */
-    display:inline-block;
-    transform:translate(-50%,-50%);text-align:center;font-family:sans-serif;
-    text-shadow:0 0 3px #000, 0 0 2px #000, 0 1px 1px #000;
-    white-space:nowrap;pointer-events:none;
-  }
-  .afd-area-lbl .t{ font-weight:800;font-size:calc(9px * var(--lblscale, 1));letter-spacing:0.03em; }
-  .afd-area-lbl .s{ font-weight:700;font-size:calc(7.5px * var(--lblscale, 1));color:#fff;opacity:0.92; }
 
   /* Front pips. The box is rotated to the line's screen direction and the
      symbol sits above centre inside it, so it always lands on the same side. */
@@ -556,9 +537,9 @@
   /* Mesoscale Discussion labels. */
   .mcd-icon{ background:none; border:none; }
   .mcd-label{
-    /* inline-block for the same reason as .afd-area-lbl: a block child of a
-       zero-size marker is itself zero-wide, which makes translateX(-50%) a
-       no-op and leaves the text starting at the point instead of centred. */
+    /* A block child of a zero-size marker is itself zero-wide, which makes
+       translateX(-50%) a no-op and leaves the text starting at the point
+       instead of centred. */
     display:inline-block;
     transform:translate(-50%,-50%);text-align:center;font-family:sans-serif;
     color:#F2B705;text-shadow:0 0 3px #000, 0 0 2px #000, 0 1px 1px #000;
@@ -657,7 +638,7 @@
   /* Warning detail label at the polygon center. */
   .alert-icon{ background:none; border:none; }
   .alert-label{
-    display:inline-block;    /* see .afd-area-lbl — zero-width box, dead translateX */
+    display:inline-block;    /* zero-width box would make translateX a no-op */
     transform:translate(-50%,-50%);text-align:center;font-family:sans-serif;
     font-weight:800;font-size:calc(9px * var(--lblscale, 1));letter-spacing:0.02em;
     text-shadow:0 0 3px #000, 0 0 2px #000, 0 1px 1px #000;white-space:nowrap;pointer-events:none;
@@ -701,7 +682,6 @@
 <div id="statusStack">
   <div id="radarStatus"><span class="dot"></span><span id="radarStatusText">NEXRAD N0Q</span></div>
   <div id="precipStatus"><span class="sw" id="precipSw"></span><span id="precipStatusText"></span></div>
-  <div id="afdStatus"><span class="sw" style="background:#F2B705"></span><span id="afdStatusText"></span></div>
   <div id="isoStatus"><span class="sw" style="background:#9FB3C8"></span><span id="isoStatusText"></span></div>
   <div id="hiddenStatus" onclick="toggleSettings(true)" title="Open settings"></div>
   <div id="arrival"></div>
@@ -837,7 +817,6 @@
         </div>
         <label class="set-row"><input type="checkbox" id="sfcChk" checked onchange="toggleSurface(this)"><span class="sw-t"></span>Surface fronts and pressure</label>
         <label class="set-row"><input type="checkbox" id="isobarChk" checked onchange="toggleIsobars(this)"><span class="sw-t"></span>Isobars</label>
-        <label class="set-row"><input type="checkbox" id="afdAreasChk" checked onchange="toggleAfdAreas(this)"><span class="sw-t"></span>Forecast discussion areas</label>
       </div>
     </details>
 
@@ -992,7 +971,7 @@
 <script>
 let lat = 42.907058, lon = -85.763014;
 let map, basemap, basemapLabels, radarLayer, marker, alertLayerGroup, lightningLayerGroup, feedLayerGroup;
-let spcOutlookLayer, mcdLayer, lsrLayer, stationLayer, modelLayer, modelMarkers, afdHazardLayer, sfcLayer
+let spcOutlookLayer, mcdLayer, lsrLayer, stationLayer, modelLayer, modelMarkers, sfcLayer
 let isobarLayer, isobarMarkers, lakeLayer;
 let precipGroup, precipMarkers;
 const ESRI_CANVAS = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/';
@@ -1041,7 +1020,6 @@ function initMap(){
   modelMarkers = L.layerGroup().addTo(map);
   spcOutlookLayer = L.layerGroup().addTo(map);
   alertLayerGroup = L.layerGroup().addTo(map);
-  afdHazardLayer = L.layerGroup().addTo(map);
   lakeLayer = L.layerGroup().addTo(map);
   upperLayer = L.layerGroup().addTo(map);
   sfcLayer = L.layerGroup().addTo(map);
@@ -1069,7 +1047,7 @@ function initMap(){
   // Order is the order they were registered in. The cheap schedulers are last
   // because they only set timers.
   const MOVE_TASKS = [renderStations, drawIsoLines, renderSurface,
-                      renderFeed, scheduleAfdRefresh, scheduleModelRefresh,
+                      renderFeed, scheduleModelRefresh,
                       scheduleIsobarRefresh, scheduleNoaaRadar, schedulePrecipRefresh,
                       syncAppSettings, scheduleHistoryRefresh, renderLakeTemps,
                       renderUpper, scheduleUpperRefresh, renderReplayMarks,
@@ -1645,8 +1623,8 @@ function alertInWindow(f){
 // 342 ms scrub, for a set of alerts that changes every few steps at most. These
 // signatures are what each layer is currently showing, so an unchanged set is a
 // no-op and the work happens only when the map would actually look different.
-let sigAlerts = null, sigLSR = null, sigAfd = null, sigMCD = null;
-function invalidateTimeLayers(){ sigAlerts = sigLSR = sigAfd = sigMCD = null; }
+let sigAlerts = null, sigLSR = null, sigMCD = null;
+function invalidateTimeLayers(){ sigAlerts = sigLSR = sigMCD = null; }
 
 /* SPC issues tornado and severe thunderstorm watches as one box. The NWS alert
    feed hands them over as the list of counties the box covers instead, and
@@ -1998,7 +1976,6 @@ const HIDEABLE = [
   ['Lake temps',    () => lakeOn],
   ['Fronts',        () => sfcOn],
   ['Isobars',       () => isobarsOn],
-  ['Discussion areas', () => afdAreasOn],
   ['Warnings',      () => hazardVisible.tornado || hazardVisible.thunderstorm || hazardVisible.flood],
   ['Watches',       () => hazardVisible.watches],
   ['Advisories',    () => hazardVisible.advisories],
@@ -2330,7 +2307,6 @@ function syncAppSettings(){
         showReports: true,
         showSpotter: !!spcVisible.lsr,
         showAlerts: !!(hazardVisible.tornado || hazardVisible.thunderstorm || hazardVisible.flood),
-        showDiscussion: !!afdAreasOn,
         showOutlook: !!(spcVisible.outlook || spcVisible.mcd),
         showFronts: !!sfcOn,
         stationModel: !!windBarbsOn,
@@ -3595,7 +3571,6 @@ function applyReplay(){
   }
   renderLSR();
   renderAlerts();
-  renderAfdAreas();
   renderMCD();
   // The launcher hides the events panel and the scrubber, so rendering them on
   // every tick was pure cost — the marker pass alone is 67 ms, spent on a bar
@@ -4533,7 +4508,7 @@ function currentHourIndex(times){
 }
 
 // One row-major grid of cell centers + cell corner rects over `bounds`, shared by
-// every layer that samples Open-Meteo on a grid (model fields, snow, AFD criteria).
+// every layer that samples Open-Meteo on a grid (model fields, snow).
 // Row 0 is the SOUTH row — `fieldOverlay` relies on that ordering.
 function buildGrid(bounds, cols, rows){
   const south = bounds.getSouth(), north = bounds.getNorth();
@@ -4595,7 +4570,6 @@ const MODELS = {
   shear:  {api: 'forecast', vars: 'windspeed_10m,winddirection_10m,windspeed_500hPa,winddirection_500hPa', val: (h, i) => bulkShear(h, i, '10m', '500hPa')},
   shear1: {api: 'forecast', vars: 'windspeed_10m,winddirection_10m,windspeed_850hPa,winddirection_850hPa', val: (h, i) => bulkShear(h, i, '10m', '850hPa')},
   mslp:   {api: 'forecast', vars: 'pressure_msl', val: (h, i) => h.pressure_msl[i]},
-  // Added for the forecast-discussion decoder — AFDs quantify these three often.
   // Open-Meteo is queried in its metric defaults, so convert here like dewp does.
   pwat:   {api: 'forecast', vars: 'total_column_integrated_water_vapour', val: (h, i) => {
     const v = h.total_column_integrated_water_vapour[i];
@@ -4712,7 +4686,7 @@ function drawIsobars(vals, rects, cols, rows, lineLayer, labelLayer){
 
 // Marching squares over one grid at one level -> a list of [latlng, latlng]
 // segments. Used for pressure isobars and for outlining the region where an
-// AFD criterion is satisfied (run against a 0/1 mask at level 0.5).
+// a threshold is crossed (run against a 0/1 mask at level 0.5).
 function contourSegments(vals, rects, cols, rows, lvl){
   const segs = [];
   for(let r = 0; r < rows - 1; r++){
@@ -5324,15 +5298,6 @@ function scheduleModelRefresh(){
   modelFetchTimer = setTimeout(fetchModel, 600);   // debounce panning
 }
 
-/* ---------------- Forecast discussion areas ----------------
-   A GitHub Action reads each office's Area Forecast Discussion, has Claude draw
-   the areas it describes, and commits data/afd-areas.json. This just loads that
-   file and puts the shapes on the map.
-
-   The work happens there rather than here because the site is static: an API
-   key in this file would be handed to every visitor. See
-   .github/workflows/afd-areas.yml. */
-
 /* ---------------- Lake water temperature ----------------
    Buoy water temperature across the Great Lakes, which is a different question
    from air temperature and the one that actually drives the weather here: lake
@@ -5397,178 +5362,6 @@ function renderLakeTemps(){
 function toggleLakeTemps(cb){
   lakeOn = cb.checked;
   renderLakeTemps();
-}
-
-const AFD_DATA_URL = 'data/afd-areas.json';
-let afdAreas = null;          // {generated, offices:{WFO:{headline, issued, areas[]}}}
-let afdAreasOn = true;
-
-// Colour by what the hazard is, matching the alert palette so a discussion area
-// and a warning for the same thing read the same way.
-const AFD_HAZARD = {
-  'tornado':        {color: '#E10600', rank: 6},
-  'damaging wind':  {color: '#FF7A00', rank: 5},
-  'hail':           {color: '#3AA0FF', rank: 5},
-  'severe storms':  {color: '#F2B705', rank: 4},
-  'flash flooding': {color: '#2ECC71', rank: 4},
-  'heavy rain':     {color: '#00A8CC', rank: 3},
-  'heavy snow':     {color: '#CFE8FF', rank: 3},
-  'ice':            {color: '#B14FFF', rank: 3},
-  'frost':          {color: '#A9C7E8', rank: 1},
-  'extreme cold':   {color: '#8FD3FF', rank: 2},
-  'heat':           {color: '#FF3AF5', rank: 2},
-  'high wind':      {color: '#FF7A00', rank: 2},
-  'dense fog':      {color: '#8A93A6', rank: 1},
-  'fire weather':   {color: '#FF7A00', rank: 2},
-  'marine':         {color: '#4A6FA5', rank: 1},
-  'other':          {color: '#8A93A6', rank: 1},
-};
-const afdHazard = h => AFD_HAZARD[h] || AFD_HAZARD.other;
-
-async function loadAfdAreas(){
-  try{
-    const r = await fetch(AFD_DATA_URL + '?t=' + Math.floor(Date.now() / 6e5));
-    afdAreas = await r.json();
-  }catch(e){ console.error('afd areas', e); afdAreas = null; }
-  renderAfdAreas();
-}
-
-// An area is "live" when now falls inside its window; upcoming ones are drawn
-// dashed and dimmer so the two read differently at a glance.
-function afdWindowState(a, office){
-  const now = mapNow(), t0 = Date.parse(a.start), t1 = Date.parse(a.end);
-  if(!(t0 && t1)) return null;
-  // An area cannot be on the map before the forecaster wrote it. Scrubbing to
-  // last night used to show this morning's discussion as "ahead", which is the
-  // map claiming to know something nobody had said yet.
-  if(office && office.issued){
-    const issued = Date.parse(office.issued);
-    if(isFinite(issued) && now < issued) return null;
-  }
-  if(now > t1) return null;                       // finished — don't draw it
-  return now >= t0 ? 'live' : 'ahead';
-}
-function afdWhen(a, state){
-  const t0 = new Date(a.start), t1 = new Date(a.end);
-  const hh = d => d.toLocaleString([], {hour: 'numeric'}).replace(/\s/g, '').toUpperCase();
-  const day = d => d.toDateString() === new Date().toDateString() ? ''
-                 : d.toLocaleString([], {weekday: 'short'}).toUpperCase() + ' ';
-  return state === 'live' ? `NOW – ${day(t1)}${hh(t1)}` : `${day(t0)}${hh(t0)} – ${day(t1)}${hh(t1)}`;
-}
-
-// How old the committed file is, and whether anything in it is still current.
-function afdFreshness(){
-  if(!afdAreas || !afdAreas.generated) return {state: 'none'};
-  const age = (Date.now() - Date.parse(afdAreas.generated)) / 3600e3;
-  let current = 0, total = 0;
-  for(const w in afdAreas.offices)
-    for(const a of (afdAreas.offices[w].areas || [])){ total++; if(afdWindowState(a, afdAreas.offices[w])) current++; }
-  return {age, current, total, state: !isFinite(age) ? 'none' : age > 6 ? 'stale' : 'ok'};
-}
-function renderAfdStatus(){
-  const el = document.getElementById('afdStatus'), tx = document.getElementById('afdStatusText');
-  if(!el || !tx) return;
-  const f = afdFreshness();
-  let msg = '';
-  if(!afdAreasOn) msg = '';
-  else if(f.state === 'none') msg = 'Discussion areas unavailable';
-  else if(f.state === 'stale')
-    msg = `Discussion areas ${Math.round(f.age)} h old` + (f.current ? '' : ' · none still current');
-  else if(!f.current && f.total) msg = 'No discussion areas current right now';
-  tx.textContent = msg;
-  el.classList.toggle('show', !!msg);
-}
-
-function renderAfdAreas(){
-  if(!afdHazardLayer) return;
-  renderAfdStatus();
-  if(!afdAreasOn || !afdAreas || !afdAreas.offices){ afdHazardLayer.clearLayers(); sigAfd = null; return; }
-  let sig = '' + map.getZoom() + ',' + Math.round(map.getCenter().lat * 50)
-                                + ',' + Math.round(map.getCenter().lng * 50);
-  for(const w in afdAreas.offices)
-    for(const a of (afdAreas.offices[w].areas || []))
-      sig += '|' + (afdWindowState(a, afdAreas.offices[w]) || '-');
-  if(sig === sigAfd) return;
-  sigAfd = sig;
-  afdHazardLayer.clearLayers();
-  const view = map.getBounds();
-  const drawn = [];
-  for(const wfo in afdAreas.offices){
-    for(const a of (afdAreas.offices[wfo].areas || [])){
-      const state = afdWindowState(a, afdAreas.offices[wfo]);
-      if(!state || !a.polygon || a.polygon.length < 3) continue;
-      const poly = L.polygon(a.polygon, {interactive: true});
-      if(!view.intersects(poly.getBounds())){ poly.remove(); continue; }
-      drawn.push({wfo, a, state, poly});
-    }
-  }
-  // Most serious on top, and live before upcoming.
-  drawn.sort((x, y) => (x.state === 'live' ? 1 : 0) - (y.state === 'live' ? 1 : 0)
-                    || afdHazard(x.a.hazard).rank - afdHazard(y.a.hazard).rank);
-  for(const {wfo, a, state, poly} of drawn){
-    const c = afdHazard(a.hazard).color;
-    const live = state === 'live';
-    poly.setStyle({color: c, weight: live ? 2.5 : 1.8, fillColor: c,
-                   fillOpacity: live ? 0.12 : 0.06, dashArray: live ? null : '7 5'});
-    const off = afdAreas.offices[wfo];
-    poly.bindPopup(`<div class="alert-popup"><b>${afdEsc(a.label)}</b>` +
-      `<span style="color:${c}">${afdEsc(a.hazard)}</span> · ${afdEsc(afdWhen(a, state))}` +
-      ` · ${afdEsc(a.confidence)} confidence<br><br>` +
-      `<i>“${afdEsc(a.quote)}”</i><br>` +
-      `<span style="color:#8A93A6">${wfo} discussion, ${afdEsc(afdIssuedText(off))}</span></div>`);
-    poly.addTo(afdHazardLayer);
-  }
-  // Labels go in a second pass, most serious first, so the worst hazard keeps
-  // the true centre of its area and lesser ones are the ones that move.
-  const placed = [];
-  const lblScale = parseFloat(getComputedStyle(document.documentElement)
-                                .getPropertyValue('--lblscale')) || 1;
-  for(const {a, state, poly} of [...drawn].reverse()){
-    try{
-      const b = poly.getBounds();
-      // Centre of the outline, not its top edge: the label belongs over the
-      // area it names. getCenter() is the polygon centroid, which sits better
-      // inside an L-shaped area than the middle of its bounding box.
-      let at; try{ at = poly.getCenter(); }catch(e){ at = b.getCenter(); }
-      // Two areas that overlap have near-identical centres, which would stack
-      // their text on the same pixels. Nudge down until clear — overlap is a
-      // screen problem, so it is measured in screen space. The box is estimated
-      // from the character count rather than measured, which keeps this out of
-      // a layout read on every pan.
-      const w = Math.max(40, a.label.length * 5.4 * lblScale), h = 20 * lblScale;
-      let pt = map.latLngToContainerPoint(at);
-      for(let i = 0; i < 6 && placed.some(p => Math.abs(p.x - pt.x) < (p.w + w) / 2
-                                            && Math.abs(p.y - pt.y) < (p.h + h) / 2); i++)
-        pt = L.point(pt.x, pt.y + h);
-      placed.push({x: pt.x, y: pt.y, w, h});
-      at = map.containerPointToLatLng(pt);
-      const c = afdHazard(a.hazard).color;
-      const html = `<div class="afd-area-lbl" style="color:${c}">` +
-        `<div class="t">${afdEsc(a.label.toUpperCase())}</div>` +
-        `<div class="s">${afdEsc(afdWhen(a, state))}</div></div>`;
-      L.marker(at, {icon: L.divIcon({className: 'afd-area-icon', html, iconSize: [0, 0], iconAnchor: [0, 0]}),
-                    interactive: false, keyboard: false}).addTo(afdHazardLayer);
-    }catch(e){}
-  }
-}
-
-function afdIssuedText(off){
-  if(!off || !off.issued) return '';
-  const d = new Date(off.issued);
-  return isNaN(d) ? '' : d.toLocaleString([], {weekday: 'short', hour: 'numeric', minute: '2-digit'});
-}
-function afdEsc(t){
-  return String(t == null ? '' : t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
-// Areas are already loaded; panning only changes which ones are in view.
-function scheduleAfdRefresh(){
-  renderAfdAreas();
-}
-
-function toggleAfdAreas(cb){
-  afdAreasOn = cb.checked;
-  renderAfdAreas();
 }
 
 /* ---------------- Surface analysis (WPC coded bulletin) ----------------
@@ -6551,13 +6344,11 @@ async function boot(){
   setInterval(computeLightning, 3000);
   setInterval(renderArrival, 30 * 1000);   // let the countdown tick between fetches
   setInterval(() => { renderFeed(); }, 30000);   // keep "Xm ago" fresh
-  loadAfdAreas();
   loadSurfaceAnalysis();
   loadLakeTemps();
   fetchIsobars();
   renderReplayBar();
   syncAppSettings();   // hand the app its opening state
-  setInterval(loadAfdAreas, 20 * 60 * 1000);
   setInterval(loadSurfaceAnalysis, 20 * 60 * 1000);
   setInterval(loadLakeTemps, 30 * 60 * 1000);   // the collector runs hourly
   loadTempHistory();

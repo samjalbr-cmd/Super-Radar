@@ -13,7 +13,6 @@ struct WatchLocation: Codable {
     var showReports: Bool = true
     var showTemps: Bool = true
     var showAlerts: Bool = true
-    var showDiscussion: Bool = true
     var showOutlook: Bool = true
     var showFronts: Bool = true
     var stationModel: Bool = false
@@ -57,7 +56,6 @@ struct WatchLocation: Codable {
         showReports    = flag(.showReports, true)
         showTemps      = flag(.showTemps, true)
         showAlerts     = flag(.showAlerts, true)
-        showDiscussion = flag(.showDiscussion, true)
         showOutlook    = flag(.showOutlook, true)
         showFronts     = flag(.showFronts, true)
         stationModel   = flag(.stationModel, false)
@@ -74,14 +72,14 @@ struct WatchLocation: Codable {
     /// The memberwise initialiser, which the custom decoder above suppresses.
     init(lat: Double, lon: Double, name: String,
          showReports: Bool = true, showTemps: Bool = true, showAlerts: Bool = true,
-         showDiscussion: Bool = true, showOutlook: Bool = true, showFronts: Bool = true,
+         showOutlook: Bool = true, showFronts: Bool = true,
          stationModel: Bool = false, showIsobars: Bool = true, showMarine: Bool = false,
          showLake: Bool = true, showSpotter: Bool = true,
          upperLevel: String? = "500", showSpark: Bool = true,
          zoom: RadarZoom = .county, state: String? = nil) {
         self.lat = lat; self.lon = lon; self.name = name
         self.showReports = showReports; self.showTemps = showTemps; self.showAlerts = showAlerts
-        self.showDiscussion = showDiscussion; self.showOutlook = showOutlook
+        self.showOutlook = showOutlook
         self.showFronts = showFronts; self.stationModel = stationModel
         self.showIsobars = showIsobars; self.showMarine = showMarine
         self.showLake = showLake; self.showSpotter = showSpotter
@@ -93,7 +91,6 @@ struct WatchLocation: Codable {
     static let key = "watchLocation"
     static let fallback = WatchLocation(lat: 42.907058, lon: -85.763014, name: "Grand Rapids",
                                         showReports: true, showTemps: true, showAlerts: true,
-                                        showDiscussion: true,
                                         showOutlook: true, showFronts: true, stationModel: false, showIsobars: true,
                                         showMarine: false, showLake: true, showSpotter: true,
                                         upperLevel: "500", showSpark: true,
@@ -760,116 +757,6 @@ enum StormFeed {
                   s.lon >= sw.longitude, s.lon <= ne.longitude else { return nil }
             return LakeTemp(lat: s.lat, lon: s.lon, waterF: s.waterF, airF: s.airF)
         }
-    }
-
-    // MARK: - Forecast discussion areas
-
-    /// One hazard area decoded from a forecast discussion, as the dashboard
-    /// draws it: the forecaster's own words turned into a polygon with a time
-    /// window.
-    struct AfdArea {
-        let ring: [CLLocationCoordinate2D]
-        let label: String
-        let when: String        // the window, already formatted the way the dashboard writes it
-        let color: UIColor
-        let live: Bool          // inside its window now, rather than still ahead
-        let rank: Int           // higher is more serious; drawn last so it sits on top
-    }
-
-    /// The time window as the dashboard's afdWhen() writes it: "NOW - TUE 8PM"
-    /// once the window is open, "MON 8PM - WED 2AM" while it is still ahead.
-    /// The weekday is dropped for today, since today is the common case and the
-    /// label has little room.
-    private static let afdHourFmt: DateFormatter = {
-        let f = DateFormatter(); f.setLocalizedDateFormatFromTemplate("j"); return f
-    }()
-    private static let afdDayFmt: DateFormatter = {
-        let f = DateFormatter(); f.setLocalizedDateFormatFromTemplate("E"); return f
-    }()
-    private static func afdWhen(start: Date, end: Date, live: Bool, now: Date) -> String {
-        func hh(_ d: Date) -> String {
-            afdHourFmt.string(from: d).replacingOccurrences(of: " ", with: "").uppercased()
-        }
-        func day(_ d: Date) -> String {
-            Calendar.current.isDate(d, inSameDayAs: now) ? "" : afdDayFmt.string(from: d).uppercased() + " "
-        }
-        return live ? "NOW \u{2013} \(day(end))\(hh(end))"
-                    : "\(day(start))\(hh(start)) \u{2013} \(day(end))\(hh(end))"
-    }
-
-    /// Colours and seriousness ranking, matching the dashboard's AFD_HAZARD table.
-    private static let afdHazards: [String: (UIColor, Int)] = [
-        "tornado":        (UIColor(red: 0.88, green: 0.02, blue: 0.00, alpha: 1), 6),
-        "damaging wind":  (UIColor(red: 1.00, green: 0.48, blue: 0.00, alpha: 1), 5),
-        "hail":           (UIColor(red: 0.23, green: 0.63, blue: 1.00, alpha: 1), 5),
-        "severe storms":  (UIColor(red: 0.95, green: 0.72, blue: 0.02, alpha: 1), 4),
-        "flash flooding": (UIColor(red: 0.18, green: 0.80, blue: 0.44, alpha: 1), 4),
-        "heavy rain":     (UIColor(red: 0.00, green: 0.66, blue: 0.80, alpha: 1), 3),
-        "heavy snow":     (UIColor(red: 0.81, green: 0.91, blue: 1.00, alpha: 1), 3),
-        "ice":            (UIColor(red: 0.69, green: 0.31, blue: 1.00, alpha: 1), 3),
-        "frost":          (UIColor(red: 0.66, green: 0.78, blue: 0.91, alpha: 1), 1),
-        "extreme cold":   (UIColor(red: 0.56, green: 0.83, blue: 1.00, alpha: 1), 2),
-        "heat":           (UIColor(red: 1.00, green: 0.23, blue: 0.96, alpha: 1), 2),
-        "high wind":      (UIColor(red: 1.00, green: 0.48, blue: 0.00, alpha: 1), 2),
-        "fire weather":   (UIColor(red: 1.00, green: 0.48, blue: 0.00, alpha: 1), 2),
-        "dense fog":      (UIColor(red: 0.54, green: 0.58, blue: 0.65, alpha: 1), 1),
-        "marine":         (UIColor(red: 0.29, green: 0.44, blue: 0.65, alpha: 1), 1),
-    ]
-
-    /// Hazard areas decoded from the current forecast discussions.
-    ///
-    /// Served as a static file from the same GitHub Pages site as the dashboard,
-    /// rebuilt twice a day by the extraction workflow. Areas whose window has
-    /// passed are dropped, so a build that stops updating fades to nothing
-    /// rather than showing yesterday's hazards as current.
-    static func afdAreas(sw: CLLocationCoordinate2D, ne: CLLocationCoordinate2D) async -> [AfdArea] {
-        guard let url = URL(string: "https://samjalbr-cmd.github.io/Super-Radar/data/afd-areas.json")
-        else { return [] }
-        struct Doc: Decodable {
-            struct Office: Decodable {
-                struct Area: Decodable {
-                    let hazard: String?; let label: String?
-                    let start: String?;  let end: String?
-                    let polygon: [[Double]]?
-                }
-                let areas: [Area]?
-            }
-            let offices: [String: Office]?
-        }
-        var req = URLRequest(url: url); req.timeoutInterval = 20; req.cachePolicy = .reloadIgnoringLocalCacheData
-        guard let data = try? await URLSession.shared.data(for: req).0,
-              let doc = try? JSONDecoder().decode(Doc.self, from: data),
-              let offices = doc.offices else { return [] }
-
-        let iso = ISO8601DateFormatter()
-        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        let plain = ISO8601DateFormatter()
-        func parse(_ t: String?) -> Date? {
-            guard let t else { return nil }
-            return iso.date(from: t) ?? plain.date(from: t)
-        }
-
-        let now = Date()
-        var out: [AfdArea] = []
-        for (_, office) in offices {
-            for a in office.areas ?? [] {
-                guard let pts = a.polygon, pts.count >= 3,
-                      let t0 = parse(a.start), let t1 = parse(a.end),
-                      now <= t1 else { continue }
-                let ring = pts.compactMap { p in
-                    p.count >= 2 ? CLLocationCoordinate2D(latitude: p[0], longitude: p[1]) : nil
-                }
-                guard ring.count >= 3, boxOverlaps(ring, sw: sw, ne: ne) else { continue }
-                let (color, rank) = afdHazards[(a.hazard ?? "").lowercased()]
-                    ?? (UIColor(red: 0.54, green: 0.58, blue: 0.65, alpha: 1), 1)
-                let live = now >= t0
-                out.append(AfdArea(ring: ring, label: a.label ?? a.hazard ?? "",
-                                   when: afdWhen(start: t0, end: t1, live: live, now: now),
-                                   color: color, live: live, rank: rank))
-            }
-        }
-        // Least serious first, so the worst hazard ends up on top; live over ahead.
-        return out.sorted { ($0.live ? 1 : 0, $0.rank) < ($1.live ? 1 : 0, $1.rank) }
     }
 
     /// A surface observation, carrying enough for the full station model.

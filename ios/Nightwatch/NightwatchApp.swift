@@ -33,7 +33,6 @@ final class SettingsBridge: NSObject, WKScriptMessageHandler {
         if let r = d["showReports"] as? Bool { loc.showReports = r }
         if let sp = d["showSpotter"] as? Bool { loc.showSpotter = sp }
         if let a = d["showAlerts"] as? Bool { loc.showAlerts = a }
-        if let a = d["showDiscussion"] as? Bool { loc.showDiscussion = a }
         if let o = d["showOutlook"] as? Bool { loc.showOutlook = o }
         if let f = d["showFronts"] as? Bool { loc.showFronts = f }
         if let m = d["stationModel"] as? Bool { loc.stationModel = m }
