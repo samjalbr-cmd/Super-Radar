@@ -93,7 +93,16 @@ struct DashboardView: UIViewRepresentable {
             .init(name: "lat", value: String(location.lat)),
             .init(name: "lon", value: String(location.lon)),
         ]
-        web.load(URLRequest(url: c.url!))
+        // Revalidate the page itself on every launch. With the default policy
+        // WKWebView keeps its own copy of the dashboard and will serve it for
+        // as long as it likes, so a change that is live on the site can still
+        // be missing in the app days later — which is exactly how a filter that
+        // was deployed and working looked like it had not been applied at all.
+        // Revalidating costs a 304 when nothing has changed; the map's data all
+        // comes from its own requests, which are unaffected.
+        var req = URLRequest(url: c.url!)
+        req.cachePolicy = .reloadRevalidatingCacheData
+        web.load(req)
         return web
     }
 
