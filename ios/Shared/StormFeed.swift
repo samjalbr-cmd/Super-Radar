@@ -494,6 +494,68 @@ enum StormFeed {
         let color: UIColor
         let isWatch: Bool
         let isMarine: Bool
+        /// "WATCH 698 \u{00b7} 1.5\u{2033} hail", when SPC has the detail.
+        var detail: String = ""
+    }
+
+    /* The SPC watch number and the parameters it was issued for.
+
+       Fetched for the detail alone — the box geometry is deliberately not
+       drawn, because SPC's parallelogram is the watch as issued and counties
+       are cleared from it as it winds down, so the box claims ground that no
+       longer has a watch. The county outline stays authoritative; this just
+       names it.
+
+       Joined on the VTEC event tracking number the alert already carries:
+       /O.CON.KMPX.TO.A.0698.../ is tornado watch 698, and SPC numbers it the
+       same. No geometric guessing. */
+    struct WatchInfo { let hail: Double?; let gustKt: Double?; let pds: Bool }
+
+    static func spcWatchInfo() async -> [Int: WatchInfo] {
+        guard let url = URL(string: "https://mesonet.agron.iastate.edu/json/spcwatch.py")
+        else { return [:] }
+        struct FC: Decodable {
+            struct F: Decodable {
+                struct P: Decodable {
+                    let number: Int?; let max_hail_size: Double?
+                    let max_wind_gust_knots: Double?; let is_pds: Bool?
+                }
+                let properties: P
+            }
+            let features: [F]
+        }
+        var req = URLRequest(url: url); req.timeoutInterval = 20
+        req.cachePolicy = .reloadIgnoringLocalCacheData
+        guard let data = try? await URLSession.shared.data(for: req).0,
+              let fc = try? JSONDecoder().decode(FC.self, from: data) else { return [:] }
+        var out: [Int: WatchInfo] = [:]
+        for f in fc.features {
+            guard let n = f.properties.number else { continue }
+            out[n] = WatchInfo(hail: f.properties.max_hail_size,
+                               gustKt: f.properties.max_wind_gust_knots,
+                               pds: f.properties.is_pds ?? false)
+        }
+        return out
+    }
+
+    /// The watch number out of the VTEC string, or nil for anything that is
+    /// not an SPC watch.
+    static func watchNumber(_ vtec: [String]?) -> Int? {
+        for s in vtec ?? [] {
+            let parts = s.split(separator: ".")
+            guard parts.count >= 6 else { continue }
+            guard parts[3] == "TO" || parts[3] == "SV", parts[4] == "A" else { continue }
+            if let n = Int(parts[5]) { return n }
+        }
+        return nil
+    }
+
+    static func watchDetail(_ vtec: [String]?, info: [Int: WatchInfo]) -> String {
+        guard let n = watchNumber(vtec), let w = info[n] else { return "" }
+        var bits = [(w.pds ? "PDS WATCH " : "WATCH ") + String(n)]
+        if let h = w.hail { bits.append(String(format: "%g\u{2033} hail", h)) }
+        if let g = w.gustKt { bits.append("\(Int((g * 1.15078).rounded())) mph gusts") }
+        return bits.joined(separator: " \u{00b7} ")
     }
 
     /// Whether an event is a warning for boats rather than for land.
@@ -562,6 +624,7 @@ enum StormFeed {
     /// watches are issued by zone and never carry geometry.
     static func alerts(states: [String], sw: CLLocationCoordinate2D, ne: CLLocationCoordinate2D,
                        marine: Bool = true) async -> [AlertArea] {
+        let spcInfo = await spcWatchInfo()
         // No message_type filter. Restricting to "alert" drops every alert that
         // has since been updated, and an update is not a different kind of
         // thing — it is the same alert, revised. Nationally that filter hid 90
@@ -573,7 +636,11 @@ enum StormFeed {
         guard let url = URL(string: str) else { return [] }
         struct FC: Decodable {
             struct F: Decodable {
-                struct P: Decodable { let event: String?; let affectedZones: [String]?; let status: String? }
+                struct P: Decodable {
+                    let event: String?; let affectedZones: [String]?; let status: String?
+                    let parameters: Params?
+                }
+                struct Params: Decodable { let VTEC: [String]? }
                 let geometry: GeoJSONGeometry?
                 let properties: P
             }
@@ -644,7 +711,8 @@ enum StormFeed {
             guard !rings.isEmpty else { return nil }
             return AlertArea(rings: rings, color: alertColor(event),
                              isWatch: event.lowercased().contains("watch"),
-                             isMarine: isMarineEvent(event))
+                             isMarine: isMarineEvent(event),
+                             detail: watchDetail(f.properties.parameters?.VTEC, info: spcInfo))
         }
     }
 

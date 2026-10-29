@@ -685,6 +685,22 @@ enum RadarSnapshot {
                 a.color.withAlphaComponent(0.95).setStroke()
                 if a.isWatch { edge.setLineDash([6, 4], count: 2, phase: 0) }
                 edge.stroke()
+                // The watch number and what it was issued for, centred in the
+                // area — only when there is room for it to be readable.
+                guard !a.detail.isEmpty, !edge.bounds.isEmpty,
+                      edge.bounds.width > 70, edge.bounds.height > 24,
+                      inFrame(CGPoint(x: edge.bounds.midX, y: edge.bounds.midY), size)
+                else { continue }
+                let text = a.detail as NSString
+                let attrs: [NSAttributedString.Key: Any] = [
+                    .font: UIFont.systemFont(ofSize: 6.5, weight: .heavy),
+                    .foregroundColor: a.color,
+                    .strokeColor: UIColor.black, .strokeWidth: -3.0,
+                ]
+                let sz = text.size(withAttributes: attrs)
+                text.draw(at: CGPoint(x: edge.bounds.midX - sz.width / 2,
+                                      y: edge.bounds.midY - sz.height / 2),
+                          withAttributes: attrs)
             }
 
             if let d = render?.data, render?.hasEcho == true, let radar = UIImage(data: d) {
