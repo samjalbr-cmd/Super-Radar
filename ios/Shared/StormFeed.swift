@@ -652,7 +652,17 @@ enum StormFeed {
         // NWS publishes tests, exercises and system messages through the same
         // feed, flagged only by status. One was live over Michigan while this
         // was written, drawn as though it were a real alert.
-        let feats = fc.features.filter { ($0.properties.status ?? "Actual") == "Actual" }
+        // Small craft advisories are dropped. They are the most numerous
+        // product in the feed by a wide margin — 181 of 223 advisories
+        // nationally when this was counted — issued zone by zone so they bury
+        // the lakes and coasts in outlines, and they are guidance for boat
+        // handling rather than something the map is for. Dropped here rather
+        // than at draw time so they stop spending the zone budget as well.
+        let feats = fc.features.filter {
+            ($0.properties.status ?? "Actual") == "Actual"
+            && ($0.properties.event ?? "").range(of: "small craft",
+                                                 options: .caseInsensitive) == nil
+        }
 
         // Gather the zones that still need fetching, so the cap applies to real
         // network work rather than to cache hits.

@@ -1403,7 +1403,14 @@ async function loadAlerts(){
     // written, drawn as though it were a real alert. Only actual ones belong on
     // a weather map.
     const feats = (data.features || [])
-      .filter(f => ((f.properties && f.properties.status) || 'Actual') === 'Actual');
+      .filter(f => ((f.properties && f.properties.status) || 'Actual') === 'Actual')
+      // Small craft advisories are dropped. They are the most numerous product
+      // in the feed by a wide margin — 181 of 223 advisories nationally when
+      // this was counted — they are issued zone by zone so they bury the lakes
+      // and coasts in outlines, and they are guidance for boat handling rather
+      // than something the map is for. Dropped here rather than at draw time so
+      // they stop spending the zone-resolution budget as well.
+      .filter(f => !/small craft/i.test((f.properties && f.properties.event) || ''));
     const ZONE_FETCH_LIMIT = 120;   // watches span many counties and a replayed
                                     // day spans more than one moment; the cache fills over time
 
