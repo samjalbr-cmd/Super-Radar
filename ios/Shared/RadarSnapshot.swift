@@ -96,6 +96,32 @@ private func tempColor(_ f: Double) -> UIColor {
 /// used exactly as specified rather than being lightened.
 private func barbColor(_ f: Double) -> UIColor { tempColor(f) }
 
+/// The outline of a multi-county alert, with the borders between its own
+/// counties dropped.
+///
+/// A watch over eight counties is one area, not eight shapes. Stroking every
+/// zone drew the borders they share with each other as well as the real edge,
+/// which is what made a watch look like a quilt.
+///
+/// Adjacent NWS zones are cut from the same source and meet on identical
+/// coordinates, so an edge on the outside is one that appears once and an
+/// interior border is one that appears twice. On a live eight-county tornado
+/// watch that removes 310 of 789 edges.
+private func dissolvedOutline(_ rings: [[CLLocationCoordinate2D]]) -> [[CLLocationCoordinate2D]] {
+    var seen: [String: (n: Int, a: CLLocationCoordinate2D, b: CLLocationCoordinate2D)] = [:]
+    for ring in rings where ring.count >= 2 {
+        for i in 0..<(ring.count - 1) {
+            let a = ring[i], b = ring[i + 1]
+            let ka = String(format: "%.6f,%.6f", a.latitude, a.longitude)
+            let kb = String(format: "%.6f,%.6f", b.latitude, b.longitude)
+            let k = ka < kb ? ka + "|" + kb : kb + "|" + ka
+            if let hit = seen[k] { seen[k] = (hit.n + 1, hit.a, hit.b) }
+            else { seen[k] = (1, a, b) }
+        }
+    }
+    return seen.values.filter { $0.n == 1 }.map { [$0.a, $0.b] }
+}
+
 /// The six-hour temperature trace drawn beside a reading.
 ///
 /// Coloured along its length by the same ramp as everything else on the plot,
@@ -563,7 +589,6 @@ enum RadarSnapshot {
             ? states + (showMarine ? StormFeed.marineCovering(sw: sw, ne: ne) : []) : []
         let alerts = showAlerts
             ? await StormFeed.alerts(states: alertAreas, sw: sw, ne: ne, marine: showMarine) : []
-        let spcWatches = showAlerts ? await StormFeed.spcWatches(sw: sw, ne: ne) : []
         let outlook = showOutlook ? await MapLayers.outlook(sw: sw, ne: ne) : []
         let mcds = showOutlook ? await MapLayers.mesoscaleDiscussions(sw: sw, ne: ne) : []
         let sfc = showFronts ? await MapLayers.surface() : nil
@@ -619,6 +644,9 @@ enum RadarSnapshot {
 
             // Warnings sit under the radar, as they do on the dashboard.
             for a in alerts {
+                // Many zones: fill each, then let one dissolved outline carry
+                // the edge, so borders counties share never draw.
+                let many = a.rings.count >= 2
                 for ring in a.rings {
                     let path = UIBezierPath()
                     for (i, c) in ring.enumerated() {
@@ -638,54 +666,25 @@ enum RadarSnapshot {
                         path.lineWidth = 1
                         if a.isWatch { path.setLineDash([5, 4], count: 2, phase: 0) }
                     } else {
-                        // A county-by-county alert is one area, not twenty.
-                        // Stroking every zone at full weight drew all the
-                        // internal borders and turned a single watch into a
-                        // quilt, so a many-zone alert gets a lighter outline and
-                        // leans on its fill to read as one region.
-                        let many = a.rings.count >= 3
-                        a.color.withAlphaComponent(a.isWatch ? (many ? 0.13 : 0.10) : 0.22).setFill()
+                        a.color.withAlphaComponent(a.isWatch ? 0.13 : 0.22).setFill()
                         path.fill()
-                        a.color.withAlphaComponent(many ? 0.45 : 1).setStroke()
-                        path.lineWidth = a.isWatch ? (many ? 0.8 : 1.5) : (many ? 1.2 : 2.5)
-                        if a.isWatch && !many { path.setLineDash([6, 4], count: 2, phase: 0) }
+                        if many { continue }           // the outline below draws the edge
+                        a.color.setStroke()
+                        path.lineWidth = a.isWatch ? 1.5 : 2.5
+                        if a.isWatch { path.setLineDash([6, 4], count: 2, phase: 0) }
                     }
                     path.stroke()
                 }
-            }
-
-            // The real SPC watch boxes, in place of the county lists the feed
-            // would otherwise have supplied.
-            for w in spcWatches {
-                var bounds: CGRect = .null
-                for ring in w.rings {
-                    let path = UIBezierPath()
-                    for (i, c) in ring.enumerated() {
-                        let p = snap.point(for: c)
-                        i == 0 ? path.move(to: p) : path.addLine(to: p)
-                    }
-                    path.close()
-                    w.color.withAlphaComponent(0.07).setFill()
-                    path.fill()
-                    w.color.setStroke()
-                    path.lineWidth = 2
-                    path.setLineDash([7, 5], count: 2, phase: 0)
-                    path.stroke()
-                    bounds = bounds.isNull ? path.bounds : bounds.union(path.bounds)
+                guard many, !a.isMarine else { continue }
+                let edge = UIBezierPath()
+                for seg in dissolvedOutline(a.rings) where seg.count == 2 {
+                    edge.move(to: snap.point(for: seg[0]))
+                    edge.addLine(to: snap.point(for: seg[1]))
                 }
-                // Numbered, the way they are referred to on air and in the
-                // discussions. Only when the box is big enough to carry it.
-                guard !w.label.isEmpty, bounds.width > 54, bounds.height > 20,
-                      inFrame(CGPoint(x: bounds.midX, y: bounds.midY), size) else { continue }
-                let text = w.label as NSString
-                let attrs: [NSAttributedString.Key: Any] = [
-                    .font: UIFont.systemFont(ofSize: 7, weight: .heavy),
-                    .foregroundColor: w.color,
-                    .strokeColor: UIColor.black, .strokeWidth: -3.0,
-                ]
-                let sz = text.size(withAttributes: attrs)
-                text.draw(at: CGPoint(x: bounds.midX - sz.width / 2, y: bounds.midY - sz.height / 2),
-                          withAttributes: attrs)
+                edge.lineWidth = a.isWatch ? 1.6 : 2.4
+                a.color.withAlphaComponent(0.95).setStroke()
+                if a.isWatch { edge.setLineDash([6, 4], count: 2, phase: 0) }
+                edge.stroke()
             }
 
             if let d = render?.data, render?.hasEcho == true, let radar = UIImage(data: d) {
