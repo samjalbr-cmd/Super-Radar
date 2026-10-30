@@ -770,7 +770,8 @@
       <div class="set-body">
         <label class="set-cap" for="radarSource">Source</label>
         <select id="radarSource" class="set-field" onchange="setRadarSource(this.value)">
-          <option value="iem">Iowa Mesonet — freshest, tiled, supports the loop</option>
+          <option value="mrms">MRMS — quality controlled, tinted for snow and ice</option>
+          <option value="iem">Iowa Mesonet — tiled, supports the loop</option>
           <option value="noaa">NOAA — smoother, but often 10-20 min behind</option>
         </select>
         <label class="set-cap" for="radarMode">Mode</label>
@@ -1049,7 +1050,7 @@ function initMap(){
   // Order is the order they were registered in. The cheap schedulers are last
   // because they only set timers.
   const MOVE_TASKS = [renderStations, drawIsoLines, renderSurface,
-                      renderFeed, scheduleModelRefresh,
+                      renderFeed, scheduleModelRefresh, scheduleMrmsRadar,
                       scheduleIsobarRefresh, scheduleNoaaRadar, schedulePrecipRefresh,
                       syncAppSettings, scheduleHistoryRefresh, renderLakeTemps,
                       renderUpper, scheduleUpperRefresh, renderReplayMarks,
@@ -1142,7 +1143,149 @@ const NOAA_RADAR = 'https://mapservices.weather.noaa.gov/eventdriven/rest/servic
 // runs badly behind its own clock — sampled at 8, 11, 13 and 20 minutes old in
 // one evening, and its newest slice went backwards between two of those checks.
 // IEM's N0Q composite was 4-5 minutes old across the same window.
-let radarSource = 'iem';         // 'noaa' | 'iem'
+let radarSource = 'mrms';        // 'mrms' | 'noaa' | 'iem'
+
+/* ---------------- MRMS: quality-controlled reflectivity, tinted by type ----
+   Two NOAA GeoServer layers over the same ground, composited here.
+
+   conus_cref_qcd is quality-controlled 1 km composite reflectivity, refreshed
+   about every two minutes. The IEM N0Q tiles it replaces are five-minute, are
+   not quality controlled — so ground clutter and anomalous propagation show up
+   as speckle — and go blocky past zoom 10.
+
+   conus_pcpn_typ is the MRMS precipitation type on the same grid, and it is
+   what makes snow legible: reflectivity alone cannot tell you whether an echo
+   is rain or snow, and in winter that is the only thing you want to know.
+
+   The categories are read off the rendered colours rather than from a decoded
+   field, so they were checked against observations rather than assumed:
+   rgb(4,80,164) is rain, confirmed on 42 of 42 stations reporting rain beneath
+   it and on 89 stations under it whose temperatures ran 41-79F with not one at
+   or below freezing. rgb(200,200,200) is snow, from the one box in the country
+   with a surface snow report in it. Anything unrecognised is left alone, so a
+   category this does not know about still draws as ordinary reflectivity. */
+const MRMS_WMS = 'https://opengeo.ncep.noaa.gov/geoserver/conus/ows';
+const MRMS_REFLECTIVITY = 'conus_cref_qcd';
+const MRMS_PRECIP_TYPE = 'conus_pcpn_typ';
+
+// Keyed "r,g,b" so a pixel is one lookup.
+//
+// Calibrated against the temperature of every station standing under each
+// colour, which separates them cleanly: blue 65F median over 563 stations and
+// red 69F over 17 are warm, cyan 37F over 19 and grey 36F are not. So both of
+// the cold ones are tinted as frozen. Which of those two is snow proper and
+// which is a mix is not settled by this evidence and does not need to be —
+// they are drawn the same. Purple is left as ice on the strength of it being
+// the freezing-rain colour in every NWS palette, on 23 pixels nationally;
+// anything unrecognised is left as ordinary reflectivity.
+const MRMS_TYPE = {
+  '4,80,164':    'rain',
+  '255,50,50':   'rain',    // convective
+  '0,249,0':     'rain',
+  '110,255,255': 'snow',
+  '200,200,200': 'snow',
+  '150,0,150':   'ice',
+};
+
+let mrmsLayer = null, mrmsSeq = 0, mrmsUrls = [];
+
+function mrmsImageUrl(layer, b, w, h){
+  return MRMS_WMS + '?service=WMS&version=1.3.0&request=GetMap' +
+    `&layers=${layer}&crs=EPSG:4326` +
+    `&bbox=${b.getSouth()},${b.getWest()},${b.getNorth()},${b.getEast()}` +
+    `&width=${w}&height=${h}&format=image/png&transparent=true` +
+    `&t=${Math.floor(Date.now() / 120000)}`;      // the products step every 2 minutes
+}
+
+function loadCrossOrigin(url){
+  return new Promise((res, rej) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';          // the service sends Allow-Origin *
+    img.onload = () => res(img);
+    img.onerror = rej;
+    img.src = url;
+  });
+}
+
+async function loadMrmsRadar(){
+  if(radarSource !== 'mrms' || radarMode !== 'national' || !map) return;
+  const seq = ++mrmsSeq;
+  const b = map.getBounds(), size = map.getSize();
+  const w = Math.min(1600, Math.max(320, Math.round(size.x)));
+  const h = Math.min(1600, Math.max(240, Math.round(size.y)));
+  let refl, type;
+  try{
+    [refl, type] = await Promise.all([
+      loadCrossOrigin(mrmsImageUrl(MRMS_REFLECTIVITY, b, w, h)),
+      loadCrossOrigin(mrmsImageUrl(MRMS_PRECIP_TYPE, b, w, h)).catch(() => null),
+    ]);
+  }catch(e){ return; }                       // keep whatever is already drawn
+  if(seq !== mrmsSeq) return;
+
+  const cv = document.createElement('canvas');
+  cv.width = w; cv.height = h;
+  const ctx = cv.getContext('2d', {willReadFrequently: true});
+  ctx.drawImage(refl, 0, 0);
+  const out = ctx.getImageData(0, 0, w, h);
+
+  if(type){
+    const tc = document.createElement('canvas');
+    tc.width = w; tc.height = h;
+    const tctx = tc.getContext('2d', {willReadFrequently: true});
+    tctx.drawImage(type, 0, 0);
+    const t = tctx.getImageData(0, 0, w, h).data;
+    const d = out.data;
+    for(let i = 0; i < d.length; i += 4){
+      if(d[i + 3] === 0 || t[i + 3] === 0) continue;       // no echo, or no type there
+      const kind = MRMS_TYPE[t[i] + ',' + t[i + 1] + ',' + t[i + 2]];
+      if(!kind || kind === 'rain') continue;               // rain keeps the normal ramp
+      // Keep the echo's own brightness, which is what carries intensity, and
+      // move its colour onto a frozen ramp — so a heavy snow band still reads
+      // as heavier than a light one.
+      const lum = (d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114) / 255;
+      if(kind === 'snow'){
+        d[i]     = Math.round(40 + lum * 190);
+        d[i + 1] = Math.round(90 + lum * 150);
+        d[i + 2] = 255;
+      }else{                                               // sleet, freezing rain
+        d[i]     = Math.round(170 + lum * 85);
+        d[i + 1] = Math.round(30 + lum * 60);
+        d[i + 2] = Math.round(140 + lum * 80);
+      }
+    }
+  }
+  ctx.putImageData(out, 0, 0);
+
+  const url = await new Promise(r => cv.toBlob(x => r(x ? URL.createObjectURL(x) : null), 'image/png'));
+  if(!url) return;
+  if(seq !== mrmsSeq){ URL.revokeObjectURL(url); return; }
+  const ov = L.imageOverlay(url, b, {opacity: radarOpacityNow(), pane: 'radarPane',
+    interactive: false, attribution: 'MRMS &copy; NOAA/NSSL'});
+  ov.on('load', () => {
+    if(seq !== mrmsSeq){ map.removeLayer(ov); URL.revokeObjectURL(url); return; }
+    if(mrmsLayer) map.removeLayer(mrmsLayer);
+    mrmsLayer = ov;
+    radarLabel = 'MRMS composite' + (type ? ' \u00b7 precip type' : '');
+    updateRadarStatus(new Date());
+    mrmsUrls.push(url);
+    while(mrmsUrls.length > 2) URL.revokeObjectURL(mrmsUrls.shift());
+  });
+  ov.addTo(map);
+}
+
+function clearMrmsRadar(){
+  mrmsSeq++;
+  if(mrmsLayer){ map.removeLayer(mrmsLayer); mrmsLayer = null; }
+  for(const u of mrmsUrls) URL.revokeObjectURL(u);
+  mrmsUrls = [];
+}
+
+let mrmsTimer = null;
+function scheduleMrmsRadar(){
+  if(radarSource !== 'mrms') return;
+  clearTimeout(mrmsTimer);
+  mrmsTimer = setTimeout(loadMrmsRadar, 500);
+}
 let noaaLayer = null;
 let noaaSeq = 0;
 let noaaTimer = null;
@@ -1211,7 +1354,15 @@ function scheduleNoaaRadar(){
 function setRadarSource(v){
   radarSource = v;
   const loopChk = document.getElementById('radarLoopChk');
-  if(v === 'noaa'){
+  if(v !== 'mrms') clearMrmsRadar();
+  if(v === 'mrms'){
+    // The loop is built on the IEM tile sets, which this source does not use.
+    if(radarLoopOn && loopChk){ loopChk.checked = false; toggleRadarLoop(loopChk); }
+    if(loopChk){ loopChk.disabled = true; loopChk.closest('.set-row').classList.add('disabled'); }
+    clearNoaaRadar();
+    if(radarLayer) radarLayer.setOpacity(0);
+    loadMrmsRadar();
+  }else if(v === 'noaa'){
     if(radarLoopOn && loopChk){ loopChk.checked = false; toggleRadarLoop(loopChk); }
     if(loopChk){ loopChk.disabled = true; loopChk.closest('.set-row').classList.add('disabled'); }
     if(radarLayer) radarLayer.setOpacity(0);
@@ -6357,6 +6508,10 @@ async function boot(){
   // geometries and were taking about half a minute; making the whole app wait
   // on that meant staring at a splash while the map was ready to draw.
   await loadRadar();
+  if(radarSource === 'mrms'){
+    if(radarLayer) radarLayer.setOpacity(0);
+    loadMrmsRadar();
+  }
   document.getElementById('loading').classList.add('hide');
   // Saved preferences first, then the URL, so a link that says "no tracks" wins
   // over what was last left switched on — a shared link should look the way the
@@ -6376,6 +6531,7 @@ async function boot(){
   setTimeout(rebuildTiles, 1500);
   setTimeout(rebuildTiles, 4000);
   setInterval(() => { loadRadar(); refreshRadarFrames(); }, 5 * 60 * 1000);
+  setInterval(loadMrmsRadar, 2 * 60 * 1000);   // the products step every two minutes
   setInterval(loadAlerts, 2 * 60 * 1000);
   setInterval(loadOutlook, 30 * 60 * 1000);
   setInterval(loadMCD, 5 * 60 * 1000);
@@ -6432,7 +6588,7 @@ function prefKey(el){
 // default — which is right, except for someone who never chose the old one and
 // only has it because it was the default at the time. Without this, changing a
 // default reaches new visitors and nobody else.
-const PREFS_VERSION = 2;
+const PREFS_VERSION = 3;
 
 // What to forget at each step, so the new default applies once — keyed by the
 // value the old default had. A stored setting is only discardable when it still
@@ -6442,6 +6598,9 @@ const PREFS_VERSION = 2;
 const PREF_MIGRATIONS = {
   // Upper-air winds shipped off and now default to 500 hPa.
   2: {upperLevel: 'off'},
+  // The radar now defaults to MRMS. Only a stored 'iem' is forgotten, since
+  // that was the old default; anyone who went and chose NOAA keeps it.
+  3: {radarSource: 'iem'},
 };
 
 function saveSettings(){
