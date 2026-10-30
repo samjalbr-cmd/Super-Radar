@@ -1165,8 +1165,19 @@ let radarSource = 'mrms';        // 'mrms' | 'noaa' | 'iem'
    with a surface snow report in it. Anything unrecognised is left alone, so a
    category this does not know about still draws as ordinary reflectivity. */
 const MRMS_WMS = 'https://opengeo.ncep.noaa.gov/geoserver/conus/ows';
-const MRMS_REFLECTIVITY = 'conus_cref_qcd';
+// Base reflectivity, not composite. Composite is the maximum anywhere in the
+// column, so it paints everything aloft as well — over one Pacific Northwest
+// box it covered 101,303 pixels against base reflectivity's 54,288, and the
+// extra is weather that is not reaching the ground.
+const MRMS_REFLECTIVITY = 'conus_bref_qcd';
 const MRMS_PRECIP_TYPE = 'conus_pcpn_typ';
+// How much of the echo with no precipitation type still shows. MRMS flags a
+// type only where it diagnoses precipitation at the surface, so echo without
+// one is cloud, virga, or returns that never arrive: 48% of the composite in
+// that same box, which is the haze that made it hard to see where the rain
+// actually was. Faded rather than dropped, so a developing shower still leaves
+// a trace instead of appearing out of nothing.
+const MRMS_NO_TYPE_ALPHA = 0.3;
 
 // Keyed "r,g,b" so a pixel is one lookup.
 //
@@ -1236,7 +1247,11 @@ async function loadMrmsRadar(){
     const t = tctx.getImageData(0, 0, w, h).data;
     const d = out.data;
     for(let i = 0; i < d.length; i += 4){
-      if(d[i + 3] === 0 || t[i + 3] === 0) continue;       // no echo, or no type there
+      if(d[i + 3] === 0) continue;                         // nothing there at all
+      if(t[i + 3] === 0){                                  // echo, but not precipitation
+        d[i + 3] = Math.round(d[i + 3] * MRMS_NO_TYPE_ALPHA);
+        continue;
+      }
       const kind = MRMS_TYPE[t[i] + ',' + t[i + 1] + ',' + t[i + 2]];
       if(!kind || kind === 'rain') continue;               // rain keeps the normal ramp
       // Keep the echo's own brightness, which is what carries intensity, and
@@ -1265,7 +1280,7 @@ async function loadMrmsRadar(){
     if(seq !== mrmsSeq){ map.removeLayer(ov); URL.revokeObjectURL(url); return; }
     if(mrmsLayer) map.removeLayer(mrmsLayer);
     mrmsLayer = ov;
-    radarLabel = 'MRMS composite' + (type ? ' \u00b7 precip type' : '');
+    radarLabel = 'MRMS base reflectivity' + (type ? ' \u00b7 precip type' : '');
     updateRadarStatus(new Date());
     mrmsUrls.push(url);
     while(mrmsUrls.length > 2) URL.revokeObjectURL(mrmsUrls.shift());
