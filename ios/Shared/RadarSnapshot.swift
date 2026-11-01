@@ -122,7 +122,7 @@ private func dissolvedOutline(_ rings: [[CLLocationCoordinate2D]]) -> [[CLLocati
     return seen.values.filter { $0.n == 1 }.map { [$0.a, $0.b] }
 }
 
-/// The six-hour temperature trace drawn beside a reading.
+/// The day-long temperature trace drawn beside a reading.
 ///
 /// Coloured along its length by the same ramp as everything else on the plot,
 /// so the line is the temperature it is drawing: a cold start that warms up
@@ -135,14 +135,14 @@ private let sparkSize = CGSize(width: 14, height: 5)
 private func drawSpark(_ ctx: CGContext, series: [(t: Date, f: Double)], at origin: CGPoint) {
     guard series.count >= 3 else { return }
     // Thinned to what a twenty-pixel trace can actually show.
-    let maxPts = 9
+    let maxPts = 12
     let stride = max(1, Int((Double(series.count) / Double(maxPts)).rounded(.up)))
     var pts = stride <= 1 ? series : series.enumerated().filter { $0.offset % stride == 0 }.map { $0.element }
     if let last = series.last, pts.last?.t != last.t { pts.append(last) }
     guard pts.count >= 3 else { return }
 
     let lo = pts.map(\.f).min()!, hi = pts.map(\.f).max()!
-    // A steady six hours is a real answer, so a flat trace gets a floor on its
+    // A steady day is a real answer, so a flat trace gets a floor on its
     // range and sits mid-height rather than being amplified into noise.
     let span = max(4.0, hi - lo), mid = (hi + lo) / 2
     let bot = mid - span / 2, top = mid + span / 2
@@ -569,7 +569,7 @@ enum RadarSnapshot {
             ? await StormFeed.stations(states: states, sw: sw, ne: ne) : []
         let temps: [StormFeed.Station] = wantTemps ? observed : []
         // Only when there are readings to hang a trace on, so a map with
-        // temperatures switched off does not pay for six hours of them.
+        // temperatures switched off does not pay for a day of them.
         let sparks: [String: [(t: Date, f: Double)]] = (showSpark && !temps.isEmpty)
             ? await StormFeed.tempHistory(states: states) : [:]
         // What stations have measured reads as a report on the map, so it joins

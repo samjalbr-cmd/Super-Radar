@@ -29,7 +29,7 @@ struct WatchLocation: Codable {
     /// indistinguishable, and switching the layer off would spring back to 500
     /// on the next decode.
     var upperLevel: String? = "500"
-    /// Six-hour temperature trace beside each reading.
+    /// Day-long temperature trace beside each reading.
     var showSpark: Bool = true
     var zoom: RadarZoom = .county
     /// Two-letter state, resolved by the app. The national station feed is
@@ -789,7 +789,7 @@ enum StormFeed {
         let lat: Double
         let lon: Double
         let tempF: Double
-        /// The ASOS identifier, which is how the six-hour history joins to it.
+        /// The ASOS identifier, which is how the history joins to it.
         var id: String? = nil
         var dewF: Double? = nil
         var mslp: Double? = nil
@@ -805,16 +805,16 @@ enum StormFeed {
         var snowIn: Double? = nil
     }
 
-    /// Six hours of temperature per station, for the trace drawn beside each
+    /// A day of temperature per station, for the trace drawn beside each
     /// reading.
     ///
     /// A number alone does not say which way it is going — 48 falling behind a
     /// front reads nothing like 48 climbing through the morning. Its own
     /// request rather than the currents feed, which carries only the latest
-    /// observation: six hours of one field is about 120 KB a state and roughly
-    /// eighteen samples a station, which is enough shape for a few pixels.
+    /// observation: a day of one field is about 300 KB a state and roughly
+    /// eighty samples a station, which is ample shape for a few pixels.
     static func tempHistory(states: [String]) async -> [String: [(t: Date, f: Double)]] {
-        let now = Date(), then = now.addingTimeInterval(-6 * 3600)
+        let now = Date(), then = now.addingTimeInterval(-24 * 3600)
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = TimeZone(identifier: "UTC")!
         func part(_ i: Int, _ d: Date) -> String {

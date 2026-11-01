@@ -191,7 +191,7 @@
   body.launcher .leaflet-control-zoom{ display:none !important; }
   /* One caption, because a replay with no clock is just confusing footage. */
   /* The trace sits beside the reading, baseline-aligned, so the pair reads as
-     one thing: the number now and the six hours behind it. */
+     one thing: the number now and the day behind it. */
   .stn-wrap{ display:inline-flex; align-items:center; gap:3px; white-space:nowrap; }
   .stn-spark{ display:block; overflow:visible; opacity:0.95;
               filter:drop-shadow(0 0 2px #000) drop-shadow(0 0 1px #000); }
@@ -828,7 +828,7 @@
       <div class="set-body">
         <label class="set-row"><input type="checkbox" id="stationsChk" checked onchange="toggleStations(this)"><span class="sw-t"></span>Live stations (METAR)</label>
         <label class="set-row"><input type="checkbox" id="lakeChk" checked onchange="toggleLakeTemps(this)"><span class="sw-t"></span>Lake water temperature</label>
-        <label class="set-row"><input type="checkbox" id="sparkChk" checked onchange="toggleSpark(this)"><span class="sw-t"></span>6-hour temp trace</label>
+        <label class="set-row"><input type="checkbox" id="sparkChk" checked onchange="toggleSpark(this)"><span class="sw-t"></span>24-hour temp trace</label>
         <label class="set-row" style="gap:8px">
           <span style="flex:1">Upper-air wind</span>
           <select id="upperLevel" onchange="setUpperLevel(this.value)" style="flex:0 0 auto">
@@ -3138,7 +3138,7 @@ function replayStatesFor(bounds){
 }
 
 // How far back the station history reaches: the scrubber's whole day, or for
-// the launcher just its loop plus the six hours each sparkline looks back.
+// the launcher just its loop plus the day each sparkline looks back.
 function historyHours(){
   return LAUNCHER ? Math.min(REPLAY_HOURS, LAUNCHER_HOURS + TEMP_HIST_HOURS + 1) : REPLAY_HOURS;
 }
@@ -3195,7 +3195,7 @@ async function loadHistory(){
 // The archive interleaves two streams and this is the whole reason the stations
 // looked empty. Five-minute observations carry wind and sky but no temperature;
 // the full METAR with temperature, dew point and pressure comes about hourly. So
-// a station has eighty rows in six hours and only a dozen with a temperature,
+// a station has eighty rows in a few hours and only a dozen with a temperature,
 // and taking the newest row at a scrub time gave a blank plot six times out of
 // seven.
 //
@@ -4350,7 +4350,7 @@ function stationTieBreak(id){
   return (stationTieCache[id] = (h % 1000) / 1000);
 }
 
-/* ---------------- Six-hour temperature sparkline ----------------
+/* ---------------- Day-long temperature sparkline ----------------
    A trace beside each station, so a number becomes a direction: 48 on the way
    down off a front reads nothing like 48 climbing through the morning, and the
    map could not tell you which it was.
@@ -4362,10 +4362,10 @@ function stationTieBreak(id){
    Its own fetch rather than the replay history: that one pulls 24 hours of
    seven fields per state and only runs while scrubbing. Six hours of one field
    is 123 KB a state and about 18 samples a station, which is enough shape. */
-const TEMP_HIST_HOURS = 6;
+const TEMP_HIST_HOURS = 24;
 // Small enough to sit beside a reading without competing with it — the trace
 // is context for the number, not a chart in its own right.
-const SPARK_W = 18, SPARK_H = 7, SPARK_MAX_PTS = 10;
+const SPARK_W = 18, SPARK_H = 7, SPARK_MAX_PTS = 14;
 let tempHist = {};                 // station id -> [{t, f}] ascending
 let tempHistStates = '', tempHistAt = 0, tempHistLoading = false, tempHistTimer = null;
 // Off while the launcher loops. A gradient-stroked SVG per station, redrawn as
@@ -4427,14 +4427,18 @@ function scheduleTempHistory(){
   tempHistTimer = setTimeout(loadTempHistory, 700);     // debounce panning
 }
 
-/* Which six hours the trace covers: the six before whatever moment the map is
-   showing, not the six before now.
+/* Which day the trace covers: the twenty-four hours before whatever moment the
+   map is showing, not the day before now.
+
+   Scrubbed to the far end of the window the trace runs short, because the
+   history itself only reaches back a day — it draws what there is rather than
+   pretending otherwise.
 
    Scrubbed back to 3am, the reading beside it is 3am's — a trace still running
    up to the present would be describing a future the rest of the map has not
    reached. While replaying the samples come from the 24-hour history already
    loaded for the scrubber, so there is no second fetch; live, it is the
-   six-hour feed. */
+   day-long feed. */
 function sparkSeries(id){
   if(replayActive()){
     const rows = histRows && histRows[id];
@@ -4456,7 +4460,7 @@ function tempSpark(id){
   if(!sparkOn || !id) return '';
   const h = sparkSeries(id);
   if(!h || h.length < 3) return '';
-  // Thinned to keep the markup small — a 26px trace cannot show 19 points.
+  // Thinned to keep the markup small — an 18px trace cannot show eighty points.
   // By fixed slots of clock time rather than every nth sample: in replay the
   // window slides each tick, and an index stride picked a different subset each
   // time, so every trace on the map was redrawn every tick for no new data.
@@ -4470,7 +4474,7 @@ function tempSpark(id){
   if(pts.length < 3) return '';
   let lo = Infinity, hi = -Infinity;
   for(const q of pts){ if(q.f < lo) lo = q.f; if(q.f > hi) hi = q.f; }
-  // A steady six hours is a real answer, so a flat trace gets a floor on its
+  // A steady day is a real answer, so a flat trace gets a floor on its
   // range and sits mid-height rather than being amplified into noise.
   const span = Math.max(4, hi - lo), mid = (hi + lo) / 2;
   const bot = mid - span / 2, top = mid + span / 2;
