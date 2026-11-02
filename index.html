@@ -7252,34 +7252,22 @@ function renderDashLake(){
   if(!L){ host.innerHTML = '<div class="dash-empty">Waiting on buoys and the column…</div>'; return; }
   if(L.tooFar){ host.innerHTML = '<div class="dash-empty">Not near the Great Lakes.</div>'; return; }
 
-  // --- plan view: where the air has been ---
-  const W = 500, Hh = 178, cx = 150, cy = 84, R = 72;
-  const kmToPx = R / LAKE_FETCH_MAX_KM;
-  const pol = (brg, km) => {
-    const a = (brg - 90) * Math.PI / 180;
-    return [cx + Math.cos(a) * km * kmToPx, cy + Math.sin(a) * km * kmToPx];
-  };
-  // The upwind cone, which is the ground the air crossed to get here.
-  const a1 = (L.d850 - LAKE_CONE_DEG - 90) * Math.PI / 180;
-  const a2 = (L.d850 + LAKE_CONE_DEG - 90) * Math.PI / 180;
-  const cone = `<path d="M ${cx} ${cy} L ${cx + Math.cos(a1) * R} ${cy + Math.sin(a1) * R} ` +
-    `A ${R} ${R} 0 0 1 ${cx + Math.cos(a2) * R} ${cy + Math.sin(a2) * R} Z" ` +
-    `fill="${L.inCone.length ? 'rgba(159,216,255,0.13)' : 'rgba(255,255,255,0.05)'}" ` +
-    `stroke="${L.tone}" stroke-width="1" stroke-dasharray="3 3"/>`;
-  // Buoys, coloured by water temperature, so the warm water reads at a glance.
-  const dots = L.all.map(r => {
-    const [x, y] = pol(r.br, Math.min(r.km, LAKE_FETCH_MAX_KM));
-    const lit = r.off <= LAKE_CONE_DEG && r.km <= LAKE_FETCH_MAX_KM;
-    return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${lit ? 3.4 : 2}" ` +
-      `fill="${tempColor(r.s.waterF)}" opacity="${lit ? 1 : 0.35}"/>`;
-  }).join('');
-  // The wind arrow points the way the air is going: from the lake onto us.
-  const [hx, hy] = pol(L.d850, LAKE_FETCH_MAX_KM * 0.92);
-  const arrow = `<line x1="${hx.toFixed(1)}" y1="${hy.toFixed(1)}" x2="${cx}" y2="${cy}" ` +
-    `stroke="${L.tone}" stroke-width="2.4" marker-end="url(#leArrow)"/>`;
-  const rings = [0.33, 0.66, 1].map(f =>
-    `<circle cx="${cx}" cy="${cy}" r="${(R * f).toFixed(1)}" fill="none" ` +
-    `stroke="rgba(255,255,255,0.09)" stroke-width="1"/>`).join('');
+  // --- a side-on view of what lake effect actually is ---
+  //
+  // This replaced a polar plot of buoys at their true bearing and range. That
+  // was accurate and unreadable: it looked like a radar scope, had no north on
+  // it, and showed where the buoys were without ever showing where the water
+  // was — so the one idea the card exists to convey, cold air crossing warm
+  // water and snowing on the far shore, was the one thing you could not see.
+  //
+  // This is the textbook cross section instead. Wind enters from the left at
+  // its real temperature, crosses the measured fetch of water, and arrives on
+  // your shore. It is not to scale and does not pretend to be; it is the
+  // mechanism, labelled with today's numbers.
+  const W = 500, Hh = 188;
+  const dx = 14, dy = 30, dw = 232, dh = 104;     // the diagram's own box
+  const seaY = dy + dh * 0.56, landW = 54;
+  const lit = L.inCone.length > 0;
 
   // Plain words for what the turning does to the snow, not the jargon for it.
   const shearTxt = L.shear == null ? 'unknown'
@@ -7294,6 +7282,44 @@ function renderDashLake(){
   const t850F = L.t850 * 9 / 5 + 32;
   const COMPASS = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
   const from = COMPASS[Math.round(L.d850 / 22.5) % 16];
+
+  // Sky, water, your shore. Everything sized off the box above.
+  const sky = `<rect x="${dx}" y="${dy}" width="${dw}" height="${seaY - dy}" rx="3" ` +
+    `fill="rgba(120,160,210,0.07)"/>`;
+  const sea = `<rect x="${dx}" y="${seaY}" width="${dw - landW}" height="${dy + dh - seaY}" ` +
+    `fill="rgba(60,130,190,0.42)"/>` +
+    `<rect x="${dx}" y="${seaY}" width="${dw - landW}" height="3" fill="rgba(150,210,255,0.5)"/>`;
+  const land = `<rect x="${dx + dw - landW}" y="${seaY - 7}" width="${landW}" ` +
+    `height="${dy + dh - seaY + 7}" rx="2" fill="rgba(255,255,255,0.13)"/>`;
+  // Wind arrows at the height the temperature is measured at, entering from
+  // the upwind side.
+  let wind = '';
+  for(const fy of [0.40, 0.64]){      // clear of the label above them
+    const y = dy + (seaY - dy) * fy;
+    wind += `<line x1="${dx + 4}" y1="${y.toFixed(1)}" x2="${(dx + dw - landW - 10).toFixed(1)}" ` +
+            `y2="${y.toFixed(1)}" stroke="${L.tone}" stroke-width="2" ` +
+            `marker-end="url(#leArrow)" opacity="0.9"/>`;
+  }
+  // Snow only when the ingredients are actually there, so the picture never
+  // claims weather that is not coming.
+  let snow = '';
+  if(lit && L.dT >= LAKE_DT_MARGINAL){
+    for(let k = 0; k < 9; k++){
+      const x = dx + dw - landW - 66 + (k % 5) * 15;
+      const y = seaY - 24 + Math.floor(k / 5) * 11 + (k % 2) * 4;
+      snow += `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" font-size="9" fill="#E8F4FF" ` +
+              `opacity="0.85" font-family="monospace">*</text>`;
+    }
+  }
+  // The fetch, drawn as the span it actually is.
+  const fy2 = dy + dh + 11;
+  const fetchBar = lit
+    ? `<line x1="${dx}" y1="${fy2}" x2="${(dx + dw - landW).toFixed(1)}" y2="${fy2}" ` +
+      `stroke="#8A93A6" stroke-width="1"/>` +
+      `<line x1="${dx}" y1="${fy2 - 3}" x2="${dx}" y2="${fy2 + 3}" stroke="#8A93A6"/>` +
+      `<line x1="${(dx + dw - landW).toFixed(1)}" y1="${fy2 - 3}" ` +
+      `x2="${(dx + dw - landW).toFixed(1)}" y2="${fy2 + 3}" stroke="#8A93A6"/>`
+    : '';
 
   // --- the difference that decides it ---
   const bx = 268, bw = 214, by = 34, bh = 15;
@@ -7316,23 +7342,22 @@ function renderDashLake(){
     `<svg width="${W}" height="${Hh}" viewBox="0 0 ${W} ${Hh}">` +
     `<defs><marker id="leArrow" markerWidth="7" markerHeight="7" refX="5.5" refY="3" orient="auto">` +
     `<path d="M0,0 L6,3 L0,6 z" fill="${L.tone}"/></marker></defs>` +
-    rings + cone + dots + arrow +
-    `<circle cx="${cx}" cy="${cy}" r="3.6" fill="#F5F3EC"/>` +
-    txt(cx, cy + 86, `wind from the ${from}`, 10, '#8A93A6', 'middle') +
+    sky + sea + land + wind + snow + fetchBar +
+    txt(dx + 6, dy + 13, `air from the ${from}, ${Math.round(t850F)}°F`, 10, '#C8D2E0') +
+    txt(dx + 8, seaY + 20, `lake ${Math.round(L.waterF)}°F`, 11, '#E8F4FF') +
+    txt(dx + dw - landW / 2, seaY + 20, `you`, 9, '#C8D2E0', 'middle') +
+    txt(dx + (dw - landW) / 2, fy2 + 13,
+        lit ? `${Math.round(L.fetchKm)} km of water` : 'no water upwind', 9, '#8A93A6', 'middle') +
     bar +
     txt(bx, by + 30, `${Math.round(dTF)}°F warmer than the air`, 13, '#F5F3EC') +
-    txt(bx, by + 50, `lake ${Math.round(L.waterF)}°F · air aloft ${Math.round(t850F)}°F`,
-        11, '#8A93A6') +
-    txt(bx, by + 68, `wind turns ${shearTxt}`, 11, '#8A93A6') +
-    txt(bx, by + 86, `${L.inCone.length ? 'crossed ≥' + Math.round(L.fetchKm) + ' km of water'
-                                        : 'no water upwind'}`, 11, '#8A93A6') +
-    txt(bx, by + 112, L.verdict.toUpperCase(), 15, L.tone) +
+    txt(bx, by + 50, `wind turns ${shearTxt}`, 11, '#8A93A6') +
+    txt(bx, by + 80, L.verdict.toUpperCase(), 15, L.tone) +
     `</svg>` +
-    `<div class="dash-sub">Lake-effect snow needs cold air crossing warm water. The bar is ` +
-    `how much warmer the lake is than the air a mile up — about 23°F is the floor for ` +
-    `bands. Left: you are at the centre, the wedge is where the wind is coming from, and ` +
-    `the dots are buoys (lit ones are upwind). Rings 87, 173, 260 km. Fetch is a lower ` +
-    `bound from those buoys, not a shoreline measurement.</div>`;
+    `<div class="dash-sub">Cold air crosses warm water, picks up heat and moisture, and ` +
+    `drops it as snow on the far shore — that is the picture on the left, with today's ` +
+    `numbers on it. The more the lake beats the air, the harder it snows; about 23°F is ` +
+    `the floor. The fetch is how far the air travelled over water, measured from the ` +
+    `upwind buoys, so it is a lower bound rather than a shoreline distance.</div>`;
 }
 
 /* ---------------- NWS forecast, for the dashboard ----------------
