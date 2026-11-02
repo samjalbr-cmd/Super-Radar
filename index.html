@@ -873,6 +873,7 @@
 <div id="dashRail">
   <div class="dash-card"><h3>Now</h3><div id="dashNow"></div></div>
   <div class="dash-card"><h3>Air aloft &mdash; next 24 h</h3><div id="dashSound"></div></div>
+  <div class="dash-card"><h3>Roads &mdash; next 18 h</h3><div id="dashRoad"></div></div>
   <div class="dash-card"><h3>Convection</h3><div id="dashConv"></div></div>
   <div class="dash-card"><h3>Lake effect</h3><div id="dashLake"></div></div>
   <div class="dash-card"><h3>Next 48 h &mdash; NWS</h3><div id="dashFc"></div></div>
@@ -6625,6 +6626,151 @@ function soundingInto(host, big){
 
    Every one of them is a toggle, because on a remote you cannot see which
    state you are in before you press. */
+/* ---------------- Road conditions ----------------
+   The question most mornings between November and April, and one no forecast
+   answers directly: will the roads be wet, slushy, snow covered or icy, and
+   when does it change.
+
+   Built from the NWS hourly forecast already fetched for the meteogram —
+   temperature, humidity, chance of precipitation and the worded type — with
+   the nearest station's present weather standing in for the current hour,
+   because what is falling now is observed rather than predicted.
+
+   Wet bulb rather than air temperature decides whether falling snow survives
+   to the ground: dry air cools as precipitation evaporates into it, and snow
+   reaches the surface at air temperatures several degrees above freezing when
+   the air is dry enough. Stull's approximation is close enough well inside a
+   degree over the range that matters here. */
+const ROAD_STATE = {
+  dry:   {label: 'Dry',           color: '#3A4455'},
+  wet:   {label: 'Wet',           color: '#4FA3D1'},
+  slush: {label: 'Slushy',        color: '#9FD8FF'},
+  snow:  {label: 'Snow covered',  color: '#E8F4FF'},
+  ice:   {label: 'Icy',           color: '#C77DFF'},
+  frost: {label: 'Frost likely',  color: '#7FE3D4'},
+};
+
+// Stull 2011, in Celsius.
+function wetBulbC(tC, rh){
+  if(tC == null || rh == null) return null;
+  const r = Math.max(1, Math.min(100, rh));
+  return tC * Math.atan(0.151977 * Math.sqrt(r + 8.313659))
+       + Math.atan(tC + r) - Math.atan(r - 1.676331)
+       + 0.00391838 * Math.pow(r, 1.5) * Math.atan(0.023101 * r)
+       - 4.686035;
+}
+
+function roadStateFor(tF, rh, pop, text){
+  const s = (text || '').toLowerCase();
+  const wbC = wetBulbC((tF - 32) * 5 / 9, rh);
+  const wbF = wbC == null ? tF : wbC * 9 / 5 + 32;
+  const wet = (pop || 0) >= 25 || /rain|snow|drizzle|shower|sleet|freezing|wintry|ice/.test(s);
+  if(!wet){
+    // Clear and cooling into a damp night is how a dry road turns greasy.
+    if(tF <= 34 && rh != null && rh >= 88) return 'frost';
+    return 'dry';
+  }
+  if(/freezing|ice|sleet|wintry/.test(s)) return 'ice';
+  if(/snow|flurr/.test(s)) return wbF <= 30 ? 'snow' : 'slush';
+  // Liquid falling onto a surface at or below freezing is the worst case there
+  // is, and the forecast text will not say so.
+  if(tF <= 32) return 'ice';
+  return wbF <= 33 ? 'slush' : 'wet';
+}
+
+// What the nearest station is actually reporting, for the hour we are in.
+function roadObserved(){
+  const hit = dashStation();
+  if(!hit) return null;
+  let wx = hit.s.p.wxcodes;
+  if(Array.isArray(wx)) wx = wx.join(' ');
+  if(!wx) return null;
+  const t = hit.s.p.tmpf;
+  if(/FZ|PL|IP|GS/.test(wx)) return 'ice';
+  if(/SN|SG/.test(wx)) return t != null && t <= 30 ? 'snow' : 'slush';
+  if(/RA|DZ/.test(wx)) return t != null && t <= 32 ? 'ice' : 'wet';
+  return null;
+}
+
+function renderDashRoad(){
+  const host = document.getElementById('dashRoad');
+  if(!host) return;
+  const H = (nwsFc && nwsFc.hourly) || [];
+  if(H.length < 6){ host.innerHTML = '<div class="dash-empty">Forecast loading…</div>'; return; }
+  const n = Math.min(18, H.length);
+  const P = H.slice(0, n);
+  const obs = roadObserved();
+
+  const rows = P.map((p, k) => {
+    const rh = p.relativeHumidity?.value;
+    const st = (k === 0 && obs) ? obs
+      : roadStateFor(p.temperature, rh, p.probabilityOfPrecipitation?.value, p.shortForecast);
+    return {t: p.temperature, rh, st, time: p.startTime, night: !p.isDaytime};
+  });
+
+  const W = 500, Hh = 158, padL = 8, padR = 8, padT = 46, ribbonH = 30;
+  const pw = W - padL - padR, cw = pw / n;
+  // The ribbon: one block an hour, so a change of state is a visible edge.
+  let ribbon = '';
+  rows.forEach((r, k) => {
+    ribbon += `<rect x="${(padL + k * cw).toFixed(1)}" y="${padT}" width="${(cw + 0.5).toFixed(1)}" ` +
+              `height="${ribbonH}" fill="${ROAD_STATE[r.st].color}" ` +
+              `opacity="${r.st === 'dry' ? 0.55 : 0.92}"/>`;
+  });
+  // Temperature over the top, with freezing marked, because the crossing is
+  // the moment that matters.
+  const lo = Math.min(20, ...rows.map(r => r.t)) - 2;
+  const hi = Math.max(40, ...rows.map(r => r.t)) + 2;
+  const ty = v => padT + ribbonH + 8 + (1 - (v - lo) / (hi - lo)) * 44;
+  let tline = '';
+  rows.forEach((r, k) => {
+    if(!k) return;
+    tline += `<line x1="${(padL + (k - 0.5) * cw).toFixed(1)}" y1="${ty(rows[k-1].t).toFixed(1)}" ` +
+             `x2="${(padL + (k + 0.5) * cw).toFixed(1)}" y2="${ty(r.t).toFixed(1)}" ` +
+             `stroke="${tempColor(r.t)}" stroke-width="2.2" stroke-linecap="round"/>`;
+  });
+  const frz = (lo <= 32 && hi >= 32)
+    ? `<line x1="${padL}" y1="${ty(32).toFixed(1)}" x2="${W - padR}" y2="${ty(32).toFixed(1)}" ` +
+      `stroke="#F5F3EC" stroke-width="1" stroke-dasharray="4 3" opacity="0.65"/>` +
+      `<text x="${W - padR}" y="${(ty(32) - 3).toFixed(1)}" text-anchor="end" font-size="9" ` +
+      `fill="#8A93A6" font-family="monospace">32°</text>` : '';
+  let hours = '';
+  for(let k = 0; k < n; k += 3){
+    const d = new Date(rows[k].time);
+    hours += `<text x="${(padL + (k + 0.5) * cw).toFixed(1)}" y="${padT - 6}" text-anchor="middle" ` +
+             `font-size="9" fill="#8A93A6" font-family="monospace">` +
+             `${d.toLocaleTimeString([], {hour: 'numeric'}).replace(' ', '')}</text>`;
+  }
+
+  // When it next changes, which is the thing worth knowing in advance.
+  const now = rows[0].st;
+  let change = null;
+  for(let k = 1; k < rows.length; k++){
+    if(rows[k].st !== now){ change = rows[k]; break; }
+  }
+  const changeTxt = change
+    ? `${ROAD_STATE[change.st].label.toLowerCase()} from ` +
+      new Date(change.time).toLocaleTimeString([], {hour: 'numeric'}).replace(' ', '')
+    : 'no change expected';
+  const hit = dashStation();
+  const wb = hit ? wetBulbC((hit.s.p.tmpf - 32) * 5 / 9, hit.s.p.relh) : null;
+
+  host.innerHTML =
+    `<svg width="${W}" height="${Hh}" viewBox="0 0 ${W} ${Hh}">` +
+    `<text x="${padL}" y="24" font-size="19" fill="${ROAD_STATE[now].color}" ` +
+    `font-family="monospace">${ROAD_STATE[now].label.toUpperCase()}</text>` +
+    `<text x="${W - padR}" y="24" text-anchor="end" font-size="11" fill="#8A93A6" ` +
+    `font-family="monospace">${changeTxt}</text>` +
+    hours + ribbon + frz + tline + `</svg>` +
+    dashRow('Air', hit && hit.s.p.tmpf != null ? Math.round(hit.s.p.tmpf) + '°F' : '—',
+            obs ? 'observed now' : '') +
+    (wb != null ? dashRow('Wet bulb', Math.round(wb * 9 / 5 + 32) + '°F',
+                          'what snow actually feels') : '') +
+    `<div class="dash-sub">Each block is an hour of road state; the line is air temperature ` +
+    `against freezing. Wet bulb decides whether snow survives the fall, so it can be ` +
+    `snowing onto wet roads above 32°F, or sticking below it.</div>`;
+}
+
 /* ---------------- Convection ----------------
    The summer counterpart to the lake card, and the same idea: draw the
    ingredients rather than tabulate them.
@@ -7511,6 +7657,7 @@ function renderDashLightning(){
 function renderDash(){
   if(!dashOn()) return;
   renderDashNow();
+  renderDashRoad();
   renderDashConvection();
   renderDashLake();
   renderDashForecast();
