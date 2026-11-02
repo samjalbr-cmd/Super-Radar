@@ -1211,7 +1211,7 @@ function initMap(){
   const MOVE_TASKS = [renderStations, drawIsoLines, renderSurface,
                       renderFeed, scheduleModelRefresh, scheduleMrmsRadar,
                       scheduleSounding, renderDash, scheduleNwsForecast,
-                      scheduleConvective,
+                      scheduleConvective, scheduleRwis,
                       scheduleIsobarRefresh, scheduleNoaaRadar, schedulePrecipRefresh,
                       syncAppSettings, scheduleHistoryRefresh, renderLakeTemps,
                       renderUpper, scheduleUpperRefresh, renderReplayMarks,
@@ -6641,6 +6641,76 @@ function soundingInto(host, big){
    reaches the surface at air temperatures several degrees above freezing when
    the air is dry enough. Stull's approximation is close enough well inside a
    degree over the range that matters here. */
+/* Road sensors. State transport departments run them in the pavement itself,
+   and IEM carries them on the same feed as everything else here.
+
+   This is the one thing the card could not reason its way to: pavement
+   temperature is not air temperature. Measured across Michigan it runs a
+   median 4F warmer than the air and ranges from 12 below to 39 above, because
+   asphalt holds the day's sun and sheds heat to a clear sky at night. A road
+   can be freezing while the air is comfortably above it, and the other way
+   round.
+
+   Two things come back. The sensor's own surface classification, which beats
+   any inference for right now; and the pavement-minus-air difference, which is
+   applied to the forecast hours so the rest of the ribbon is about the road
+   rather than about the air above it. Coverage is good where it matters —
+   Michigan has 119 sites reporting pavement temperature, Ohio 90, Indiana 30;
+   Wisconsin has effectively none, so the card falls back to air temperature
+   there and says so. */
+let rwisSites = [], rwisAt = 0, rwisLoading = false, rwisStates = '';
+
+// The vocabulary seen in the warm season is Dry, Moist, Wet and chemically
+// treated; the winter terms are mapped too, and anything unrecognised falls
+// through to the temperature logic rather than guessing.
+function rwisCondState(s){
+  const v = (s || '').toLowerCase();
+  if(!v) return null;
+  if(/ice|icy|frost|black/.test(v)) return 'ice';
+  if(/snow|slush/.test(v)) return /slush/.test(v) ? 'slush' : 'snow';
+  if(/wet|moist|damp|chemically/.test(v)) return 'wet';
+  if(/dry/.test(v)) return 'dry';
+  return null;
+}
+
+async function loadRwis(){
+  if(!map || rwisLoading) return;
+  const states = replayStatesFor(map.getBounds()).slice(0, 3);
+  const key = states.join(',');
+  if(key === rwisStates && Date.now() - rwisAt < 10 * 60e3) return;
+  if(!states.length) return;
+  rwisLoading = true;
+  const out = [];
+  for(const st of states){
+    try{
+      const d = await (await fetch(
+        `https://mesonet.agron.iastate.edu/api/1/currents.geojson?network=${st}_RWIS`)).json();
+      for(const f of (d.features || [])){
+        const p = f.properties, c = f.geometry && f.geometry.coordinates;
+        if(!c || p.tsf0 == null) continue;          // no pavement reading, no use here
+        out.push({lat: c[1], lon: c[0], name: (p.name || p.station || '').trim(),
+                  pave: p.tsf0, air: p.tmpf, cond: p.scond0});
+      }
+    }catch(e){ /* a state without sensors simply contributes none */ }
+    await new Promise(r => setTimeout(r, 200));
+  }
+  rwisSites = out; rwisStates = key; rwisAt = Date.now();
+  rwisLoading = false;
+  renderDash();
+}
+
+// The nearest sensor worth trusting: close enough to be the same weather.
+function nearestRwis(){
+  if(!map || !rwisSites.length) return null;
+  const c = map.getCenter();
+  let best = null, bd = Infinity;
+  for(const s of rwisSites){
+    const d = haversineKm(c.lat, c.lng, s.lat, s.lon);
+    if(d < bd){ bd = d; best = s; }
+  }
+  return best && bd <= 120 ? {s: best, km: bd} : null;
+}
+
 const ROAD_STATE = {
   dry:   {label: 'Dry',           color: '#3A4455'},
   wet:   {label: 'Wet',           color: '#4FA3D1'},
@@ -6660,22 +6730,25 @@ function wetBulbC(tC, rh){
        - 4.686035;
 }
 
-function roadStateFor(tF, rh, pop, text){
+function roadStateFor(tF, rh, pop, text, paveF){
+  // Where a sensor is reporting, the surface temperature is what decides
+  // whether anything freezes; the air only decides what falls out of it.
+  const surf = paveF == null ? tF : paveF;
   const s = (text || '').toLowerCase();
   const wbC = wetBulbC((tF - 32) * 5 / 9, rh);
   const wbF = wbC == null ? tF : wbC * 9 / 5 + 32;
   const wet = (pop || 0) >= 25 || /rain|snow|drizzle|shower|sleet|freezing|wintry|ice/.test(s);
   if(!wet){
     // Clear and cooling into a damp night is how a dry road turns greasy.
-    if(tF <= 34 && rh != null && rh >= 88) return 'frost';
+    if(surf <= 34 && rh != null && rh >= 88) return 'frost';
     return 'dry';
   }
   if(/freezing|ice|sleet|wintry/.test(s)) return 'ice';
-  if(/snow|flurr/.test(s)) return wbF <= 30 ? 'snow' : 'slush';
+  if(/snow|flurr/.test(s)) return (wbF <= 30 && surf <= 34) ? 'snow' : 'slush';
   // Liquid falling onto a surface at or below freezing is the worst case there
   // is, and the forecast text will not say so.
-  if(tF <= 32) return 'ice';
-  return wbF <= 33 ? 'slush' : 'wet';
+  if(surf <= 32) return 'ice';
+  return (wbF <= 33 && surf <= 34) ? 'slush' : 'wet';
 }
 
 // What the nearest station is actually reporting, for the hour we are in.
@@ -6700,12 +6773,19 @@ function renderDashRoad(){
   const n = Math.min(18, H.length);
   const P = H.slice(0, n);
   const obs = roadObserved();
+  const rw = nearestRwis();
+  // The sensor's own reading of the road beats anything inferred from the air.
+  const sensorNow = rw ? rwisCondState(rw.s.cond) : null;
+  // Its pavement-minus-air difference carries forward, so the rest of the
+  // ribbon is about the road rather than about the air above it.
+  const offset = (rw && rw.s.air != null) ? rw.s.pave - rw.s.air : null;
 
   const rows = P.map((p, k) => {
     const rh = p.relativeHumidity?.value;
-    const st = (k === 0 && obs) ? obs
-      : roadStateFor(p.temperature, rh, p.probabilityOfPrecipitation?.value, p.shortForecast);
-    return {t: p.temperature, rh, st, time: p.startTime, night: !p.isDaytime};
+    const pave = offset == null ? null : p.temperature + offset;
+    const st = (k === 0 && (sensorNow || obs)) ? (sensorNow || obs)
+      : roadStateFor(p.temperature, rh, p.probabilityOfPrecipitation?.value, p.shortForecast, pave);
+    return {t: p.temperature, pave, rh, st, time: p.startTime, night: !p.isDaytime};
   });
 
   const W = 500, Hh = 158, padL = 8, padR = 8, padT = 46, ribbonH = 30;
@@ -6719,8 +6799,9 @@ function renderDashRoad(){
   });
   // Temperature over the top, with freezing marked, because the crossing is
   // the moment that matters.
-  const lo = Math.min(20, ...rows.map(r => r.t)) - 2;
-  const hi = Math.max(40, ...rows.map(r => r.t)) + 2;
+  const allT = rows.map(r => r.t).concat(rows.map(r => r.pave).filter(v => v != null));
+  const lo = Math.min(20, ...allT) - 2;
+  const hi = Math.max(40, ...allT) + 2;
   const ty = v => padT + ribbonH + 8 + (1 - (v - lo) / (hi - lo)) * 44;
   let tline = '';
   rows.forEach((r, k) => {
@@ -6729,6 +6810,16 @@ function renderDashRoad(){
              `x2="${(padL + (k + 0.5) * cw).toFixed(1)}" y2="${ty(r.t).toFixed(1)}" ` +
              `stroke="${tempColor(r.t)}" stroke-width="2.2" stroke-linecap="round"/>`;
   });
+  // Drawn under the air line and dimmer, so the gap between them is the story.
+  let pline = '';
+  if(offset != null){
+    rows.forEach((r, k) => {
+      if(!k || r.pave == null || rows[k-1].pave == null) return;
+      pline += `<line x1="${(padL + (k - 0.5) * cw).toFixed(1)}" y1="${ty(rows[k-1].pave).toFixed(1)}" ` +
+               `x2="${(padL + (k + 0.5) * cw).toFixed(1)}" y2="${ty(r.pave).toFixed(1)}" ` +
+               `stroke="#8A93A6" stroke-width="1.6" stroke-dasharray="3 2" stroke-linecap="round"/>`;
+    });
+  }
   const frz = (lo <= 32 && hi >= 32)
     ? `<line x1="${padL}" y1="${ty(32).toFixed(1)}" x2="${W - padR}" y2="${ty(32).toFixed(1)}" ` +
       `stroke="#F5F3EC" stroke-width="1" stroke-dasharray="4 3" opacity="0.65"/>` +
@@ -6761,14 +6852,20 @@ function renderDashRoad(){
     `font-family="monospace">${ROAD_STATE[now].label.toUpperCase()}</text>` +
     `<text x="${W - padR}" y="24" text-anchor="end" font-size="11" fill="#8A93A6" ` +
     `font-family="monospace">${changeTxt}</text>` +
-    hours + ribbon + frz + tline + `</svg>` +
+    hours + ribbon + frz + pline + tline + `</svg>` +
     dashRow('Air', hit && hit.s.p.tmpf != null ? Math.round(hit.s.p.tmpf) + '°F' : '—',
             obs ? 'observed now' : '') +
+    (rw ? dashRow('Pavement', Math.round(rw.s.pave) + '°F',
+                  `${rw.s.cond || 'sensor'} · ${Math.round(rw.km)} km`,
+                  ROAD_STATE[sensorNow || 'dry'].color) : '') +
     (wb != null ? dashRow('Wet bulb', Math.round(wb * 9 / 5 + 32) + '°F',
                           'what snow actually feels') : '') +
-    `<div class="dash-sub">Each block is an hour of road state; the line is air temperature ` +
-    `against freezing. Wet bulb decides whether snow survives the fall, so it can be ` +
-    `snowing onto wet roads above 32°F, or sticking below it.</div>`;
+    `<div class="dash-sub">Each block is an hour of road state. Solid line is air, ` +
+    (rw
+      ? `dashed is the pavement at ${rw.s.name}, carried forward on its measured ` +
+        `${offset >= 0 ? '+' : ''}${Math.round(offset)}°F difference. `
+      : `and there is no road sensor within range, so this reasons from air temperature alone. `) +
+    `Wet bulb decides whether snow survives the fall.</div>`;
 }
 
 /* ---------------- Convection ----------------
@@ -6804,6 +6901,13 @@ async function loadConvective(){
   convLoading = false;
   renderDash();
 }
+let rwisTimer = null;
+function scheduleRwis(){
+  if(!dashOn()) return;
+  clearTimeout(rwisTimer);
+  rwisTimer = setTimeout(loadRwis, 1200);
+}
+
 function scheduleConvective(){
   if(!dashOn()) return;
   clearTimeout(convTimer);
@@ -7689,6 +7793,7 @@ function toggleDash(on, quiet){
     renderDash();
     loadNwsForecast();
     loadConvective();
+    loadRwis();
     if(!soundData || Date.now() - soundAt > 15 * 60e3) loadSounding();
   }else{
     // Leaving the dashboard, the cross section is only still showing if the
@@ -8270,6 +8375,8 @@ async function boot(){
     setInterval(loadNwsForecast, 30 * 60 * 1000);
     loadConvective();
     setInterval(loadConvective, 20 * 60 * 1000);
+    loadRwis();
+    setInterval(loadRwis, 10 * 60 * 1000);
   }
   loadAlerts(); loadOutlook(); loadMCD(); loadLSR(); loadSpcWatches();
   loadStations();   // heavy national fetch — fire after the map is visible
