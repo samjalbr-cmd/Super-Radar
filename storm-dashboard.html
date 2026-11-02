@@ -1375,17 +1375,17 @@ function setRadarSource(v){
     if(radarLoopOn && loopChk){ loopChk.checked = false; toggleRadarLoop(loopChk); }
     if(loopChk){ loopChk.disabled = true; loopChk.closest('.set-row').classList.add('disabled'); }
     clearNoaaRadar();
-    if(radarLayer) radarLayer.setOpacity(0);
+    setTileRadarActive(false);
     loadMrmsRadar();
   }else if(v === 'noaa'){
     if(radarLoopOn && loopChk){ loopChk.checked = false; toggleRadarLoop(loopChk); }
     if(loopChk){ loopChk.disabled = true; loopChk.closest('.set-row').classList.add('disabled'); }
-    if(radarLayer) radarLayer.setOpacity(0);
+    setTileRadarActive(false);
     loadNoaaRadar();
   }else{
     if(loopChk){ loopChk.disabled = false; loopChk.closest('.set-row').classList.remove('disabled'); }
     clearNoaaRadar();
-    if(radarLayer) radarLayer.setOpacity(radarOpacityNow());
+    setTileRadarActive(true);
     loadRadar();
   }
 }
@@ -1405,8 +1405,28 @@ async function iemLatestSlice(){
   return iemSliceMs;
 }
 
+/* Detaching the tile layer, not just hiding it.
+
+   Setting opacity to 0 leaves it on the map and it keeps pulling tiles — 40 of
+   them, invisibly, from the same host the station feed and the temperature
+   history come from. Browsers allow about six connections per host, so those
+   invisible tiles queued ahead of everything else and the stations never
+   arrived at all. That is what "not loading very well" was. */
+function setTileRadarActive(on){
+  if(!map || !radarLayer) return;
+  if(on){
+    if(!map.hasLayer(radarLayer)) radarLayer.addTo(map);
+    radarLayer.setOpacity(radarOpacityNow());
+  }else if(map.hasLayer(radarLayer)){
+    map.removeLayer(radarLayer);
+  }
+}
+
 async function loadRadar(){
-  if(radarSource === 'noaa'){ loadNoaaRadar(); return; }
+  // Nothing to fetch when another source owns the picture.
+  if(radarSource === 'mrms'){ setTileRadarActive(false); loadMrmsRadar(); return; }
+  if(radarSource === 'noaa'){ setTileRadarActive(false); loadNoaaRadar(); return; }
+  setTileRadarActive(true);
   if(radarMode !== 'national') return;  // single-radar mode manages its own overlay
   // Raw NWS NEXRAD base reflectivity (N0Q) national mosaic, served as XYZ tiles by the
   // Iowa Environmental Mesonet. This is the actual NWS radar product rendered with the
@@ -2658,7 +2678,10 @@ function buildRadarFrames(){
   const handOver = () => {
     if(handed) return;
     handed = true;
-    if(radarLayer) radarLayer.setOpacity(0);
+    // Detached, not hidden: the loop frames come from the same host, and a
+    // layer left on the map keeps pulling tiles into the same six-connection
+    // queue they need.
+    setTileRadarActive(false);
     for(let i = 0; i < radarFrames.length - 1; i++) radarFrames[i].layer.addTo(map);
   };
   newest.layer.once('load', handOver);
@@ -2702,7 +2725,7 @@ function toggleRadarLoop(cb){
     stopRadarPlay();
     destroyRadarFrames();
     document.body.classList.remove('loop-on');
-    if(radarLayer) radarLayer.setOpacity(radarOpacityNow());
+    if(radarSource === 'iem') setTileRadarActive(true);
     if(bar) bar.classList.remove('show');
   }
 }
@@ -4367,7 +4390,13 @@ const TEMP_HIST_HOURS = 24;
 // is context for the number, not a chart in its own right.
 const SPARK_W = 18, SPARK_H = 7, SPARK_MAX_PTS = 14;
 let tempHist = {};                 // station id -> [{t, f}] ascending
-let tempHistStates = '', tempHistAt = 0, tempHistLoading = false, tempHistTimer = null;
+// Cached per state, not per set of states. Keyed on the joined list, a pan
+// that swapped one state for another threw away the three already in hand and
+// refetched a megabyte to redraw the same traces.
+const tempHistState = {};     // state -> {at, rows:{station:[{t,f}]}}
+let tempHistLoading = false, tempHistTimer = null;
+const TEMP_HIST_TTL = 10 * 60e3;   // most sites report hourly
+const TEMP_HIST_KEEP = 12;         // states to hold before dropping the oldest
 // Off while the launcher loops. A gradient-stroked SVG per station, redrawn as
 // the window slides, had to be re-rasterised on every step: on a TV that took
 // the loop from 24 fps to under 4. A still launcher draws them once a refresh.
@@ -4377,48 +4406,79 @@ async function loadTempHistory(){
   if(!sparkOn || !stationsOn || tempHistLoading || !map) return;
   const states = replayStatesFor(map.getBounds());
   if(!states.length) return;
-  const key = states.join(',');
-  // Observations arrive hourly for most sites, so re-asking faster than that
-  // buys nothing but traffic.
-  if(key === tempHistStates && Date.now() - tempHistAt < 10 * 60e3) return;
+
+  // Whatever is already cached for the states in view, merged into the map the
+  // sparklines read. Done before any fetching, so panning into ground already
+  // held draws immediately instead of waiting on the network.
+  const merge = () => {
+    const out = {};
+    for(const st of states){
+      const c = tempHistState[st];
+      if(!c) continue;
+      for(const k in c.rows) out[k] = c.rows[k];
+    }
+    tempHist = out;
+  };
+  merge();
+  if(Object.keys(tempHist).length) renderStations();
+
+  const stale = st => !tempHistState[st] || Date.now() - tempHistState[st].at > TEMP_HIST_TTL;
+  const need = states.filter(stale);
+  if(!need.length) return;
+
   tempHistLoading = true;
   const now = new Date(), then = new Date(now.getTime() - TEMP_HIST_HOURS * 3600e3);
   const d = (i, x) => `year${i}=${x.getUTCFullYear()}&month${i}=${x.getUTCMonth() + 1}` +
                       `&day${i}=${x.getUTCDate()}&hour${i}=${x.getUTCHours()}`;
-  const next = {};
-  for(const st of states){
+  for(const st of need){
     const u = 'https://mesonet.agron.iastate.edu/cgi-bin/request/asos.py?network=' + st + '_ASOS' +
               '&data=tmpf&' + d(1, then) + '&' + d(2, now) +
               '&tz=UTC&format=comma&missing=empty&trace=empty';
     try{
       const res = await fetch(u);
-      if(!res.ok) continue;
-      const lines = (await res.text()).split('\n');
-      // Column positions come from the header rather than being assumed: the
-      // same endpoint returns extra columns when asked for lat/lon, and the
-      // replay loader does ask for them.
-      let iSta = 0, iVal = 1, iT = 2;
-      for(const line of lines){
-        if(!line || line[0] === '#') continue;
-        const c = line.split(',');
-        if(c[0] === 'station'){
-          iSta = c.indexOf('station'); iVal = c.indexOf('valid'); iT = c.indexOf('tmpf');
-          continue;
+      if(res.ok){
+        const lines = (await res.text()).split('\n');
+        // Column positions come from the header rather than being assumed: the
+        // same endpoint returns extra columns when asked for lat/lon, and the
+        // replay loader does ask for them.
+        let iSta = 0, iVal = 1, iT = 2;
+        const rows = {};
+        for(const line of lines){
+          if(!line || line[0] === '#') continue;
+          const c = line.split(',');
+          if(c[0] === 'station'){
+            iSta = c.indexOf('station'); iVal = c.indexOf('valid'); iT = c.indexOf('tmpf');
+            continue;
+          }
+          if(iT < 0 || c.length <= iT) continue;
+          const f = parseFloat(c[iT]);
+          if(!isFinite(f)) continue;
+          const t = Date.parse(c[iVal].trim().replace(' ', 'T') + 'Z');
+          if(!isFinite(t)) continue;
+          (rows[c[iSta]] = rows[c[iSta]] || []).push({t, f});
         }
-        if(iT < 0 || c.length <= iT) continue;
-        const f = parseFloat(c[iT]);
-        if(!isFinite(f)) continue;
-        const t = Date.parse(c[iVal].trim().replace(' ', 'T') + 'Z');
-        if(!isFinite(t)) continue;
-        (next[c[iSta]] = next[c[iSta]] || []).push({t, f});
+        for(const k in rows) rows[k].sort((a, b) => a.t - b.t);
+        tempHistState[st] = {at: Date.now(), rows};
+        // Drawn as each state lands rather than after all of them. A day for
+        // four states is about a megabyte and two and a half seconds, and
+        // holding every trace back until the last one arrived is what made
+        // them look like they were not loading.
+        merge();
+        renderStations();
       }
     }catch(e){ /* a state that fails just has no traces */ }
     await new Promise(r => setTimeout(r, 250));
   }
-  for(const k in next) next[k].sort((a, b) => a.t - b.t);
-  tempHist = next; tempHistStates = key; tempHistAt = Date.now();
+  // Bound the cache, oldest first, or a long session wandering the country
+  // keeps every state it ever looked at.
+  const held = Object.keys(tempHistState);
+  if(held.length > TEMP_HIST_KEEP){
+    held.sort((a, b) => tempHistState[a].at - tempHistState[b].at);
+    for(const st of held.slice(0, held.length - TEMP_HIST_KEEP)){
+      if(!states.includes(st)) delete tempHistState[st];
+    }
+  }
   tempHistLoading = false;
-  renderStations();
 }
 
 function scheduleTempHistory(){
@@ -6528,7 +6588,7 @@ async function boot(){
   // on that meant staring at a splash while the map was ready to draw.
   await loadRadar();
   if(radarSource === 'mrms'){
-    if(radarLayer) radarLayer.setOpacity(0);
+    setTileRadarActive(false);
     loadMrmsRadar();
   }
   document.getElementById('loading').classList.add('hide');
