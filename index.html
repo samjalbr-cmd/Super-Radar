@@ -835,6 +835,9 @@
 <div id="dashRail">
   <div class="dash-card"><h3>Now</h3><div id="dashNow"></div></div>
   <div class="dash-card"><h3>Air aloft &mdash; next 24 h</h3><div id="dashSound"></div></div>
+  <div class="dash-card"><h3>Next 48 h &mdash; NWS</h3><div id="dashFc"></div></div>
+  <div class="dash-card"><h3>Expected totals</h3><div id="dashPrecip"></div></div>
+  <div class="dash-card"><h3>Outlook</h3><div id="dashOutlook"></div></div>
   <div class="dash-card"><h3>Watches &amp; warnings</h3><div id="dashAlerts"></div></div>
   <div class="dash-card"><h3>Lightning</h3><div id="dashLtg"></div></div>
   <div class="dash-card"><h3>Recent reports</h3><div id="dashReports"></div></div>
@@ -1164,7 +1167,7 @@ function initMap(){
   // because they only set timers.
   const MOVE_TASKS = [renderStations, drawIsoLines, renderSurface,
                       renderFeed, scheduleModelRefresh, scheduleMrmsRadar,
-                      scheduleSounding, renderDash,
+                      scheduleSounding, renderDash, scheduleNwsForecast,
                       scheduleIsobarRefresh, scheduleNoaaRadar, schedulePrecipRefresh,
                       syncAppSettings, scheduleHistoryRefresh, renderLakeTemps,
                       renderUpper, scheduleUpperRefresh, renderReplayMarks,
@@ -6569,6 +6572,160 @@ function soundingInto(host, big){
 
    Every one of them is a toggle, because on a remote you cannot see which
    state you are in before you press. */
+/* ---------------- NWS forecast, for the dashboard ----------------
+   Three requests behind one /points lookup: the hourly grid for the
+   meteogram, the raw gridpoint for the things the hourly feed leaves out —
+   snowfall, ice, liquid — and the worded periods, which are the only part of
+   a forecast a room full of people actually reads.
+
+   All of it is the local office's own forecast, not a raw model, so it is
+   what the NWS is actually going with. CORS is open on all of it. */
+let nwsFc = null, nwsFcAt = 0, nwsFcKey = '', nwsFcLoading = false;
+
+async function loadNwsForecast(){
+  if(!map || nwsFcLoading) return;
+  const c = map.getCenter();
+  const key = c.lat.toFixed(2) + ',' + c.lng.toFixed(2);
+  if(key === nwsFcKey && Date.now() - nwsFcAt < 30 * 60e3) return;
+  nwsFcLoading = true;
+  try{
+    const pt = await (await fetch(`https://api.weather.gov/points/${c.lat.toFixed(4)},${c.lng.toFixed(4)}`)).json();
+    const P = pt.properties;
+    if(P && P.forecastHourly){
+      const [hr, wd, gd] = await Promise.all([
+        fetch(P.forecastHourly).then(r => r.ok ? r.json() : null).catch(() => null),
+        fetch(P.forecast).then(r => r.ok ? r.json() : null).catch(() => null),
+        fetch(P.forecastGridData).then(r => r.ok ? r.json() : null).catch(() => null),
+      ]);
+      nwsFc = {
+        office: P.cwa,
+        hourly: hr?.properties?.periods || [],
+        worded: wd?.properties?.periods || [],
+        grid: gd?.properties || null,
+      };
+      nwsFcKey = key; nwsFcAt = Date.now();
+    }
+  }catch(e){ console.error('nws forecast', e); }
+  nwsFcLoading = false;
+  renderDash();
+}
+
+// Gridpoint series come as {validTime: "2026-11-01T18:00:00+00:00/PT6H", value}.
+// The duration matters: one entry can stand for six hours.
+function gridSum(series, hours){
+  if(!series || !series.values) return null;
+  const end = Date.now() + hours * 3600e3;
+  let total = 0, any = false;
+  for(const v of series.values){
+    const [iso] = String(v.validTime).split('/');
+    const t = Date.parse(iso);
+    if(!isFinite(t) || t > end) continue;
+    if(v.value == null) continue;
+    total += v.value; any = true;
+  }
+  return any ? total : null;
+}
+
+function renderDashForecast(){
+  const host = document.getElementById('dashFc');
+  if(!host) return;
+  const H = (nwsFc && nwsFc.hourly) || [];
+  if(H.length < 6){ host.innerHTML = '<div class="dash-empty">Forecast loading…</div>'; return; }
+  const n = Math.min(48, H.length);
+  const P = H.slice(0, n);
+  const W = 500, Hh = 132, padL = 30, padR = 8, padT = 8, padB = 18;
+  const pw = W - padL - padR, ph = Hh - padT - padB;
+  const temps = P.map(x => x.temperature);
+  const dews = P.map(x => x.dewpoint?.value == null ? null : x.dewpoint.value * 9 / 5 + 32);
+  const lo = Math.min(...temps, ...dews.filter(v => v != null)) - 3;
+  const hi = Math.max(...temps, ...dews.filter(v => v != null)) + 3;
+  const X = i => padL + (i / (n - 1)) * pw;
+  const Y = v => padT + ph - ((v - lo) / (hi - lo || 1)) * ph;
+
+  // Night behind everything, so the daily rhythm is visible before any number
+  // is read.
+  let night = '';
+  for(let i = 0; i < n; i++){
+    if(P[i].isDaytime) continue;
+    night += `<rect x="${X(i).toFixed(1)}" y="${padT}" width="${(pw / (n - 1) + 0.8).toFixed(1)}" ` +
+             `height="${ph}" fill="rgba(255,255,255,0.045)"/>`;
+  }
+  // Chance of precipitation along the floor.
+  let pop = '';
+  for(let i = 0; i < n; i++){
+    const v = P[i].probabilityOfPrecipitation?.value;
+    if(!v) continue;
+    const h = (v / 100) * ph * 0.42;
+    pop += `<rect x="${X(i).toFixed(1)}" y="${(padT + ph - h).toFixed(1)}" ` +
+           `width="${(pw / (n - 1) + 0.8).toFixed(1)}" height="${h.toFixed(1)}" ` +
+           `fill="#4FA3D1" opacity="0.4"/>`;
+  }
+  const line = (vals, col, wdt, dash) => {
+    const pts = vals.map((v, i) => v == null ? null : `${X(i).toFixed(1)},${Y(v).toFixed(1)}`)
+                    .filter(Boolean).join(' ');
+    return `<polyline points="${pts}" fill="none" stroke="${col}" stroke-width="${wdt}" ` +
+           `${dash ? `stroke-dasharray="${dash}"` : ''} stroke-linejoin="round"/>`;
+  };
+  // The temperature line is drawn in segments so it carries the same colour
+  // ramp the station plots use.
+  let tline = '';
+  for(let i = 1; i < n; i++){
+    tline += `<line x1="${X(i-1).toFixed(1)}" y1="${Y(temps[i-1]).toFixed(1)}" ` +
+             `x2="${X(i).toFixed(1)}" y2="${Y(temps[i]).toFixed(1)}" ` +
+             `stroke="${tempColor(temps[i])}" stroke-width="2.2" stroke-linecap="round"/>`;
+  }
+  let axis = '';
+  for(const v of [Math.round(hi - 2), Math.round((hi + lo) / 2), Math.round(lo + 2)]){
+    axis += `<text x="${padL - 4}" y="${(Y(v) + 3).toFixed(1)}" text-anchor="end" font-size="10" ` +
+            `fill="#8A93A6" font-family="monospace">${v}</text>`;
+  }
+  let hours = '';
+  for(let i = 0; i < n; i += 6){
+    const d = new Date(P[i].startTime);
+    hours += `<text x="${X(i).toFixed(1)}" y="${Hh - 5}" text-anchor="middle" font-size="10" ` +
+             `fill="#8A93A6" font-family="monospace">` +
+             `${d.toLocaleTimeString([], {hour: 'numeric'}).replace(' ', '')}</text>`;
+  }
+  const pk = Math.max(...P.map(x => x.probabilityOfPrecipitation?.value || 0));
+  host.innerHTML =
+    `<svg width="${W}" height="${Hh}" viewBox="0 0 ${W} ${Hh}">` +
+    night + pop + line(dews, '#6FBF8F', 1.4, '4 3') + tline + axis + hours + `</svg>` +
+    `<div class="dash-sub">Temperature, dew point dashed, chance of precipitation shaded. ` +
+    `Peak ${pk}%. NWS ${nwsFc.office}.</div>`;
+}
+
+function renderDashPrecip(){
+  const host = document.getElementById('dashPrecip');
+  if(!host) return;
+  const g = nwsFc && nwsFc.grid;
+  if(!g){ host.innerHTML = '<div class="dash-empty">Forecast loading…</div>'; return; }
+  const mm = v => v == null ? null : v / 25.4;
+  const rows = [];
+  for(const [label, hours] of [['Next 24 h', 24], ['Next 48 h', 48]]){
+    const qpf = mm(gridSum(g.quantitativePrecipitation, hours));
+    const snow = mm(gridSum(g.snowfallAmount, hours));
+    const ice = mm(gridSum(g.iceAccumulation, hours));
+    const bits = [];
+    if(qpf) bits.push(qpf.toFixed(2) + '" liquid');
+    if(snow) bits.push(snow.toFixed(1) + '" snow');
+    if(ice) bits.push(ice.toFixed(2) + '" ice');
+    rows.push(dashRow(label, bits.length ? bits.join(' · ') : 'dry',
+                      null, snow ? '#9FD8FF' : ice ? '#C77DFF' : qpf ? '#4FA3D1' : null));
+  }
+  host.innerHTML = rows.join('');
+}
+
+function renderDashOutlook(){
+  const host = document.getElementById('dashOutlook');
+  if(!host) return;
+  const W = (nwsFc && nwsFc.worded) || [];
+  if(!W.length){ host.innerHTML = '<div class="dash-empty">Forecast loading…</div>'; return; }
+  host.innerHTML = W.slice(0, 5).map(p =>
+    dashRow(p.name.length > 13 ? p.name.slice(0, 12) + '…' : p.name,
+            `${p.temperature}°`, p.shortForecast,
+            tempColor(p.temperature))).join('');
+}
+
 /* The rail's other cards. Every one is built from data already in memory for
    the map, so the dashboard costs no extra requests — it is a second reading
    of what is already there, laid out for a room rather than for a cursor. */
@@ -6689,12 +6846,22 @@ function renderDashReports(){
 function renderDash(){
   if(!dashOn()) return;
   renderDashNow();
+  renderDashForecast();
+  renderDashPrecip();
+  renderDashOutlook();
   renderDashAlerts();
   renderDashLightning();
   renderDashReports();
 }
 
 function dashOn(){ return document.body.classList.contains('dash'); }
+
+let nwsFcTimer = null;
+function scheduleNwsForecast(){
+  if(!dashOn()) return;
+  clearTimeout(nwsFcTimer);
+  nwsFcTimer = setTimeout(loadNwsForecast, 900);   // debounce panning
+}
 
 function toggleDash(on){
   const want = on === undefined ? !dashOn() : !!on;
@@ -6704,6 +6871,7 @@ function toggleDash(on){
     soundOpen = true;
     renderSounding();
     renderDash();
+    loadNwsForecast();
     if(!soundData || Date.now() - soundAt > 15 * 60e3) loadSounding();
   }else{
     // Leaving the dashboard, the cross section is only still showing if the
@@ -7210,6 +7378,8 @@ async function boot(){
     setInterval(loadSounding, 15 * 60 * 1000);
     renderDash();
     setInterval(renderDash, 30 * 1000);     // times left and trends go stale fast
+    loadNwsForecast();
+    setInterval(loadNwsForecast, 30 * 60 * 1000);
   }
   loadAlerts(); loadOutlook(); loadMCD(); loadLSR(); loadSpcWatches();
   loadStations();   // heavy national fetch — fire after the map is visible
