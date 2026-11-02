@@ -553,6 +553,14 @@
   .dr .chip{ width:9px;height:9px;border-radius:2px;flex:0 0 auto; }
   .dash-big{ font-family:monospace;font-size:34px;font-weight:700;color:#F5F3EC;line-height:1.1; }
   .dash-sub{ font-family:monospace;font-size:12.5px;color:var(--dim);margin-top:3px; }
+  /* Graphical cards. Charts are drawn 500 units wide and scale to the card, so
+     their text is set larger than the rest of the rail to survive the scaling
+     and the distance. */
+  .dash-hero{ display:flex;align-items:baseline;gap:10px;font-family:monospace; }
+  .dash-hero .n{ font-size:34px;font-weight:700;color:#F5F3EC;line-height:1.1; }
+  .dash-hero .u{ font-size:13px;color:var(--dim); }
+  .dash-meter{ height:5px;border-radius:3px;background:rgba(255,255,255,0.08);margin:2px 0 7px 18px;overflow:hidden; }
+  .dash-meter > i{ display:block;height:100%;border-radius:3px; }
   .dash-empty{ font-family:monospace;font-size:13px;color:var(--dim);padding:3px 0; }
   .dash-card{
     border:1px solid var(--border);border-radius:13px;padding:12px 14px;
@@ -586,8 +594,13 @@
   #dashPager i{ width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,0.22); }
   #dashPager i.on{ background:var(--amber); }
   /* The dashboard is the map and the panels, nothing else: no status tabs,
-     no scrubber. */
-  body.dash #statusStack, body.dash #replayBar{ display:none !important; }
+     no scrubber, no loop bar or picker. Keyed to dash-widget as well, which
+     stays on while the widget rests closed between turns, so none of these
+     reappear in the gap. */
+  body.dash #statusStack, body.dash #replayBar,
+  body.dash-widget #statusStack, body.dash-widget #replayBar, body.dash-widget #radarLoop,
+  body.dash-widget #metricPicker, body.dash-widget #hiddenStatus,
+  body.dash-widget #soundTab, body.dash-widget #feedTab{ display:none !important; }
   .dash-card svg{ display:block; width:100%; height:auto; }
 
   /* A second tab under EVENTS, same shape. */
@@ -861,8 +874,9 @@
   <div class="dash-card"><h3>Now</h3><div id="dashNow"></div></div>
   <div class="dash-card"><h3>Air aloft &mdash; next 24 h</h3><div id="dashSound"></div></div>
   <div class="dash-card"><h3>Next 48 h &mdash; NWS</h3><div id="dashFc"></div></div>
-  <div class="dash-card"><h3>Expected totals</h3><div id="dashPrecip"></div></div>
-  <div class="dash-card"><h3>Outlook</h3><div id="dashOutlook"></div></div>
+  <div class="dash-card"><h3>Wind &mdash; next 48 h</h3><div id="dashWind"></div></div>
+  <div class="dash-card"><h3>Precipitation &mdash; next 48 h</h3><div id="dashPrecip"></div></div>
+  <div class="dash-card"><h3>Next 5 days</h3><div id="dashOutlook"></div></div>
   <div class="dash-card"><h3>Watches &amp; warnings</h3><div id="dashAlerts"></div></div>
   <div class="dash-card"><h3>Lightning</h3><div id="dashLtg"></div></div>
   <div class="dash-card"><h3>Recent reports</h3><div id="dashReports"></div></div>
@@ -6730,37 +6744,7 @@ function renderDashForecast(){
     `Peak ${pk}%. NWS ${nwsFc.office}.</div>`;
 }
 
-function renderDashPrecip(){
-  const host = document.getElementById('dashPrecip');
-  if(!host) return;
-  const g = nwsFc && nwsFc.grid;
-  if(!g){ host.innerHTML = '<div class="dash-empty">Forecast loading…</div>'; return; }
-  const mm = v => v == null ? null : v / 25.4;
-  const rows = [];
-  for(const [label, hours] of [['Next 24 h', 24], ['Next 48 h', 48]]){
-    const qpf = mm(gridSum(g.quantitativePrecipitation, hours));
-    const snow = mm(gridSum(g.snowfallAmount, hours));
-    const ice = mm(gridSum(g.iceAccumulation, hours));
-    const bits = [];
-    if(qpf) bits.push(qpf.toFixed(2) + '" liquid');
-    if(snow) bits.push(snow.toFixed(1) + '" snow');
-    if(ice) bits.push(ice.toFixed(2) + '" ice');
-    rows.push(dashRow(label, bits.length ? bits.join(' · ') : 'dry',
-                      null, snow ? '#9FD8FF' : ice ? '#C77DFF' : qpf ? '#4FA3D1' : null));
-  }
-  host.innerHTML = rows.join('');
-}
 
-function renderDashOutlook(){
-  const host = document.getElementById('dashOutlook');
-  if(!host) return;
-  const W = (nwsFc && nwsFc.worded) || [];
-  if(!W.length){ host.innerHTML = '<div class="dash-empty">Forecast loading…</div>'; return; }
-  host.innerHTML = W.slice(0, 5).map(p =>
-    dashRow(p.name.length > 13 ? p.name.slice(0, 12) + '…' : p.name,
-            `${p.temperature}°`, p.shortForecast,
-            tempColor(p.temperature))).join('');
-}
 
 /* The rail's other cards. Every one is built from data already in memory for
    the map, so the dashboard costs no extra requests — it is a second reading
@@ -6785,81 +6769,8 @@ function dashStation(){
   return best ? {s: best, km: bd} : null;
 }
 
-function renderDashNow(){
-  const host = document.getElementById('dashNow');
-  if(!host) return;
-  const hit = dashStation();
-  if(!hit){ host.innerHTML = '<div class="dash-empty">No station reporting here yet.</div>'; return; }
-  const p = hit.s.p, t = p.tmpf;
-  // The day's swing comes from the trace history already loaded for the
-  // sparklines, so this costs nothing.
-  const h = (tempHist || {})[p.station] || [];
-  let lo = null, hi = null;
-  for(const q of h){ if(lo == null || q.f < lo) lo = q.f; if(hi == null || q.f > hi) hi = q.f; }
-  const wind = p.sknt == null ? 'calm'
-    : `${p.drct != null ? Math.round(p.drct) + '° ' : ''}${Math.round(ktToMph(p.sknt))} mph`;
-  const gust = p.gust != null ? ` g${Math.round(ktToMph(p.gust))}` : '';
-  host.innerHTML =
-    `<div class="dash-big" style="color:${tempColor(t)}">${Math.round(t)}°F</div>` +
-    `<div class="dash-sub">${p.name || p.station} · ${Math.round(hit.km)} km from centre</div>` +
-    (lo != null ? dashRow('24 h', `${Math.round(lo)}° to ${Math.round(hi)}°`,
-                          `${Math.round(hi - lo)}° swing`) : '') +
-    dashRow('Dew point', p.dwpf != null ? Math.round(p.dwpf) + '°F' : '—') +
-    dashRow('Wind', wind + gust) +
-    dashRow('Pressure', p.mslp != null ? p.mslp.toFixed(1) + ' mb' : '—') +
-    (p.pday ? dashRow('Rain today', p.pday.toFixed(2) + '"') : '');
-}
 
-function renderDashAlerts(){
-  const host = document.getElementById('dashAlerts');
-  if(!host) return;
-  const now = mapNow();
-  const live = (lastAlertFeats || [])
-    .filter(f => f._geoms && f._geoms.length && alertInWindow(f) && alertInView(f))
-    .filter(f => hazardVisible[f._hazard])
-    .sort((a, b) => (a._cls === 'warning' ? 0 : a._cls === 'watch' ? 1 : 2) -
-                    (b._cls === 'warning' ? 0 : b._cls === 'watch' ? 1 : 2));
-  if(!live.length){ host.innerHTML = '<div class="dash-empty">Nothing in force here.</div>'; return; }
-  host.innerHTML = live.slice(0, 7).map(f => {
-    const p = f.properties;
-    const ends = Date.parse(p.ends || p.expires);
-    // Time left is the useful number: a warning with eight minutes on it reads
-    // very differently from one that runs till morning.
-    let left = '';
-    if(isFinite(ends)){
-      const m = Math.round((ends - now) / 60000);
-      left = m <= 0 ? 'ending' : m < 60 ? m + ' min' : Math.round(m / 60) + ' h';
-    }
-    return dashRow(f._cls, p.event.replace('Severe Thunderstorm', 'Svr T-storm'),
-                   left, alertColor(p.event, f._cls));
-  }).join('') + (live.length > 7 ? `<div class="dash-empty">+${live.length - 7} more</div>` : '');
-}
 
-function renderDashLightning(){
-  const host = document.getElementById('dashLtg');
-  if(!host) return;
-  if(!map || typeof strikes === 'undefined'){ host.innerHTML = ''; return; }
-  const b = map.getBounds(), now = Date.now();
-  // strikes carries its own timestamps, so the trend is free.
-  let last10 = 0, prev10 = 0, hour = 0;
-  for(const s of strikes){
-    const ll = s.marker && s.marker.getLatLng ? s.marker.getLatLng() : null;
-    if(!ll || !b.contains(ll)) continue;
-    const age = now - s.time;
-    if(age <= 10 * 60e3) last10++;
-    else if(age <= 20 * 60e3) prev10++;
-    if(age <= 60 * 60e3) hour++;
-  }
-  if(!hour){ host.innerHTML = '<div class="dash-empty">No strikes in view.</div>'; return; }
-  const trend = prev10 === 0 ? (last10 ? 'new' : 'quiet')
-    : last10 > prev10 * 1.3 ? 'intensifying'
-    : last10 < prev10 * 0.7 ? 'easing' : 'steady';
-  host.innerHTML =
-    `<div class="dash-big">${last10}</div>` +
-    `<div class="dash-sub">strikes in view, last 10 min · ${trend}</div>` +
-    dashRow('Previous 10', prev10) +
-    dashRow('Past hour', hour);
-}
 
 function renderDashReports(){
   const host = document.getElementById('dashReports');
@@ -6879,15 +6790,407 @@ function renderDashReports(){
   }).join('');
 }
 
+/* ---------------- Dashboard charts ----------------
+   Drawn as SVG strings 500 units wide; the card scales them to fit. Nothing
+   here is interactive: it is read from across a room, so values that matter
+   are labelled on the chart rather than left to a tooltip. One hue per chart
+   wherever a second would only repeat what a label already says. */
+const DC = {
+  ink: '#F5F3EC', dim: '#8A93A6', grid: 'rgba(255,255,255,0.09)', night: 'rgba(255,255,255,0.045)',
+  blue: '#3A86C8', wind: '#7FC4F2', amber: '#F2B705', font: 'monospace',
+};
+const dcText = (x, y, s, o = {}) =>
+  `<text x="${(+x).toFixed(1)}" y="${(+y).toFixed(1)}" font-size="${o.size || 16}" ` +
+  `fill="${o.fill || DC.dim}" font-family="${DC.font}" text-anchor="${o.anchor || 'start'}"` +
+  `${o.weight ? ` font-weight="${o.weight}"` : ''}>${s}</text>`;
+// A vertical fade from `col` at the top to nothing at the bottom, for areas and
+// columns. Ids are unique per call so several charts can share the page.
+let dcGradN = 0;
+function dcFade(col, top = 0.5, bottom = 0){
+  const id = 'dcg' + (++dcGradN);
+  return {id, def: `<linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1">` +
+    `<stop offset="0" stop-color="${col}" stop-opacity="${top}"/>` +
+    `<stop offset="1" stop-color="${col}" stop-opacity="${bottom}"/></linearGradient>`};
+}
+const dcHour = t => new Date(t).toLocaleTimeString([], {hour: 'numeric'}).replace(' ', '');
+const dcDay = t => new Date(t).toLocaleDateString([], {weekday: 'short'});
+// A clean axis top: 5, 10, 20, 25, 50... at or above v.
+function dcNice(v){
+  if(!(v > 0)) return 1;
+  const p = Math.pow(10, Math.floor(Math.log10(v)));
+  for(const m of [1, 2, 2.5, 5, 10]) if(m * p >= v) return m * p;
+  return 10 * p;
+}
+// A column with a 4px rounded top and a square foot on the baseline.
+function dcColumn(x, w, base, h, fill){
+  if(h <= 0.5) return '';
+  const r = Math.min(4, w / 2, h);
+  return `<path d="M${x.toFixed(1)},${base.toFixed(1)} V${(base - h + r).toFixed(1)} ` +
+         `Q${x.toFixed(1)},${(base - h).toFixed(1)} ${(x + r).toFixed(1)},${(base - h).toFixed(1)} ` +
+         `H${(x + w - r).toFixed(1)} Q${(x + w).toFixed(1)},${(base - h).toFixed(1)} ` +
+         `${(x + w).toFixed(1)},${(base - h + r).toFixed(1)} V${base.toFixed(1)} Z" fill="${fill}"/>`;
+}
+
+// NWS gridpoint values are [{validTime: "2026-11-01T22:00:00+00:00/PT6H", value}].
+function gridDurH(iso){
+  const m = /P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?)?/.exec(iso || '');
+  return m ? (+(m[1] || 0)) * 24 + (+(m[2] || 0)) + (+(m[3] || 0)) / 60 : 1;
+}
+// One value per hour for the next `hours`, a rate held across its duration.
+function gridHourly(series, hours, conv = v => v){
+  const out = new Array(hours).fill(null);
+  if(!series || !series.values) return out;
+  const t0 = Math.floor(Date.now() / 3600e3) * 3600e3;
+  for(const v of series.values){
+    if(v.value == null) continue;
+    const [iso, dur] = String(v.validTime).split('/');
+    const s = Date.parse(iso);
+    if(!isFinite(s)) continue;
+    const n = Math.max(1, Math.round(gridDurH(dur)));
+    for(let k = 0; k < n; k++){
+      const i = Math.round((s - t0) / 3600e3) + k;
+      if(i >= 0 && i < hours) out[i] = conv(v.value);
+    }
+  }
+  return out;
+}
+// Amounts summed into bins of `bin` hours from now (an entry counts where it starts).
+function gridBins(series, bins, bin, conv = v => v){
+  const out = new Array(bins).fill(0);
+  if(!series || !series.values) return out;
+  const t0 = Date.now();
+  for(const v of series.values){
+    if(v.value == null) continue;
+    const s = Date.parse(String(v.validTime).split('/')[0]);
+    if(!isFinite(s)) continue;
+    const i = Math.floor((s - t0) / (bin * 3600e3));
+    if(i >= 0 && i < bins) out[i] += conv(v.value);
+  }
+  return out;
+}
+const kmhToMph = v => v * 0.621371;
+const mmToIn = v => v / 25.4;
+
+/* Now: the temperature large, the last day of it as a curve, and the wind as
+   a dial, since direction is the one thing a number reads badly. */
+function renderDashNow(){
+  const host = document.getElementById('dashNow');
+  if(!host) return;
+  const hit = dashStation();
+  if(!hit){ host.innerHTML = '<div class="dash-empty">No station reporting here yet.</div>'; return; }
+  const p = hit.s.p, t = p.tmpf;
+  const h = ((tempHist || {})[p.station] || []).filter(q => q.f != null);
+  const W = 500, H = 160;
+  let svg = '';
+  // Last 24 h of temperature, left of the dial.
+  if(h.length >= 3){
+    const x0 = 6, x1 = 300, y0 = 22, y1 = 128;
+    const t0 = h[0].t, t1 = h[h.length - 1].t;
+    let lo = Infinity, hi = -Infinity, iLo = 0, iHi = 0;
+    h.forEach((q, i) => { if(q.f < lo){ lo = q.f; iLo = i; } if(q.f > hi){ hi = q.f; iHi = i; } });
+    const pad = Math.max(2, (hi - lo) * 0.15);
+    const X = tt => x0 + ((tt - t0) / (t1 - t0 || 1)) * (x1 - x0);
+    const Y = f => y1 - ((f - (lo - pad)) / ((hi + pad) - (lo - pad))) * (y1 - y0);
+    const pts = h.map(q => `${X(q.t).toFixed(1)},${Y(q.f).toFixed(1)}`);
+    const g = dcFade(tempColor(t), 0.42, 0);
+    svg += `<defs>${g.def}</defs>`;
+    svg += `<path d="M${X(t0).toFixed(1)},${y1} L${pts.join(' L')} L${X(t1).toFixed(1)},${y1} Z" fill="url(#${g.id})"/>`;
+    svg += `<line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="${DC.grid}" stroke-width="1"/>`;
+    for(let i = 1; i < h.length; i++){
+      svg += `<line x1="${X(h[i-1].t).toFixed(1)}" y1="${Y(h[i-1].f).toFixed(1)}" ` +
+             `x2="${X(h[i].t).toFixed(1)}" y2="${Y(h[i].f).toFixed(1)}" ` +
+             `stroke="${tempColor(h[i].f)}" stroke-width="2.5" stroke-linecap="round"/>`;
+    }
+    // The high and the low, labelled where they happened.
+    for(const [i, above] of [[iHi, true], [iLo, false]]){
+      const x = X(h[i].t), y = Y(h[i].f);
+      svg += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4.5" fill="${tempColor(h[i].f)}" stroke="#141c2c" stroke-width="2"/>`;
+      const anchor = x < 40 ? 'start' : x > 260 ? 'end' : 'middle';
+      svg += dcText(x, above ? y - 10 : y + 22, `${Math.round(h[i].f)}°`, {anchor, fill: DC.ink, size: 16});
+    }
+    svg += dcText(x0, H - 6, '24 h ago', {size: 14});
+    svg += dcText(x1, H - 6, 'now', {size: 14, anchor: 'end'});
+  }
+  // Wind dial: the arrow points where the air is going.
+  const cx = 412, cy = 78, r = 60;
+  svg += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="rgba(255,255,255,0.03)" stroke="${DC.grid}" stroke-width="1.5"/>`;
+  for(let a = 0; a < 360; a += 30){
+    const rad = a * Math.PI / 180, r1 = a % 90 ? r - 5 : r - 9;
+    svg += `<line x1="${(cx + Math.sin(rad) * r1).toFixed(1)}" y1="${(cy - Math.cos(rad) * r1).toFixed(1)}" ` +
+           `x2="${(cx + Math.sin(rad) * r).toFixed(1)}" y2="${(cy - Math.cos(rad) * r).toFixed(1)}" stroke="${DC.dim}" stroke-width="1.2"/>`;
+  }
+  for(const [lbl, a] of [['N', 0], ['E', 90], ['S', 180], ['W', 270]]){
+    const rad = a * Math.PI / 180;
+    svg += dcText(cx + Math.sin(rad) * (r + 13), cy - Math.cos(rad) * (r + 13) + 5, lbl, {anchor: 'middle', size: 14});
+  }
+  const mph = p.sknt == null ? null : Math.round(ktToMph(p.sknt));
+  if(mph && p.drct != null){
+    const to = (p.drct + 180) * Math.PI / 180, ux = Math.sin(to), uy = -Math.cos(to);
+    const tip = [cx + ux * (r - 12), cy + uy * (r - 12)], tail = [cx - ux * (r - 12), cy - uy * (r - 12)];
+    const px = -uy * 9, py = ux * 9;
+    svg += `<line x1="${tail[0].toFixed(1)}" y1="${tail[1].toFixed(1)}" x2="${tip[0].toFixed(1)}" y2="${tip[1].toFixed(1)}" stroke="${DC.wind}" stroke-width="3" stroke-linecap="round" opacity="0.5"/>`;
+    svg += `<path d="M${tip[0].toFixed(1)},${tip[1].toFixed(1)} L${(tip[0] - ux * 18 + px).toFixed(1)},${(tip[1] - uy * 18 + py).toFixed(1)} ` +
+           `L${(tip[0] - ux * 18 - px).toFixed(1)},${(tip[1] - uy * 18 - py).toFixed(1)} Z" fill="${DC.wind}"/>`;
+  }
+  svg += `<circle cx="${cx}" cy="${cy}" r="26" fill="#141c2c"/>`;
+  svg += dcText(cx, cy + 6, mph ? String(mph) : 'calm', {anchor: 'middle', fill: DC.ink, size: mph ? 24 : 16, weight: 700});
+  if(mph) svg += dcText(cx, cy + 22, 'mph', {anchor: 'middle', size: 12});
+  if(p.gust != null) svg += dcText(cx, cy + r + 30, `gusts ${Math.round(ktToMph(p.gust))}`, {anchor: 'middle', size: 14});
+
+  host.innerHTML =
+    `<div class="dash-hero"><span class="n" style="color:${tempColor(t)}">${Math.round(t)}°F</span>` +
+    `<span class="u">${p.name || p.station}</span></div>` +
+    `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${svg}</svg>` +
+    dashRow('Dew point', p.dwpf != null ? Math.round(p.dwpf) + '°F' : '—') +
+    dashRow('Pressure', p.mslp != null ? p.mslp.toFixed(1) + ' mb' : '—') +
+    (p.pday ? dashRow('Rain today', p.pday.toFixed(2) + '"') : '');
+}
+
+/* Wind, next 48 h: sustained as the line, the band up to the gusts shaded in
+   the same hue, and the direction as arrows along the top. */
+function renderDashWind(){
+  const host = document.getElementById('dashWind');
+  if(!host) return;
+  const g = nwsFc && nwsFc.grid;
+  if(!g || !g.windSpeed){ host.innerHTML = '<div class="dash-empty">Forecast loading…</div>'; return; }
+  const n = 48;
+  const ws = gridHourly(g.windSpeed, n, kmhToMph);
+  const wg = gridHourly(g.windGust, n, kmhToMph);
+  const wd = gridHourly(g.windDirection, n);
+  const t0 = Math.floor(Date.now() / 3600e3) * 3600e3;
+  const W = 500, H = 220, padL = 40, padR = 14, padT = 40, padB = 28;
+  const pw = W - padL - padR, ph = H - padT - padB, base = padT + ph;
+  const top = dcNice(Math.max(10, ...ws.filter(v => v != null), ...wg.filter(v => v != null)));
+  const X = i => padL + (i / (n - 1)) * pw;
+  const Y = v => base - (v / top) * ph;
+  let svg = '';
+  // Nights behind, the same banding as the forecast card.
+  const hourly = (nwsFc.hourly || []).slice(0, n);
+  hourly.forEach((q, i) => {
+    if(!q.isDaytime) svg += `<rect x="${X(i).toFixed(1)}" y="${padT}" width="${(pw / (n - 1) + 0.6).toFixed(1)}" height="${ph}" fill="${DC.night}"/>`;
+  });
+  for(const v of [0, top / 2, top]){
+    svg += `<line x1="${padL}" y1="${Y(v).toFixed(1)}" x2="${W - padR}" y2="${Y(v).toFixed(1)}" stroke="${DC.grid}" stroke-width="1"/>`;
+    svg += dcText(padL - 6, Y(v) + 5, Math.round(v), {anchor: 'end', size: 14});
+  }
+  const idx = ws.map((v, i) => v == null ? null : i).filter(i => i != null);
+  if(idx.length > 1){
+    const gi = idx.filter(i => wg[i] != null);
+    if(gi.length > 1){
+      const upper = gi.map(i => `${X(i).toFixed(1)},${Y(Math.max(wg[i], ws[i])).toFixed(1)}`);
+      const lower = gi.slice().reverse().map(i => `${X(i).toFixed(1)},${Y(ws[i]).toFixed(1)}`);
+      const gb = dcFade(DC.wind, 0.34, 0.14);
+      svg += `<defs>${gb.def}</defs><polygon points="${upper.concat(lower).join(' ')}" fill="url(#${gb.id})"/>`;
+      svg += `<polyline points="${upper.join(' ')}" fill="none" stroke="${DC.wind}" stroke-width="1.2" opacity="0.55"/>`;
+    }
+    const ga = dcFade(DC.wind, 0.30, 0);
+    svg += `<defs>${ga.def}</defs><path d="M${X(idx[0]).toFixed(1)},${base} ` +
+           `L${idx.map(i => `${X(i).toFixed(1)},${Y(ws[i]).toFixed(1)}`).join(' L')} ` +
+           `L${X(idx[idx.length - 1]).toFixed(1)},${base} Z" fill="url(#${ga.id})"/>`;
+    svg += `<polyline points="${idx.map(i => `${X(i).toFixed(1)},${Y(ws[i]).toFixed(1)}`).join(' ')}" ` +
+           `fill="none" stroke="${DC.wind}" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>`;
+  }
+  // Direction every 4 h: arrows point downwind.
+  for(let i = 0; i < n; i += 4){
+    if(wd[i] == null) continue;
+    const a = wd[i] + 180, x = X(i), y = 18;
+    svg += `<g transform="translate(${x.toFixed(1)},${y}) rotate(${a.toFixed(0)})">` +
+           `<line x1="0" y1="9" x2="0" y2="-5" stroke="${DC.dim}" stroke-width="2" stroke-linecap="round"/>` +
+           `<path d="M0,-11 L-5,-3 L5,-3 Z" fill="${DC.dim}"/></g>`;
+  }
+  // The peak gust, labelled where it lands.
+  let pk = -1;
+  wg.forEach((v, i) => { if(v != null && (pk < 0 || v > wg[pk])) pk = i; });
+  if(pk >= 0){
+    const x = X(pk), y = Y(wg[pk]);
+    svg += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4.5" fill="${DC.wind}" stroke="#141c2c" stroke-width="2"/>`;
+    svg += dcText(x, y - 10, `${Math.round(wg[pk])}`, {anchor: x > W - 60 ? 'end' : x < 70 ? 'start' : 'middle', fill: DC.ink});
+  }
+  for(let i = 0; i < n; i += 12){
+    const t = t0 + i * 3600e3;
+    svg += dcText(X(i), H - 6, (i ? dcDay(t) + ' ' : '') + dcHour(t), {anchor: i ? 'middle' : 'start', size: 14});
+  }
+  const pkTxt = pk >= 0 ? `Peak gust ${Math.round(wg[pk])} mph ${dcDay(t0 + pk * 3600e3)} ${dcHour(t0 + pk * 3600e3)}.` : '';
+  host.innerHTML = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${svg}</svg>` +
+    `<div class="dash-sub">mph. Line is sustained wind, shading reaches the gusts, arrows point downwind. ${pkTxt}</div>`;
+}
+
+/* Precipitation, next 48 h: the total as the headline and six-hour columns
+   showing when it falls. Snow gets its own chart: it is a different
+   measurement, not a second colour on the same one. */
+function renderDashPrecip(){
+  const host = document.getElementById('dashPrecip');
+  if(!host) return;
+  const g = nwsFc && nwsFc.grid;
+  if(!g){ host.innerHTML = '<div class="dash-empty">Forecast loading…</div>'; return; }
+  const bins = 8, bin = 6, t0 = Date.now();
+  const rain = gridBins(g.quantitativePrecipitation, bins, bin, mmToIn);
+  const snow = gridBins(g.snowfallAmount, bins, bin, mmToIn);
+  const ice = mmToIn(gridSum(g.iceAccumulation, 48) || 0);
+  const sum = a => a.reduce((s, v) => s + v, 0);
+  const chart = (vals, digits, unit) => {
+    const W = 500, H = 150, padL = 8, padR = 8, padT = 26, padB = 26;
+    const pw = W - padL - padR, ph = H - padT - padB, base = padT + ph;
+    const top = Math.max(...vals) || 1;
+    const slot = pw / vals.length, w = Math.min(34, slot * 0.62);
+    const gc = dcFade(DC.blue, 1, 0.35);
+    let svg = `<defs>${gc.def}</defs><line x1="${padL}" y1="${base}" x2="${W - padR}" y2="${base}" stroke="${DC.grid}" stroke-width="1"/>`;
+    let iMax = 0;
+    vals.forEach((v, i) => {
+      if(v > vals[iMax]) iMax = i;
+      const x = padL + i * slot + (slot - w) / 2;
+      svg += dcColumn(x, w, base, (v / top) * ph, `url(#${gc.id})`);
+      if(i % 2 === 0){
+        const t = t0 + i * bin * 3600e3;
+        svg += dcText(x + w / 2, H - 6, (i ? dcDay(t) + ' ' : '') + dcHour(t), {anchor: 'middle', size: 14});
+      }
+    });
+    if(vals[iMax] > 0){
+      const x = padL + iMax * slot + slot / 2;
+      svg += dcText(x, base - (vals[iMax] / top) * ph - 8, vals[iMax].toFixed(digits) + unit, {anchor: 'middle', fill: DC.ink});
+    }
+    return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${svg}</svg>`;
+  };
+  const tr = sum(rain), ts = sum(snow);
+  if(tr < 0.005 && ts < 0.05 && ice < 0.005){
+    host.innerHTML = `<div class="dash-hero"><span class="n">Dry</span><span class="u">next 48 h</span></div>` +
+      `<div class="dash-sub">No measurable precipitation in the NWS forecast.</div>`;
+    return;
+  }
+  let html = `<div class="dash-hero"><span class="n">${tr.toFixed(2)}"</span><span class="u">rain, liquid · next 48 h</span></div>` +
+             chart(rain, 2, '"');
+  if(ts >= 0.05) html += `<div class="dash-hero"><span class="n">${ts.toFixed(1)}"</span><span class="u">snow · next 48 h</span></div>` +
+                         chart(snow, 1, '"');
+  if(ice >= 0.005) html += dashRow('Ice', ice.toFixed(2) + '"', 'next 48 h');
+  host.innerHTML = html + `<div class="dash-sub">Six-hour amounts, NWS ${nwsFc.office}.</div>`;
+}
+
+/* Next 5 days: each day's low and high as a bar on one shared scale, so a
+   cold snap or a warm day stands out before any number is read. */
+function renderDashOutlook(){
+  const host = document.getElementById('dashOutlook');
+  if(!host) return;
+  const P = (nwsFc && nwsFc.worded) || [];
+  if(!P.length){ host.innerHTML = '<div class="dash-empty">Forecast loading…</div>'; return; }
+  const days = [];
+  for(let i = 0; i < P.length && days.length < 5; i++){
+    const p = P[i], pop = q => (q && q.probabilityOfPrecipitation && q.probabilityOfPrecipitation.value) || 0;
+    if(p.isDaytime){
+      const nt = P[i + 1] && !P[i + 1].isDaytime ? P[i + 1] : null;
+      days.push({name: i === 0 ? 'Today' : dcDay(p.startTime), hi: p.temperature, lo: nt ? nt.temperature : null,
+                 pop: Math.max(pop(p), pop(nt)), sky: p.shortForecast});
+      if(nt) i++;
+    }else if(i === 0){
+      days.push({name: 'Tonight', hi: null, lo: p.temperature, pop: pop(p), sky: p.shortForecast});
+    }
+  }
+  const temps = days.flatMap(d => [d.hi, d.lo]).filter(v => v != null);
+  const lo = Math.min(...temps), hi = Math.max(...temps);
+  const W = 500, rowH = 46, H = days.length * rowH;
+  const bx0 = 168, bx1 = 410;
+  const X = v => bx0 + ((v - lo) / (hi - lo || 1)) * (bx1 - bx0);
+  const icon = s => /thunder/i.test(s) ? '⛈' : /snow|flurr/i.test(s) ? '🌨' : /rain|shower|drizzle/i.test(s) ? '🌧'
+    : /fog/i.test(s) ? '🌫' : /mostly cloudy|cloudy|overcast/i.test(s) ? '☁️' : /partly|mostly sunny|partly cloudy/i.test(s) ? '⛅' : '☀️';
+  let svg = '<defs>';
+  days.forEach((d, i) => {
+    if(d.hi != null && d.lo != null)
+      svg += `<linearGradient id="dg${i}" x1="0" x2="1"><stop offset="0" stop-color="${tempColor(d.lo)}"/><stop offset="1" stop-color="${tempColor(d.hi)}"/></linearGradient>`;
+  });
+  svg += '</defs>';
+  days.forEach((d, i) => {
+    const y = i * rowH + rowH / 2;
+    if(i) svg += `<line x1="0" y1="${i * rowH}" x2="${W}" y2="${i * rowH}" stroke="${DC.grid}" stroke-width="1"/>`;
+    svg += dcText(0, y + 6, d.name, {fill: DC.ink, size: 17});
+    svg += dcText(96, y + 7, icon(d.sky), {size: 22});
+    svg += `<rect x="${bx0}" y="${y - 7}" width="${bx1 - bx0}" height="14" rx="7" fill="rgba(255,255,255,0.07)"/>`;
+    const a = d.lo != null ? d.lo : d.hi, b = d.hi != null ? d.hi : d.lo;
+    const x0 = X(a), x1 = Math.max(X(b), x0 + 14);
+    svg += `<rect x="${x0.toFixed(1)}" y="${y - 7}" width="${(x1 - x0).toFixed(1)}" height="14" rx="7" ` +
+           `fill="${d.hi != null && d.lo != null ? `url(#dg${i})` : tempColor(a)}"/>`;
+    svg += dcText(bx0 - 10, y + 6, d.lo != null ? d.lo + '°' : '', {anchor: 'end', size: 16});
+    svg += dcText(bx1 + 10, y + 6, d.hi != null ? d.hi + '°' : '', {fill: DC.ink, size: 16, weight: 700});
+    if(d.pop >= 20) svg += dcText(W, y + 6, d.pop + '%', {anchor: 'end', size: 14});
+  });
+  host.innerHTML = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${svg}</svg>` +
+    `<div class="dash-sub">Low to high on one scale; percent is chance of precipitation. NWS ${nwsFc.office}.</div>`;
+}
+
+/* Watches and warnings, each with a bar for how much of it is left. */
+function renderDashAlerts(){
+  const host = document.getElementById('dashAlerts');
+  if(!host) return;
+  const now = mapNow();
+  const live = (lastAlertFeats || [])
+    .filter(f => f._geoms && f._geoms.length && alertInWindow(f) && alertInView(f))
+    .filter(f => hazardVisible[f._hazard])
+    .sort((a, b) => (a._cls === 'warning' ? 0 : a._cls === 'watch' ? 1 : 2) -
+                    (b._cls === 'warning' ? 0 : b._cls === 'watch' ? 1 : 2));
+  if(!live.length){ host.innerHTML = '<div class="dash-empty">Nothing in force here.</div>'; return; }
+  host.innerHTML = live.slice(0, 5).map(f => {
+    const p = f.properties;
+    const ends = Date.parse(p.ends || p.expires), starts = Date.parse(p.onset || p.effective || p.sent);
+    let left = '', frac = null;
+    if(isFinite(ends)){
+      const m = Math.round((ends - now) / 60000);
+      left = m <= 0 ? 'ending' : m < 60 ? m + ' min left' : Math.round(m / 60) + ' h left';
+      if(isFinite(starts) && ends > starts) frac = Math.max(0, Math.min(1, (ends - now) / (ends - starts)));
+    }
+    const col = alertColor(p.event, f._cls);
+    return dashRow(f._cls, p.event.replace('Severe Thunderstorm', 'Svr T-storm'), left, col) +
+      (frac != null ? `<div class="dash-meter"><i style="width:${(frac * 100).toFixed(1)}%;background:${col}"></i></div>` : '');
+  }).join('') + (live.length > 5 ? `<div class="dash-empty">+${live.length - 5} more</div>` : '');
+}
+
+/* Lightning: the last ten minutes large, the last hour as five-minute columns
+   so the trend is a shape rather than a word. */
+function renderDashLightning(){
+  const host = document.getElementById('dashLtg');
+  if(!host) return;
+  if(!map || typeof strikes === 'undefined'){ host.innerHTML = ''; return; }
+  const b = map.getBounds(), now = Date.now();
+  const bins = new Array(12).fill(0);
+  let last10 = 0, prev10 = 0;
+  for(const s of strikes){
+    const ll = s.marker && s.marker.getLatLng ? s.marker.getLatLng() : null;
+    if(!ll || !b.contains(ll)) continue;
+    const age = now - s.time;
+    if(age < 0 || age > 60 * 60e3) continue;
+    bins[11 - Math.min(11, Math.floor(age / (5 * 60e3)))]++;
+    if(age <= 10 * 60e3) last10++; else if(age <= 20 * 60e3) prev10++;
+  }
+  const hour = bins.reduce((s, v) => s + v, 0);
+  if(!hour){ host.innerHTML = '<div class="dash-empty">No strikes in view in the past hour.</div>'; return; }
+  const trend = prev10 === 0 ? (last10 ? 'new' : 'quiet')
+    : last10 > prev10 * 1.3 ? 'intensifying' : last10 < prev10 * 0.7 ? 'easing' : 'steady';
+  const W = 500, H = 140, padT = 24, padB = 26, base = H - padB, ph = base - padT;
+  const top = Math.max(...bins), slot = W / 12, w = Math.min(28, slot * 0.62);
+  const gl = dcFade(DC.amber, 1, 0.35);
+  let svg = `<defs>${gl.def}</defs><line x1="0" y1="${base}" x2="${W}" y2="${base}" stroke="${DC.grid}" stroke-width="1"/>`;
+  let iMax = 0;
+  bins.forEach((v, i) => {
+    if(v > bins[iMax]) iMax = i;
+    svg += dcColumn(i * slot + (slot - w) / 2, w, base, (v / top) * ph, `url(#${gl.id})`);
+  });
+  svg += dcText(slot * iMax + slot / 2, base - ph - 8 + (1 - bins[iMax] / top) * ph, bins[iMax], {anchor: 'middle', fill: DC.ink});
+  svg += dcText(0, H - 6, '1 h ago', {size: 14});
+  svg += dcText(W / 2, H - 6, '30 min', {anchor: 'middle', size: 14});
+  svg += dcText(W, H - 6, 'now', {anchor: 'end', size: 14});
+  host.innerHTML = `<div class="dash-hero"><span class="n">${last10}</span><span class="u">strikes in view, last 10 min · ${trend}</span></div>` +
+    `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${svg}</svg>` +
+    `<div class="dash-sub">Strikes per five minutes. ${hour} in the past hour.</div>`;
+}
+
 function renderDash(){
   if(!dashOn()) return;
   renderDashNow();
   renderDashForecast();
+  renderDashWind();
   renderDashPrecip();
   renderDashOutlook();
   renderDashAlerts();
   renderDashLightning();
   renderDashReports();
+  if(typeof dashPagerPaint === 'function') dashPagerPaint();
 }
 
 function dashOn(){ return document.body.classList.contains('dash'); }
@@ -6926,20 +7229,41 @@ function toggleDash(on, quiet){
 let dashIdx = 0;
 let dashTimer = null;
 function dashCards(){ return [...document.querySelectorAll('#dashRail > .dash-card')]; }
+// A card with nothing to show (no warnings, no strikes, no reports) sits out
+// the rotation until it has something, so every turn lands on a picture.
+function dashCardLive(c){
+  return !(c.querySelector('.dash-empty') && !c.querySelector('svg, .dash-hero, .dr'));
+}
+// The next live card from i in direction dir (i itself counts), or -1.
+function dashNextLive(i, dir){
+  const cards = dashCards(), n = cards.length;
+  for(let k = 0; k < n; k++){
+    const j = (((i + k * dir) % n) + n) % n;
+    if(dashCardLive(cards[j])) return j;
+  }
+  return -1;
+}
 function showDashCard(i){
   const cards = dashCards();
   if(!cards.length) return;
   dashIdx = ((i % cards.length) + cards.length) % cards.length;
   cards.forEach((c, j) => c.classList.toggle('on', j === dashIdx));
-  const pager = document.getElementById('dashPager');
-  if(pager) pager.innerHTML = cards.length > 1
-    ? cards.map((_, j) => `<i class="${j === dashIdx ? 'on' : ''}"></i>`).join('') : '';
+  dashPagerPaint();
   dashSchedule();
+}
+// Dots for the live cards only, so the count matches what will be shown.
+function dashPagerPaint(){
+  const pager = document.getElementById('dashPager');
+  if(!pager) return;
+  const live = dashCards().map((c, j) => [c, j]).filter(([c]) => dashCardLive(c));
+  pager.innerHTML = live.length > 1
+    ? live.map(([, j]) => `<i class="${j === dashIdx ? 'on' : ''}"></i>`).join('') : '';
 }
 // Flip to the next (1) or previous (-1) card, opening the widget if it is shut.
 function dashFlip(dir){
   if(!dashOn()) toggleDash(true, true);
-  showDashCard(dashIdx + dir);
+  const j = dashNextLive(dashIdx + dir, dir);
+  showDashCard(j < 0 ? dashIdx + dir : j);
   const h = dashCards()[dashIdx]?.querySelector('h3');
   if(h) keyHint(h.textContent);
 }
@@ -6952,9 +7276,17 @@ function dashSchedule(){
   dashTimer = setTimeout(dashTick, DASH_CYCLE * 1000);
 }
 function dashTick(){
-  if(!dashOn()){ toggleDash(true, true); showDashCard(0); }
-  else if(dashIdx >= dashCards().length - 1) toggleDash(false, true);
-  else showDashCard(dashIdx + 1);
+  if(!dashOn()){
+    const j = dashNextLive(0, 1);
+    toggleDash(true, true); showDashCard(j < 0 ? 0 : j);
+    return;
+  }
+  // The next live card after this one, without wrapping; past the last, rest.
+  const cards = dashCards();
+  let j = dashIdx + 1;
+  while(j < cards.length && !dashCardLive(cards[j])) j++;
+  if(j >= cards.length) toggleDash(false, true);
+  else showDashCard(j);
 }
 
 // A word on screen when a key is pressed. Without it a remote press on a
