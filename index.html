@@ -492,6 +492,30 @@
   }
 
   /* Recent-events side panel + edge tab. */
+  /* Dashboard: the map shares the screen with a rail of panels that are always
+     on, because nothing on a television gets clicked. Built on top of tv mode,
+     so the text is already scaled for a room. */
+  body.dash #map{ right:var(--rail); }
+  body.dash #dashRail{ display:flex; }
+  body.dash #soundTab, body.dash #soundPanel, body.dash #feedTab{ display:none !important; }
+  #dashRail{
+    position:absolute;top:0;right:0;width:var(--rail);height:100%;z-index:640;
+    display:none;flex-direction:column;gap:12px;padding:16px;box-sizing:border-box;
+    background:var(--panel);border-left:1px solid var(--border);
+    backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+    overflow:hidden;
+  }
+  .dash-card{
+    border:1px solid var(--border);border-radius:13px;padding:12px 14px;
+    background:rgba(255,255,255,0.028);
+  }
+  .dash-card > h3{
+    margin:0 0 9px;font-family:sans-serif;font-weight:700;font-size:14px;
+    color:#F5F3EC;letter-spacing:0.06em;text-transform:uppercase;
+  }
+  .dash-card .sd-note{ font-size:12px; padding:7px 1px 0; }
+  .dash-card svg{ display:block; width:100%; height:auto; }
+
   /* A second tab under EVENTS, same shape. */
   #soundTab{
     position:absolute;top:50%;right:0;transform:translateY(calc(-50% + 96px));z-index:600;
@@ -759,6 +783,12 @@
   </select>
 </div>
 
+<div id="dashRail">
+  <div class="dash-card">
+    <h3>Air aloft &mdash; next 24 h</h3>
+    <div id="dashSound"></div>
+  </div>
+</div>
 <div id="soundTab" onclick="toggleSounding()">ALOFT</div>
 <div id="soundPanel">
   <div class="feed-head">
@@ -2590,6 +2620,8 @@ function syncAppSettings(){
      ?tracks=0          turn storm tracks off
      ?scale=1.6         label scale, if the default TV scale is wrong for the room
      ?replay=0          hide the scrubber entirely
+     ?dash=1            television dashboard: map plus an always-on panel rail
+     ?rail=520          width of that rail in px (default 560)
      ?launcher=1        ambient loop of the last couple of hours, no controls
      ?hours=3           how far the launcher loop reaches back (with ?launcher=1)
      ?step=10           minutes per frame of the launcher loop, multiples of 5 (default 5)
@@ -2604,12 +2636,28 @@ const qFlag = (k, dflt) => {
   return !(v === '0' || v === 'false' || v === 'no');
 };
 let tvMode = qFlag('tv', false);
+/* ?dash=1 — the television layout: the map keeps most of the screen and a rail
+   of always-on panels takes the right. Built on tv mode, so the text is
+   already sized for a room, and it implies it rather than needing both flags.
+   Nothing in here is clickable; everything refreshes itself. */
+const DASH = qFlag('dash', false);
+if(DASH) tvMode = true;
+// ?rail=520 to suit the set. Narrow enough and the chart stops being readable;
+// wide enough and the map stops being a map.
+const DASH_RAIL = (function(){
+  const v = parseInt(URLQ.get('rail'), 10);
+  return isFinite(v) ? Math.max(320, Math.min(760, v)) : 560;
+})();
 
 // Applied before initMap so the first view is already the requested one.
 function applyUrlView(){
   const qLat = parseFloat(URLQ.get('lat')), qLon = parseFloat(URLQ.get('lon'));
   if(isFinite(qLat) && isFinite(qLon)){ lat = qLat; lon = qLon; }
   if(tvMode) document.body.classList.add('tv');
+  if(DASH){
+    document.body.classList.add('dash');
+    document.documentElement.style.setProperty('--rail', DASH_RAIL + 'px');
+  }
 }
 
 // Applied after the map and controls exist.
@@ -6369,8 +6417,15 @@ function soundBarb(kt, dir, x, y){
 }
 
 function renderSounding(){
-  const host = document.getElementById('soundBody');
-  if(!host) return;
+    // Drawn into the slide-over panel, the dashboard rail, or both — whichever
+    // is on the page. The rail version is wider and has no tab to open.
+    for(const id of ['soundBody', 'dashSound']){
+      const host = document.getElementById(id);
+      if(host) soundingInto(host, id === 'dashSound');
+    }
+}
+
+function soundingInto(host, big){
   if(!soundData){ host.innerHTML = '<div class="sd-note">Loading the column…</div>'; return; }
   const H = soundData.hourly, times = H.time || [];
   // Start at the hour the map is showing, so scrubbing moves this too.
@@ -6380,8 +6435,10 @@ function renderSounding(){
   if(idx.length < 2){ host.innerHTML = '<div class="sd-note">No model data here.</div>'; return; }
 
   const L = SOUND_LEVELS;                       // 1000 at [0], 200 at the end
-  const W = 404, padL = 40, padR = 8, padT = 10, padB = 20;
-  const rowH = 20, plotH = rowH * L.length, Hgt = plotH + padT + padB;
+  // The rail is read from across a room, so it gets a taller grid and more
+  // room for the labels; the panel keeps the compact one.
+  const W = big ? 520 : 404, padL = big ? 52 : 40, padR = 8, padT = 10, padB = big ? 26 : 20;
+  const rowH = big ? 27 : 20, plotH = rowH * L.length, Hgt = plotH + padT + padB;
   const plotW = W - padL - padR;
   const colW = plotW / idx.length;
   const yOf = li => padT + (L.length - 1 - li) * rowH;   // 1000 hPa at the bottom
@@ -6424,13 +6481,13 @@ function renderSounding(){
     const g = H[`geopotential_height_${lv}hPa`];
     const m = g && g[idx[0]] != null ? Math.round(g[idx[0]] / 304.8) : null;
     return `<text x="${padL - 4}" y="${yOf(li) + rowH / 2 + 3}" text-anchor="end" ` +
-      `font-size="8" fill="#8A93A6" font-family="monospace">${lv}${m != null ? ' ' + m + 'k' : ''}</text>`;
+      `font-size="${big ? 10 : 8}" fill="#8A93A6" font-family="monospace">${lv}${m != null ? ' ' + m + 'k' : ''}</text>`;
   }).join('');
   const xLab = idx.map((i, k) => {
     if(k % 3) return '';
     const d = new Date(times[i] + 'Z');
     return `<text x="${(padL + (k + 0.5) * colW).toFixed(1)}" y="${plotH + padT + 12}" ` +
-      `text-anchor="middle" font-size="8" fill="#8A93A6" font-family="monospace">` +
+      `text-anchor="middle" font-size="${big ? 10 : 8}" fill="#8A93A6" font-family="monospace">` +
       `${d.toLocaleTimeString([], {hour: 'numeric'}).replace(' ', '')}</text>`;
   }).join('');
 
@@ -6438,10 +6495,13 @@ function renderSounding(){
   host.innerHTML =
     `<svg width="${W}" height="${Hgt}" viewBox="0 0 ${W} ${Hgt}">` +
     cells.join('') + fl + barbs.join('') + yLab + xLab + `</svg>` +
-    `<div class="sd-note"><span class="sd-key">hPa / thousands of feet</span> up the side, ` +
-    `hours across. Shading is temperature; the dashed line is freezing. A tongue of ` +
-    `warm air above a cold surface is what turns snow into freezing rain.<br>` +
-    `HRRR at ${c.lat.toFixed(2)}, ${c.lng.toFixed(2)}.</div>`;
+    (big
+      ? `<div class="sd-note">Shading is temperature, dashed line is freezing. ` +
+        `HRRR at ${c.lat.toFixed(2)}, ${c.lng.toFixed(2)}.</div>`
+      : `<div class="sd-note"><span class="sd-key">hPa / thousands of feet</span> up the side, ` +
+        `hours across. Shading is temperature; the dashed line is freezing. A tongue of ` +
+        `warm air above a cold surface is what turns snow into freezing rain.<br>` +
+        `HRRR at ${c.lat.toFixed(2)}, ${c.lng.toFixed(2)}.</div>`);
 }
 
 function toggleSounding(){
@@ -6820,6 +6880,15 @@ async function boot(){
   applyUrlOptions();
 
   loadNexradSites().then(populateSiteDropdown);
+  if(DASH){
+    // The rail is painted before this runs, but Leaflet sized itself to the
+    // full window; without this the map draws into the rail and every
+    // projection is off by the rail's width.
+    map.invalidateSize();
+    soundOpen = true;                       // no tab to open on a television
+    loadSounding();
+    setInterval(loadSounding, 15 * 60 * 1000);
+  }
   loadAlerts(); loadOutlook(); loadMCD(); loadLSR(); loadSpcWatches();
   loadStations();   // heavy national fetch — fire after the map is visible
   connectLightning();
