@@ -566,6 +566,17 @@
     border:1px solid var(--border);border-radius:13px;padding:12px 14px;
     background:rgba(255,255,255,0.028);
   }
+  /* Pavement readings: a square chip so they never read as another air
+     temperature among the station plots. */
+  .rw-icon{ background:none; border:none; }
+  .rw-lbl{
+    display:inline-flex;align-items:center;gap:3px;
+    transform:translate(-50%,-50%);white-space:nowrap;
+    font-family:monospace;font-weight:700;font-size:calc(11px * var(--lblscale, 1));
+    text-shadow:0 0 3px #000, 0 0 2px #000;
+  }
+  .rw-lbl i{ width:5px;height:5px;border-radius:1px;display:block; }
+
   .dash-card > h3{
     margin:0 0 9px;font-family:sans-serif;font-weight:700;font-size:14px;
     color:#F5F3EC;letter-spacing:0.06em;text-transform:uppercase;
@@ -1133,7 +1144,7 @@
 <script>
 let lat = 42.907058, lon = -85.763014;
 let map, basemap, basemapLabels, radarLayer, marker, alertLayerGroup, lightningLayerGroup, feedLayerGroup;
-let spcOutlookLayer, mcdLayer, lsrLayer, stationLayer, modelLayer, modelMarkers, sfcLayer
+let spcOutlookLayer, mcdLayer, lsrLayer, stationLayer, modelLayer, modelMarkers, sfcLayer, rwisLayer
 let isobarLayer, isobarMarkers, lakeLayer;
 let precipGroup, precipMarkers;
 const ESRI_CANVAS = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/';
@@ -1184,6 +1195,7 @@ function initMap(){
   alertLayerGroup = L.layerGroup().addTo(map);
   lakeLayer = L.layerGroup().addTo(map);
   upperLayer = L.layerGroup().addTo(map);
+  rwisLayer = L.layerGroup().addTo(map);
   sfcLayer = L.layerGroup().addTo(map);
   mcdLayer = L.layerGroup().addTo(map);
   lsrLayer = L.layerGroup().addTo(map);
@@ -1211,7 +1223,7 @@ function initMap(){
   const MOVE_TASKS = [renderStations, drawIsoLines, renderSurface,
                       renderFeed, scheduleModelRefresh, scheduleMrmsRadar,
                       scheduleSounding, renderDash, scheduleNwsForecast,
-                      scheduleConvective, scheduleRwis,
+                      scheduleConvective, scheduleRwis, renderRwisLabels,
                       scheduleIsobarRefresh, scheduleNoaaRadar, schedulePrecipRefresh,
                       syncAppSettings, scheduleHistoryRefresh, renderLakeTemps,
                       renderUpper, scheduleUpperRefresh, renderReplayMarks,
@@ -6765,6 +6777,55 @@ function roadObserved(){
   return null;
 }
 
+/* Pavement readings on the map, and only while the card is up.
+
+   A layer that belongs to a panel rather than to the map: it says what the
+   roads are doing across the whole view, which is worth seeing next to the
+   radar — and is clutter the rest of the time. So it lives and dies with the
+   card, which on the rotating widget means it appears for that card's turn
+   and goes again. */
+function roadsCardShowing(){
+  const card = [...document.querySelectorAll('#dashRail > .dash-card')]
+    .find(c => /Roads/i.test(c.querySelector('h3')?.textContent || ''));
+  if(!card || !dashOn()) return false;
+  if(card.offsetParent === null) return false;          // display:none in the rotation
+  const rail = document.getElementById('dashRail');
+  if(!rail) return false;
+  // In the scrolling rail it counts as up only while actually in view.
+  const r = card.getBoundingClientRect(), q = rail.getBoundingClientRect();
+  return r.bottom > q.top + 8 && r.top < q.bottom - 8;
+}
+
+function renderRwisLabels(){
+  if(!rwisLayer) return;
+  rwisLayer.clearLayers();
+  if(!roadsCardShowing() || !rwisSites.length || map.getZoom() < 6) return;
+  const b = map.getBounds();
+  // Thinned the way the station plots are, so a motorway's worth of sensors
+  // does not stack into an unreadable column.
+  const cell = 46, claimed = new Set();
+  for(const s of rwisSites){
+    if(!b.contains([s.lat, s.lon])) continue;
+    const pt = map.latLngToLayerPoint([s.lat, s.lon]);
+    const key = Math.round(pt.x / cell) + ':' + Math.round(pt.y / cell);
+    if(claimed.has(key)) continue;
+    claimed.add(key);
+    const st = rwisCondState(s.cond);
+    const col = st ? ROAD_STATE[st].color : tempColor(s.pave);
+    // The number is the pavement, not the air — that is the whole point of it
+    // being here rather than another air temperature among hundreds.
+    const html = `<span class="rw-lbl" style="color:${col}">${Math.round(s.pave)}` +
+                 `<i style="background:${col}"></i></span>`;
+    L.marker([s.lat, s.lon], {
+      icon: L.divIcon({className: 'rw-icon', html, iconSize: [0, 0], iconAnchor: [0, 0]}),
+      keyboard: false,
+    }).bindPopup(`<div class="alert-popup"><b>${s.name}</b>` +
+      `pavement ${Math.round(s.pave)}°F` +
+      (s.air != null ? ` · air ${Math.round(s.air)}°F` : '') +
+      (s.cond ? `<br>${s.cond}` : '') + `</div>`).addTo(rwisLayer);
+  }
+}
+
 function renderDashRoad(){
   const host = document.getElementById('dashRoad');
   if(!host) return;
@@ -7762,6 +7823,7 @@ function renderDash(){
   if(!dashOn()) return;
   renderDashNow();
   renderDashRoad();
+  renderRwisLabels();
   renderDashConvection();
   renderDashLake();
   renderDashForecast();
@@ -7801,6 +7863,7 @@ function toggleDash(on, quiet){
     // A toggle a panel that was already closed, so nothing appeared.
     soundOpen = !!document.getElementById('soundPanel')?.classList.contains('open');
   }
+  renderRwisLabels();
   // Leaflet sized itself to the old width; without this the map projects into
   // the rail and every position is off by its width.
   setTimeout(() => { if(map) map.invalidateSize(); }, 20);
@@ -7831,6 +7894,7 @@ function showDashCard(i){
   if(!cards.length) return;
   dashIdx = ((i % cards.length) + cards.length) % cards.length;
   cards.forEach((c, j) => c.classList.toggle('on', j === dashIdx));
+  renderRwisLabels();        // the pavement layer belongs to the roads card
   dashPagerPaint();
   dashSchedule();
 }
@@ -7969,6 +8033,7 @@ document.addEventListener('keydown', e => {
       e.preventDefault();
       rail.scrollBy({top: (k === 'ArrowDown' ? 1 : -1) * Math.round(rail.clientHeight * 0.6),
                      behavior: 'smooth'});
+      setTimeout(renderRwisLabels, 420);    // scrolling changes which card is up
       return;
     }
   }
