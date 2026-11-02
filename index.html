@@ -835,6 +835,7 @@
 <div id="dashRail">
   <div class="dash-card"><h3>Now</h3><div id="dashNow"></div></div>
   <div class="dash-card"><h3>Air aloft &mdash; next 24 h</h3><div id="dashSound"></div></div>
+  <div class="dash-card"><h3>Lake effect</h3><div id="dashLake"></div></div>
   <div class="dash-card"><h3>Next 48 h &mdash; NWS</h3><div id="dashFc"></div></div>
   <div class="dash-card"><h3>Expected totals</h3><div id="dashPrecip"></div></div>
   <div class="dash-card"><h3>Outlook</h3><div id="dashOutlook"></div></div>
@@ -6572,6 +6573,164 @@ function soundingInto(host, big){
 
    Every one of them is a toggle, because on a remote you cannot see which
    state you are in before you press. */
+/* ---------------- Lake effect ----------------
+   The winter question here, and one no ordinary forecast answers: is the air
+   crossing the lake cold enough, over enough water, in a straight enough line
+   to put a snow band on the ground downwind.
+
+   Three ingredients, all from data the page already holds. The water
+   temperature comes from the buoy network; the air at 850 hPa and the winds
+   at 850 and 700 come from the column already fetched for the cross section.
+
+   The thresholds are the standard ones: a lake-minus-850 difference of 13C is
+   the usual floor for convection deep enough to snow, 17C is a strong setup,
+   and the bands organise into lines when the wind barely turns with height
+   and break up into scattered showers when it turns a lot.
+
+   Fetch is a proxy, and labelled as one. Without a coastline to walk, the
+   buoys standing upwind are the evidence that there is water out there: the
+   farthest one inside the upwind cone is a lower bound on how far the air has
+   been over water, never an upper one. */
+const LAKE_DT_MARGINAL = 10, LAKE_DT_GOOD = 13, LAKE_DT_STRONG = 17;   // degrees C
+const LAKE_CONE_DEG = 35, LAKE_FETCH_MAX_KM = 260;
+
+function bearingTo(la1, lo1, la2, lo2){
+  const r = Math.PI / 180;
+  const y = Math.sin((lo2 - lo1) * r) * Math.cos(la2 * r);
+  const x = Math.cos(la1 * r) * Math.sin(la2 * r) -
+            Math.sin(la1 * r) * Math.cos(la2 * r) * Math.cos((lo2 - lo1) * r);
+  return (Math.atan2(y, x) / r + 360) % 360;
+}
+const angleGap = (a, b) => { const d = Math.abs(a - b) % 360; return d > 180 ? 360 - d : d; };
+
+function lakeEffect(){
+  if(!map || !lakeData || !lakeData.stations || !soundData) return null;
+  const c = map.getCenter(), H = soundData.hourly;
+  const i = currentHourIndex(H.time || []);
+  const t850 = (H.temperature_850hPa || [])[i];
+  const d850 = (H.wind_direction_850hPa || [])[i];
+  const s850 = (H.wind_speed_850hPa || [])[i];
+  const d700 = (H.wind_direction_700hPa || [])[i];
+  if(t850 == null || d850 == null) return null;
+
+  // Buoys standing upwind: the direction is where the wind comes FROM, which
+  // is exactly the direction the air has travelled over.
+  const inCone = [], all = [];
+  for(const s of lakeData.stations){
+    if(s.waterF == null) continue;
+    const km = haversineKm(c.lat, c.lng, s.lat, s.lon);
+    const br = bearingTo(c.lat, c.lng, s.lat, s.lon);
+    const rec = {s, km, br, off: angleGap(br, d850)};
+    all.push(rec);
+    if(km <= LAKE_FETCH_MAX_KM && rec.off <= LAKE_CONE_DEG) inCone.push(rec);
+  }
+  all.sort((a, b) => a.km - b.km);
+  if(!all.length || all[0].km > 220) return {tooFar: true};
+
+  inCone.sort((a, b) => a.km - b.km);
+  // Nearest upwind buoy for the water temperature, farthest for the fetch.
+  const src = inCone[0] || all[0];
+  const waterC = (src.s.waterF - 32) * 5 / 9;
+  const dT = waterC - t850;
+  const fetchKm = inCone.length ? inCone[inCone.length - 1].km : 0;
+  const shear = d700 == null ? null : angleGap(d850, d700);
+
+  // The temperature difference is a gate, not one ingredient among three.
+  // Below about 10C the air is not unstable enough over the water to build
+  // anything, and no amount of fetch or straight flow substitutes for that —
+  // scoring it additively called a 5.9C difference marginal purely because
+  // the air had crossed 160 km, which is not how it works.
+  let score = 0, verdict, tone;
+  if(dT >= LAKE_DT_STRONG) score += 2; else if(dT >= LAKE_DT_GOOD) score += 1.5;
+  else if(dT >= LAKE_DT_MARGINAL) score += 0.5;
+  if(fetchKm >= 120) score += 1; else if(fetchKm >= 60) score += 0.5;
+  if(shear != null){ if(shear <= 30) score += 1; else if(shear <= 60) score += 0.4; }
+  if(!inCone.length){ verdict = 'Wind is off the land'; tone = '#8A93A6'; }
+  else if(dT < LAKE_DT_MARGINAL){ verdict = 'Water too warm aloft'; tone = '#6C7585'; }
+  else if(score >= 3.2){ verdict = 'Strong setup'; tone = '#9FD8FF'; }
+  else if(score >= 2.2){ verdict = 'Favourable'; tone = '#7FC8F8'; }
+  else if(score >= 1.4){ verdict = 'Marginal'; tone = '#C9B458'; }
+  else { verdict = 'Unlikely'; tone = '#6C7585'; }
+  return {dT, waterC, waterF: src.s.waterF, t850, d850, s850, shear, fetchKm,
+          inCone, all: all.slice(0, 26), verdict, tone, src};
+}
+
+function renderDashLake(){
+  const host = document.getElementById('dashLake');
+  if(!host) return;
+  const L = lakeEffect();
+  if(!L){ host.innerHTML = '<div class="dash-empty">Waiting on buoys and the column…</div>'; return; }
+  if(L.tooFar){ host.innerHTML = '<div class="dash-empty">Not near the Great Lakes.</div>'; return; }
+
+  // --- plan view: where the air has been ---
+  const W = 500, Hh = 178, cx = 150, cy = 84, R = 72;
+  const kmToPx = R / LAKE_FETCH_MAX_KM;
+  const pol = (brg, km) => {
+    const a = (brg - 90) * Math.PI / 180;
+    return [cx + Math.cos(a) * km * kmToPx, cy + Math.sin(a) * km * kmToPx];
+  };
+  // The upwind cone, which is the ground the air crossed to get here.
+  const a1 = (L.d850 - LAKE_CONE_DEG - 90) * Math.PI / 180;
+  const a2 = (L.d850 + LAKE_CONE_DEG - 90) * Math.PI / 180;
+  const cone = `<path d="M ${cx} ${cy} L ${cx + Math.cos(a1) * R} ${cy + Math.sin(a1) * R} ` +
+    `A ${R} ${R} 0 0 1 ${cx + Math.cos(a2) * R} ${cy + Math.sin(a2) * R} Z" ` +
+    `fill="${L.inCone.length ? 'rgba(159,216,255,0.13)' : 'rgba(255,255,255,0.05)'}" ` +
+    `stroke="${L.tone}" stroke-width="1" stroke-dasharray="3 3"/>`;
+  // Buoys, coloured by water temperature, so the warm water reads at a glance.
+  const dots = L.all.map(r => {
+    const [x, y] = pol(r.br, Math.min(r.km, LAKE_FETCH_MAX_KM));
+    const lit = r.off <= LAKE_CONE_DEG && r.km <= LAKE_FETCH_MAX_KM;
+    return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${lit ? 3.4 : 2}" ` +
+      `fill="${tempColor(r.s.waterF)}" opacity="${lit ? 1 : 0.35}"/>`;
+  }).join('');
+  // The wind arrow points the way the air is going: from the lake onto us.
+  const [hx, hy] = pol(L.d850, LAKE_FETCH_MAX_KM * 0.92);
+  const arrow = `<line x1="${hx.toFixed(1)}" y1="${hy.toFixed(1)}" x2="${cx}" y2="${cy}" ` +
+    `stroke="${L.tone}" stroke-width="2.4" marker-end="url(#leArrow)"/>`;
+  const rings = [0.33, 0.66, 1].map(f =>
+    `<circle cx="${cx}" cy="${cy}" r="${(R * f).toFixed(1)}" fill="none" ` +
+    `stroke="rgba(255,255,255,0.09)" stroke-width="1"/>`).join('');
+
+  // --- the difference that decides it ---
+  const bx = 268, bw = 214, by = 34, bh = 15;
+  const span = 26;                                   // 0 to 26C across the bar
+  const frac = Math.max(0, Math.min(1, L.dT / span));
+  const mark = v => bx + (v / span) * bw;
+  const bar =
+    `<rect x="${bx}" y="${by}" width="${bw}" height="${bh}" rx="4" fill="rgba(255,255,255,0.07)"/>` +
+    `<rect x="${bx}" y="${by}" width="${(bw * frac).toFixed(1)}" height="${bh}" rx="4" fill="${L.tone}"/>` +
+    `<line x1="${mark(LAKE_DT_GOOD).toFixed(1)}" y1="${by - 3}" x2="${mark(LAKE_DT_GOOD).toFixed(1)}" ` +
+      `y2="${by + bh + 3}" stroke="#F5F3EC" stroke-width="1.3"/>` +
+    `<text x="${mark(LAKE_DT_GOOD).toFixed(1)}" y="${by - 6}" text-anchor="middle" font-size="9" ` +
+      `fill="#8A93A6" font-family="monospace">13 needed</text>`;
+
+  const txt = (x, y, s, size, col, anchor) =>
+    `<text x="${x}" y="${y}" font-size="${size}" fill="${col}" font-family="monospace" ` +
+    `${anchor ? `text-anchor="${anchor}"` : ''}>${s}</text>`;
+  const shearTxt = L.shear == null ? 'unknown'
+    : `${Math.round(L.shear)}° ${L.shear <= 30 ? 'banded' : L.shear <= 60 ? 'ragged' : 'disorganised'}`;
+
+  host.innerHTML =
+    `<svg width="${W}" height="${Hh}" viewBox="0 0 ${W} ${Hh}">` +
+    `<defs><marker id="leArrow" markerWidth="7" markerHeight="7" refX="5.5" refY="3" orient="auto">` +
+    `<path d="M0,0 L6,3 L0,6 z" fill="${L.tone}"/></marker></defs>` +
+    rings + cone + dots + arrow +
+    `<circle cx="${cx}" cy="${cy}" r="3.6" fill="#F5F3EC"/>` +
+    txt(cx, cy + 86, `${Math.round(L.d850)}° at 850 hPa`, 10, '#8A93A6', 'middle') +
+    bar +
+    txt(bx, by + 30, `ΔT  ${L.dT.toFixed(1)}°C`, 13, '#F5F3EC') +
+    txt(bx + bw, by + 30, `water ${Math.round(L.waterF)}°F`, 11, '#8A93A6', 'end') +
+    txt(bx, by + 50, `850 hPa  ${L.t850.toFixed(1)}°C`, 11, '#8A93A6') +
+    txt(bx, by + 68, `turning  ${shearTxt}`, 11, '#8A93A6') +
+    txt(bx, by + 86, `fetch  ${L.inCone.length ? '≥' + Math.round(L.fetchKm) + ' km' : 'none over water'}`,
+        11, '#8A93A6') +
+    txt(bx, by + 112, L.verdict.toUpperCase(), 16, L.tone) +
+    `</svg>` +
+    `<div class="dash-sub">Rings at 87, 173 and 260 km. Buoys upwind are lit; the cone is ` +
+    `the ground the air crossed. Fetch is a lower bound from those buoys, not a ` +
+    `shoreline measurement.</div>`;
+}
+
 /* ---------------- NWS forecast, for the dashboard ----------------
    Three requests behind one /points lookup: the hourly grid for the
    meteogram, the raw gridpoint for the things the hourly feed leaves out —
@@ -6846,6 +7005,7 @@ function renderDashReports(){
 function renderDash(){
   if(!dashOn()) return;
   renderDashNow();
+  renderDashLake();
   renderDashForecast();
   renderDashPrecip();
   renderDashOutlook();
