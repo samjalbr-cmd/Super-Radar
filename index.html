@@ -492,6 +492,31 @@
   }
 
   /* Recent-events side panel + edge tab. */
+  /* A second tab under EVENTS, same shape. */
+  #soundTab{
+    position:absolute;top:50%;right:0;transform:translateY(calc(-50% + 96px));z-index:600;
+    writing-mode:vertical-rl;cursor:pointer;
+    background:var(--panel);border:1px solid var(--border);border-right:none;
+    border-radius:10px 0 0 10px;padding:14px 7px;
+    color:var(--dim);font-family:monospace;font-size:11px;letter-spacing:0.15em;
+    backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  }
+  #soundPanel{
+    position:absolute;top:0;right:0;height:100%;width:430px;max-width:94vw;z-index:650;
+    transform:translateX(100%);transition:transform 0.3s ease;
+    background:var(--panel);border-left:1px solid var(--border);
+    backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+    display:flex;flex-direction:column;
+  }
+  #soundPanel.open{transform:translateX(0);}
+  #soundPanel .feed-head{display:flex;align-items:center;justify-content:space-between;
+    padding:11px 13px;border-bottom:1px solid var(--border);}
+  #soundBody{overflow:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:8px;}
+  #soundBody .sd-note{font-family:monospace;font-size:10.5px;color:var(--dim);
+    padding:6px 5px 2px;line-height:1.5;}
+  #soundBody .sd-key{color:#F5F3EC;}
+  body.tv #soundTab, body.launcher #soundTab, body.launcher #soundPanel{ display:none !important; }
+
   #feedTab{
     position:absolute;top:50%;right:0;transform:translateY(-50%);z-index:600;
     writing-mode:vertical-rl;cursor:pointer;
@@ -734,6 +759,14 @@
   </select>
 </div>
 
+<div id="soundTab" onclick="toggleSounding()">ALOFT</div>
+<div id="soundPanel">
+  <div class="feed-head">
+    <span class="feed-title">Cross section</span>
+    <button id="soundClose" onclick="toggleSounding()">&times;</button>
+  </div>
+  <div id="soundBody"></div>
+</div>
 <div id="feedTab" onclick="toggleFeed()">EVENTS</div>
 <div id="feedPanel">
   <div class="feed-head"><span class="feed-title">Recent Events · in view</span><button id="feedClose" onclick="toggleFeed()">✕</button></div>
@@ -1051,6 +1084,7 @@ function initMap(){
   // because they only set timers.
   const MOVE_TASKS = [renderStations, drawIsoLines, renderSurface,
                       renderFeed, scheduleModelRefresh, scheduleMrmsRadar,
+                      scheduleSounding,
                       scheduleIsobarRefresh, scheduleNoaaRadar, schedulePrecipRefresh,
                       syncAppSettings, scheduleHistoryRefresh, renderLakeTemps,
                       renderUpper, scheduleUpperRefresh, renderReplayMarks,
@@ -3807,6 +3841,7 @@ function applyReplay(){
   }else{
     renderFeed();
     renderReplayBar();
+    if(soundOpen) renderSounding();   // the column follows the scrubber too
   }
   loadSurfaceAnalysis();      // async; may cross a 3-hourly reissue
 }
@@ -6243,6 +6278,192 @@ function setRadarOpacity(v){
    discussions, storm reports, notable wind gusts, and station temp
    swings — scoped to the current map view. */
 let feedOpen = false;
+/* ---------------- Cross section: the air above the pin, over time ----------
+   A time-height panel. Hours run left to right, pressure levels bottom to top,
+   and each cell is shaded by its temperature with the freezing line drawn over
+   the top — so a warm nose aloft, the layer that turns snow into freezing
+   rain, is a shape you can see rather than a number you have to infer.
+
+   The barbs are the same data the map already draws at one level, stacked:
+   read up a column and you have the shear profile.
+
+   It costs one request. Ten pressure levels, four fields each, 48 hours for a
+   single point is 14 KB. */
+const SOUND_LEVELS = [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200];
+const SOUND_HOURS = 24;
+let soundOpen = false, soundData = null, soundAt = 0, soundLoading = false, soundTimer = null;
+
+// Cold to warm across the range the free atmosphere actually spans, which is
+// about -60C at 200 hPa to +30C at the surface in summer.
+function soundColor(c){
+  const stops = [[-60,20,20,70],[-40,40,60,140],[-25,50,110,185],[-10,70,160,205],
+                 [0,120,190,215],[0.001,150,170,120],[10,190,180,90],[20,215,140,70],[32,210,80,60]];
+  if(c <= stops[0][0]) c = stops[0][0];
+  if(c >= stops[stops.length-1][0]) c = stops[stops.length-1][0];
+  for(let i = 0; i < stops.length - 1; i++){
+    const a = stops[i], b = stops[i+1];
+    if(c >= a[0] && c <= b[0]){
+      const t = (c - a[0]) / (b[0] - a[0] || 1);
+      const m = k => Math.round(a[k] + (b[k] - a[k]) * t);
+      return `rgb(${m(1)},${m(2)},${m(3)})`;
+    }
+  }
+  return '#888';
+}
+
+async function loadSounding(){
+  if(!soundOpen || soundLoading || !map) return;
+  const c = map.getCenter();
+  soundLoading = true;
+  const vars = [];
+  for(const L of SOUND_LEVELS){
+    vars.push(`temperature_${L}hPa`, `wind_speed_${L}hPa`,
+              `wind_direction_${L}hPa`, `geopotential_height_${L}hPa`);
+  }
+  const url = 'https://api.open-meteo.com/v1/forecast' +
+    `?latitude=${c.lat.toFixed(3)}&longitude=${c.lng.toFixed(3)}` +
+    `&hourly=${vars.join(',')}&models=ncep_hrrr_conus&timezone=GMT&forecast_days=2`;
+  try{
+    let d = await (await fetch(url)).json();
+    // HRRR is CONUS; outside it Open-Meteo refuses the whole request rather
+    // than returning empty, so fall back to whatever model covers the spot.
+    if(d && d.error) d = await (await fetch(url.replace('&models=ncep_hrrr_conus', ''))).json();
+    if(d && d.hourly){ soundData = {at: c, hourly: d.hourly}; soundAt = Date.now(); }
+  }catch(e){ console.error('sounding', e); }
+  soundLoading = false;
+  renderSounding();
+}
+
+function scheduleSounding(){
+  if(!soundOpen) return;
+  clearTimeout(soundTimer);
+  soundTimer = setTimeout(loadSounding, 700);
+}
+
+// A barb as SVG elements positioned at x,y — the same convention as the map's,
+// pointing into the wind, pennants for fifties.
+function soundBarb(kt, dir, x, y){
+  const col = '#F5F3EC', len = 9, gap = 3.1;
+  if(kt == null || !isFinite(kt)) return '';
+  if(kt < 5) return `<circle cx="${x}" cy="${y}" r="2.1" fill="none" stroke="${col}" stroke-width="0.9"/>`;
+  let v = Math.round(kt / 5) * 5;
+  const parts = [`<line x1="0" y1="0" x2="0" y2="${-len}" stroke="${col}" stroke-width="0.9"/>`];
+  let yy = -len;
+  const p50 = Math.floor(v / 50); v -= p50 * 50;
+  const p10 = Math.floor(v / 10); v -= p10 * 10;
+  const p5 = Math.floor(v / 5);
+  for(let i = 0; i < p50; i++){
+    parts.push(`<polygon points="0,${yy} ${-5.5},${yy + 1.8} 0,${yy + gap}" fill="${col}"/>`);
+    yy += gap + 1.1;
+  }
+  for(let i = 0; i < p10; i++){
+    parts.push(`<line x1="0" y1="${yy}" x2="${-5.5}" y2="${yy + 2.1}" stroke="${col}" stroke-width="0.85"/>`);
+    yy += gap;
+  }
+  for(let i = 0; i < p5; i++){
+    const off = (p10 === 0 && p50 === 0) ? gap : 0;
+    parts.push(`<line x1="0" y1="${yy + off}" x2="${-2.8}" y2="${yy + off + 1.1}" stroke="${col}" stroke-width="0.85"/>`);
+    yy += gap;
+  }
+  return `<g transform="translate(${x},${y}) rotate(${dir})">${parts.join('')}</g>`;
+}
+
+function renderSounding(){
+  const host = document.getElementById('soundBody');
+  if(!host) return;
+  if(!soundData){ host.innerHTML = '<div class="sd-note">Loading the column…</div>'; return; }
+  const H = soundData.hourly, times = H.time || [];
+  // Start at the hour the map is showing, so scrubbing moves this too.
+  const start = Math.max(0, currentHourIndex(times));
+  const idx = [];
+  for(let i = start; i < times.length && idx.length < SOUND_HOURS; i++) idx.push(i);
+  if(idx.length < 2){ host.innerHTML = '<div class="sd-note">No model data here.</div>'; return; }
+
+  const L = SOUND_LEVELS;                       // 1000 at [0], 200 at the end
+  const W = 404, padL = 40, padR = 8, padT = 10, padB = 20;
+  const rowH = 20, plotH = rowH * L.length, Hgt = plotH + padT + padB;
+  const plotW = W - padL - padR;
+  const colW = plotW / idx.length;
+  const yOf = li => padT + (L.length - 1 - li) * rowH;   // 1000 hPa at the bottom
+
+  const cells = [], barbs = [], freeze = [];
+  for(let li = 0; li < L.length; li++){
+    const lv = L[li];
+    const T = H[`temperature_${lv}hPa`] || [];
+    const S = H[`wind_speed_${lv}hPa`] || [];
+    const D = H[`wind_direction_${lv}hPa`] || [];
+    for(let k = 0; k < idx.length; k++){
+      const i = idx[k], t = T[i];
+      if(t == null) continue;
+      cells.push(`<rect x="${(padL + k * colW).toFixed(1)}" y="${yOf(li)}" ` +
+        `width="${(colW + 0.6).toFixed(1)}" height="${rowH}" fill="${soundColor(t)}"/>`);
+      // Every third hour carries a barb; closer than that and they collide.
+      if(k % 3 === 1 && S[i] != null && D[i] != null){
+        barbs.push(soundBarb(S[i] * 0.539957, D[i], padL + (k + 0.5) * colW, yOf(li) + rowH / 2));
+      }
+    }
+    // Where this level and the one above straddle 0C, mark the crossing.
+    if(li < L.length - 1){
+      const Ta = H[`temperature_${lv}hPa`] || [], Tb = H[`temperature_${L[li+1]}hPa`] || [];
+      for(let k = 0; k < idx.length; k++){
+        const i = idx[k], a = Ta[i], b = Tb[i];
+        if(a == null || b == null) continue;
+        if((a >= 0) === (b >= 0)) continue;
+        const f = a / (a - b);                       // 0 at this level, 1 at the next
+        const y = yOf(li) + rowH / 2 - f * rowH;
+        freeze.push([padL + (k + 0.5) * colW, y]);
+      }
+    }
+  }
+  const fl = freeze.length > 1
+    ? `<polyline points="${freeze.map(p => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ')}" ` +
+      `fill="none" stroke="#fff" stroke-width="1.6" stroke-dasharray="5 3" opacity="0.95"/>` : '';
+
+  // Axes: pressure with a rough height, and the clock along the bottom.
+  const yLab = L.map((lv, li) => {
+    const g = H[`geopotential_height_${lv}hPa`];
+    const m = g && g[idx[0]] != null ? Math.round(g[idx[0]] / 304.8) : null;
+    return `<text x="${padL - 4}" y="${yOf(li) + rowH / 2 + 3}" text-anchor="end" ` +
+      `font-size="8" fill="#8A93A6" font-family="monospace">${lv}${m != null ? ' ' + m + 'k' : ''}</text>`;
+  }).join('');
+  const xLab = idx.map((i, k) => {
+    if(k % 3) return '';
+    const d = new Date(times[i] + 'Z');
+    return `<text x="${(padL + (k + 0.5) * colW).toFixed(1)}" y="${plotH + padT + 12}" ` +
+      `text-anchor="middle" font-size="8" fill="#8A93A6" font-family="monospace">` +
+      `${d.toLocaleTimeString([], {hour: 'numeric'}).replace(' ', '')}</text>`;
+  }).join('');
+
+  const c = soundData.at;
+  host.innerHTML =
+    `<svg width="${W}" height="${Hgt}" viewBox="0 0 ${W} ${Hgt}">` +
+    cells.join('') + fl + barbs.join('') + yLab + xLab + `</svg>` +
+    `<div class="sd-note"><span class="sd-key">hPa / thousands of feet</span> up the side, ` +
+    `hours across. Shading is temperature; the dashed line is freezing. A tongue of ` +
+    `warm air above a cold surface is what turns snow into freezing rain.<br>` +
+    `HRRR at ${c.lat.toFixed(2)}, ${c.lng.toFixed(2)}.</div>`;
+}
+
+function toggleSounding(){
+  soundOpen = !soundOpen;
+  const panel = document.getElementById('soundPanel');
+  panel.classList.toggle('open', soundOpen);
+  if(!soundOpen) return;
+  // Deferred a frame for the same reason the events panel is: rendering in the
+  // same frame as the class flip starves the slide and it never animates.
+  let filled = false;
+  const fill = () => {
+    if(filled || !soundOpen) return;
+    filled = true;
+    renderSounding();
+    if(!soundData || Date.now() - soundAt > 15 * 60e3) loadSounding();
+  };
+  requestAnimationFrame(fill);
+  // requestAnimationFrame does not fire in a background tab, which would leave
+  // the panel open and empty; the watchdog fills it either way.
+  setTimeout(fill, 450);
+}
+
 function toggleFeed(){
   feedOpen = !feedOpen;
   const panel = document.getElementById('feedPanel');
