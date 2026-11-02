@@ -122,6 +122,53 @@ private func dissolvedOutline(_ rings: [[CLLocationCoordinate2D]]) -> [[CLLocati
     return seen.values.filter { $0.n == 1 }.map { [$0.a, $0.b] }
 }
 
+/* The colour ramp for pavement, which is not the ramp for air.
+
+   Air temperature is read as a continuum and coloured as one. A road has one
+   threshold that matters: at 33F it is wet, at 31F it is ice, and a gradient
+   that slides smoothly through that boundary hides the only thing worth
+   seeing. So this is two ramps with a deliberate break between them, and the
+   jump at freezing is the point — every frozen sensor reads as one family of
+   colours and every safe one as another. Matches the dashboard exactly. */
+private let paveCold: [(Double, CGFloat, CGFloat, CGFloat)] = [
+    (-20, 0x7C, 0x3A, 0xED), (10, 0x6C, 0x5C, 0xE7),
+    (24, 0x4F, 0x8F, 0xF0), (32, 0x4F, 0xD6, 0xFF),
+]
+private let paveWarm: [(Double, CGFloat, CGFloat, CGFloat)] = [
+    (33, 0x9A, 0xE6, 0xA0), (50, 0x4C, 0xAF, 0x50),
+    (70, 0xE8, 0xC4, 0x4A), (95, 0xE8, 0x7A, 0x3A),
+]
+private func paveColor(_ f: Double) -> UIColor {
+    let stops = f <= 32 ? paveCold : paveWarm
+    func mk(_ r: CGFloat, _ g: CGFloat, _ b: CGFloat) -> UIColor {
+        UIColor(red: r / 255, green: g / 255, blue: b / 255, alpha: 1)
+    }
+    if f <= stops[0].0 { return mk(stops[0].1, stops[0].2, stops[0].3) }
+    if let l = stops.last, f >= l.0 { return mk(l.1, l.2, l.3) }
+    for i in 0..<(stops.count - 1) {
+        let a = stops[i], b = stops[i + 1]
+        if f >= a.0 && f <= b.0 {
+            let t = CGFloat((f - a.0) / (b.0 - a.0))
+            return mk(a.1 + (b.1 - a.1) * t, a.2 + (b.2 - a.2) * t, a.3 + (b.3 - a.3) * t)
+        }
+    }
+    return .white
+}
+
+/// What the sensor says the surface is doing, as a chip colour. Nil when it
+/// reports nothing recognisable, rather than guessing from the temperature.
+private func roadCondColor(_ s: String?) -> UIColor? {
+    guard let v = s?.lowercased(), !v.isEmpty else { return nil }
+    if v.contains("ice") || v.contains("frost") { return UIColor(red: 0.78, green: 0.49, blue: 1, alpha: 1) }
+    if v.contains("slush") { return UIColor(red: 0.62, green: 0.85, blue: 1, alpha: 1) }
+    if v.contains("snow") { return UIColor(red: 0.91, green: 0.96, blue: 1, alpha: 1) }
+    if v.contains("wet") || v.contains("moist") || v.contains("damp") || v.contains("chemically") {
+        return UIColor(red: 0.31, green: 0.64, blue: 0.82, alpha: 1)
+    }
+    if v.contains("dry") { return UIColor(red: 0.23, green: 0.27, blue: 0.33, alpha: 1) }
+    return nil
+}
+
 /// The day-long temperature trace drawn beside a reading.
 ///
 /// Coloured along its length by the same ramp as everything else on the plot,
@@ -509,6 +556,7 @@ enum RadarSnapshot {
                         showOutlook: Bool, showFronts: Bool, stationModel: Bool,
                         showIsobars: Bool, showMarine: Bool, showLake: Bool,
                         showSpotter: Bool, upperLevel: String?, showSpark: Bool,
+                        showRoads: Bool,
                         state: String?) async -> (image: UIImage, hasEcho: Bool)? {
         let half = zoom.halfDegrees
 
@@ -572,6 +620,8 @@ enum RadarSnapshot {
         // temperatures switched off does not pay for a day of them.
         let sparks: [String: [(t: Date, f: Double)]] = (showSpark && !temps.isEmpty)
             ? await StormFeed.tempHistory(states: states) : [:]
+        let roads: [StormFeed.RoadSensor] = showRoads
+            ? await StormFeed.roadSensors(states: states, sw: sw, ne: ne) : []
         // What stations have measured reads as a report on the map, so it joins
         // them and is packed in the same pass — worst first, so a 70 mph gust
         // keeps its label over a 42 mph one.
@@ -962,6 +1012,38 @@ enum RadarSnapshot {
                     drawSpark(ctx.cgContext, series: series,
                               at: CGPoint(x: x + sz.width + 2,
                                           y: y + sz.height / 2 - sparkSize.height / 2))
+                }
+            }
+
+            // Road sensors: the pavement, not the air. Drawn after the station
+            // plots so a reading that matters is not buried under one that
+            // does not, and thinned on its own grid.
+            if !roads.isEmpty {
+                var roadClaimed = Set<Int64>()
+                let rcell = cell * 1.15
+                for r in roads {
+                    let p = snap.point(for: CLLocationCoordinate2D(latitude: r.lat, longitude: r.lon))
+                    guard p.x > 6, p.y > 6, p.x < size.width - 6, p.y < size.height - 6 else { continue }
+                    let key = Int64(p.x / rcell) &* 1000 &+ Int64(p.y / rcell)
+                    if roadClaimed.contains(key) { continue }
+                    roadClaimed.insert(key)
+                    let text = "\(Int(r.paveF.rounded()))" as NSString
+                    let attrs: [NSAttributedString.Key: Any] = [
+                        .font: UIFont.monospacedDigitSystemFont(ofSize: 9, weight: .bold),
+                        .foregroundColor: paveColor(r.paveF),
+                        .strokeColor: UIColor.black, .strokeWidth: -3.0,
+                    ]
+                    let sz = text.size(withAttributes: attrs)
+                    text.draw(at: CGPoint(x: p.x - sz.width / 2, y: p.y - sz.height / 2),
+                              withAttributes: attrs)
+                    // A square chip for what the surface is doing, so the
+                    // reading never reads as another air temperature.
+                    if let c = roadCondColor(r.condition) {
+                        let chip = CGRect(x: p.x + sz.width / 2 + 1.5,
+                                          y: p.y - 1.5, width: 3, height: 3)
+                        c.setFill()
+                        UIBezierPath(rect: chip).fill()
+                    }
                 }
             }
 

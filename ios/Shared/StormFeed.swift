@@ -31,6 +31,8 @@ struct WatchLocation: Codable {
     var upperLevel: String? = "500"
     /// Day-long temperature trace beside each reading.
     var showSpark: Bool = true
+    /// Pavement readings from road sensors.
+    var showRoads: Bool = false
     var zoom: RadarZoom = .county
     /// Two-letter state, resolved by the app. The national station feed is
     /// 3.4 MB; one state's network is about 100 KB, and the API accepts only one.
@@ -65,6 +67,7 @@ struct WatchLocation: Codable {
         showSpotter    = flag(.showSpotter, true)
         upperLevel = ((try? c.decodeIfPresent(String.self, forKey: .upperLevel)) ?? nil) ?? "500"
         showSpark  = flag(.showSpark, true)
+        showRoads  = flag(.showRoads, false)
         zoom  = ((try? c.decodeIfPresent(RadarZoom.self, forKey: .zoom)) ?? nil) ?? .county
         state = (try? c.decodeIfPresent(String.self, forKey: .state)) ?? nil
     }
@@ -75,7 +78,7 @@ struct WatchLocation: Codable {
          showOutlook: Bool = true, showFronts: Bool = true,
          stationModel: Bool = false, showIsobars: Bool = true, showMarine: Bool = false,
          showLake: Bool = true, showSpotter: Bool = true,
-         upperLevel: String? = "500", showSpark: Bool = true,
+         upperLevel: String? = "500", showSpark: Bool = true, showRoads: Bool = false,
          zoom: RadarZoom = .county, state: String? = nil) {
         self.lat = lat; self.lon = lon; self.name = name
         self.showReports = showReports; self.showTemps = showTemps; self.showAlerts = showAlerts
@@ -83,7 +86,7 @@ struct WatchLocation: Codable {
         self.showFronts = showFronts; self.stationModel = stationModel
         self.showIsobars = showIsobars; self.showMarine = showMarine
         self.showLake = showLake; self.showSpotter = showSpotter
-        self.upperLevel = upperLevel; self.showSpark = showSpark
+        self.upperLevel = upperLevel; self.showSpark = showSpark; self.showRoads = showRoads
         self.zoom = zoom; self.state = state
     }
 
@@ -93,7 +96,7 @@ struct WatchLocation: Codable {
                                         showReports: true, showTemps: true, showAlerts: true,
                                         showOutlook: true, showFronts: true, stationModel: false, showIsobars: true,
                                         showMarine: false, showLake: true, showSpotter: true,
-                                        upperLevel: "500", showSpark: true,
+                                        upperLevel: "500", showSpark: true, showRoads: false,
                                         zoom: .county, state: "MI")
 
     static func load() -> WatchLocation {
@@ -803,6 +806,64 @@ enum StormFeed {
         var peakGustKt: Double? = nil
         var rainIn: Double? = nil
         var snowIn: Double? = nil
+    }
+
+    /// One road sensor: the pavement itself, not the air above it.
+    struct RoadSensor {
+        let lat: Double
+        let lon: Double
+        let paveF: Double
+        var airF: Double? = nil
+        var condition: String? = nil
+    }
+
+    /// State transport departments bury sensors in the pavement, and IEM
+    /// carries them on the same feed as everything else here.
+    ///
+    /// Worth its own request because pavement is not air: measured across
+    /// Michigan it runs a median 4F warmer and ranges from 12 below to 39
+    /// above, so a road can be freezing under air that is comfortably above
+    /// it. Coverage is good where it matters — Michigan reports 119 sites,
+    /// Ohio 90, Indiana 30; some states have none and simply contribute
+    /// nothing.
+    static func roadSensors(states: [String],
+                            sw: CLLocationCoordinate2D,
+                            ne: CLLocationCoordinate2D) async -> [RoadSensor] {
+        struct FC: Decodable {
+            struct F: Decodable {
+                struct G: Decodable { let coordinates: [Double] }
+                struct P: Decodable {
+                    let tsf0: Double?; let tmpf: Double?; let scond0: String?
+                }
+                let geometry: G?; let properties: P
+            }
+            let features: [F]
+        }
+        return await withTaskGroup(of: [RoadSensor].self) { group in
+            for st in states.prefix(3) where st.count == 2 {
+                group.addTask {
+                    guard let url = URL(string:
+                      "https://mesonet.agron.iastate.edu/api/1/currents.geojson?network=\(st)_RWIS")
+                    else { return [] }
+                    var req = URLRequest(url: url); req.timeoutInterval = 20
+                    req.cachePolicy = .reloadIgnoringLocalCacheData
+                    guard let data = try? await URLSession.shared.data(for: req).0,
+                          let fc = try? JSONDecoder().decode(FC.self, from: data) else { return [] }
+                    return fc.features.compactMap { f in
+                        guard let c = f.geometry?.coordinates, c.count >= 2,
+                              let pave = f.properties.tsf0,
+                              c[1] >= sw.latitude, c[1] <= ne.latitude,
+                              c[0] >= sw.longitude, c[0] <= ne.longitude else { return nil }
+                        return RoadSensor(lat: c[1], lon: c[0], paveF: pave,
+                                          airF: f.properties.tmpf,
+                                          condition: f.properties.scond0)
+                    }
+                }
+            }
+            var all: [RoadSensor] = []
+            for await part in group { all.append(contentsOf: part) }
+            return all
+        }
     }
 
     /// A day of temperature per station, for the trace drawn beside each

@@ -999,6 +999,7 @@
         <label class="set-row"><input type="checkbox" id="stationsChk" checked onchange="toggleStations(this)"><span class="sw-t"></span>Live stations (METAR)</label>
         <label class="set-row"><input type="checkbox" id="lakeChk" checked onchange="toggleLakeTemps(this)"><span class="sw-t"></span>Lake water temperature</label>
         <label class="set-row"><input type="checkbox" id="sparkChk" checked onchange="toggleSpark(this)"><span class="sw-t"></span>24-hour temp trace</label>
+        <label class="set-row"><input type="checkbox" id="roadsChk" onchange="toggleRoads(this)"><span class="sw-t"></span>Road pavement temps</label>
         <label class="set-row" style="gap:8px">
           <span style="flex:1">Upper-air wind</span>
           <select id="upperLevel" onchange="setUpperLevel(this.value)" style="flex:0 0 auto">
@@ -2377,6 +2378,7 @@ const HIDEABLE = [
   ['Watches',       () => hazardVisible.watches],
   ['Advisories',    () => hazardVisible.advisories],
   ['Temp traces',   () => sparkOn],
+  ['Road temps',    () => roadsLayerOn || dashOn()],
   ['Upper air',     () => upperLevel !== 'off'],
 ];
 
@@ -2711,6 +2713,7 @@ function syncAppSettings(){
         showLake: !!lakeOn,
         upperLevel: upperLevel,
         showSpark: !!sparkOn,
+        showRoads: !!roadsLayerOn,
       });
     }catch(e){}
   }, 400);
@@ -6675,6 +6678,42 @@ let rwisSites = [], rwisAt = 0, rwisLoading = false, rwisStates = '';
 // The vocabulary seen in the warm season is Dry, Moist, Wet and chemically
 // treated; the winter terms are mapped too, and anything unrecognised falls
 // through to the temperature logic rather than guessing.
+/* The colour ramp for pavement, which is not the ramp for air.
+
+   Air temperature is read as a continuum and coloured as one. A road has one
+   threshold that matters and everything else is detail: at 33F it is wet, at
+   31F it is ice, and no gradient that slides smoothly through that boundary
+   will ever let you see it across a room.
+
+   So this is two ramps with a deliberate break between them — violet through
+   blue to cyan below freezing, pale green through amber above — and the jump
+   at 32F is the point. Scanning the map, every frozen sensor reads as one
+   family of colours and every safe one as another. */
+const PAVE_STOPS_COLD = [
+  [-20, 0x7C, 0x3A, 0xED], [10, 0x6C, 0x5C, 0xE7], [24, 0x4F, 0x8F, 0xF0],
+  [32, 0x4F, 0xD6, 0xFF],
+];
+const PAVE_STOPS_WARM = [
+  [33, 0x9A, 0xE6, 0xA0], [50, 0x4C, 0xAF, 0x50], [70, 0xE8, 0xC4, 0x4A],
+  [95, 0xE8, 0x7A, 0x3A],
+];
+function paveColor(f){
+  if(f == null || !isFinite(f)) return '#8A93A6';
+  const stops = f <= 32 ? PAVE_STOPS_COLD : PAVE_STOPS_WARM;
+  if(f <= stops[0][0]) return `rgb(${stops[0][1]},${stops[0][2]},${stops[0][3]})`;
+  const last = stops[stops.length - 1];
+  if(f >= last[0]) return `rgb(${last[1]},${last[2]},${last[3]})`;
+  for(let i = 0; i < stops.length - 1; i++){
+    const a = stops[i], b = stops[i + 1];
+    if(f >= a[0] && f <= b[0]){
+      const t = (f - a[0]) / (b[0] - a[0] || 1);
+      const m = k => Math.round(a[k] + (b[k] - a[k]) * t);
+      return `rgb(${m(1)},${m(2)},${m(3)})`;
+    }
+  }
+  return '#8A93A6';
+}
+
 function rwisCondState(s){
   const v = (s || '').toLowerCase();
   if(!v) return null;
@@ -6687,6 +6726,7 @@ function rwisCondState(s){
 
 async function loadRwis(){
   if(!map || rwisLoading) return;
+  if(!dashOn() && !roadsLayerOn) return;     // nothing is asking for it
   const states = replayStatesFor(map.getBounds()).slice(0, 3);
   const key = states.join(',');
   if(key === rwisStates && Date.now() - rwisAt < 10 * 60e3) return;
@@ -6784,7 +6824,18 @@ function roadObserved(){
    radar — and is clutter the rest of the time. So it lives and dies with the
    card, which on the rotating widget means it appears for that card's turn
    and goes again. */
+let roadsLayerOn = false;      // the settings switch, separate from the card
+function toggleRoads(cb){
+  roadsLayerOn = cb.checked;
+  if(roadsLayerOn && !rwisSites.length) loadRwis();
+  renderRwisLabels();
+  renderHiddenStatus();
+}
+
 function roadsCardShowing(){
+  // The switch wins: asked for explicitly, the layer stays up whatever the
+  // dashboard is doing.
+  if(roadsLayerOn) return true;
   const card = [...document.querySelectorAll('#dashRail > .dash-card')]
     .find(c => /Roads/i.test(c.querySelector('h3')?.textContent || ''));
   if(!card || !dashOn()) return false;
@@ -6800,6 +6851,7 @@ function renderRwisLabels(){
   if(!rwisLayer) return;
   rwisLayer.clearLayers();
   if(!roadsCardShowing() || !rwisSites.length || map.getZoom() < 6) return;
+  if(roadsLayerOn && !rwisSites.length) return;
   const b = map.getBounds();
   // Thinned the way the station plots are, so a motorway's worth of sensors
   // does not stack into an unreadable column.
@@ -6811,11 +6863,13 @@ function renderRwisLabels(){
     if(claimed.has(key)) continue;
     claimed.add(key);
     const st = rwisCondState(s.cond);
-    const col = st ? ROAD_STATE[st].color : tempColor(s.pave);
-    // The number is the pavement, not the air — that is the whole point of it
-    // being here rather than another air temperature among hundreds.
+    // Number on the pavement ramp, chip on what the sensor says the surface is
+    // doing — temperature and condition are different questions and a road can
+    // be above freezing and still wet, or below it and dry.
+    const col = paveColor(s.pave);
+    const chip = st ? ROAD_STATE[st].color : 'transparent';
     const html = `<span class="rw-lbl" style="color:${col}">${Math.round(s.pave)}` +
-                 `<i style="background:${col}"></i></span>`;
+                 `<i style="background:${chip}"></i></span>`;
     L.marker([s.lat, s.lon], {
       icon: L.divIcon({className: 'rw-icon', html, iconSize: [0, 0], iconAnchor: [0, 0]}),
       keyboard: false,
@@ -6964,7 +7018,7 @@ async function loadConvective(){
 }
 let rwisTimer = null;
 function scheduleRwis(){
-  if(!dashOn()) return;
+  if(!dashOn() && !roadsLayerOn) return;
   clearTimeout(rwisTimer);
   rwisTimer = setTimeout(loadRwis, 1200);
 }
@@ -8476,6 +8530,7 @@ async function boot(){
   setInterval(loadLakeTemps, 30 * 60 * 1000);   // the collector runs hourly
   loadTempHistory();
   setInterval(loadTempHistory, 10 * 60 * 1000); // most sites report hourly
+  setInterval(() => { if(roadsLayerOn && !dashOn()) loadRwis(); }, 10 * 60 * 1000);
   fetchUpper();                                 // the interval below is the refresh, not the first draw
   setInterval(fetchUpper, 20 * 60 * 1000);      // HRRR updates hourly
   setInterval(loadStormTracks, 5 * 60 * 1000);   // one volume scan

@@ -139,6 +139,7 @@ struct RadarProvider: AppIntentTimelineProvider {
                                                    showSpotter: config.showSpotter && loc.showSpotter,
                                                    upperLevel: config.upperLevel.resolve(loc.upperLevel),
                                                    showSpark: config.showSpark && loc.showSpark,
+                                                   showRoads: config.showRoads || loc.showRoads,
                                                    state: loc.state)
         let cells = try? await StormFeed.cells()
         let approach = cells.flatMap { StormArrival.soonest(cells: $0, lat: loc.lat, lon: loc.lon) }
