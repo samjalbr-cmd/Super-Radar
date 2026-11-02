@@ -522,13 +522,38 @@
   body.dash #map{ right:var(--rail); }
   body.dash #dashRail{ display:flex; }
   body.dash #soundTab, body.dash #soundPanel, body.dash #feedTab{ display:none !important; }
+  /* The radar loop's frame buttons are a separate control from the replay
+     scrubber, which is why ?replay=0 left them on screen. Neither gets pressed
+     from a sofa — L toggles the loop — and the rail was clipping them. */
+  body.dash #radarLoop, body.dash #metricPicker{ display:none !important; }
+  /* The hidden-layers notice exists to stop an interactive user wondering why
+     a layer is missing. Nobody can act on it from a television, so on the
+     dashboard it is only clutter. */
+  body.dash #hiddenStatus{ display:none !important; }
+  /* Anything anchored to the middle or the right of the window has to allow
+     for the rail, or it sits under it. */
+  body.dash #replayBar{ left:calc((100% - var(--rail)) / 2); }
+  body.dash .leaflet-control-attribution{ right:var(--rail); }
   #dashRail{
     position:absolute;top:0;right:0;width:var(--rail);height:100%;z-index:640;
     display:none;flex-direction:column;gap:12px;padding:16px;box-sizing:border-box;
     background:var(--panel);border-left:1px solid var(--border);
     backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
-    overflow:hidden;
+    overflow-y:auto;overscroll-behavior:contain;scroll-behavior:smooth;
   }
+  #dashRail::-webkit-scrollbar{ width:7px; }
+  #dashRail::-webkit-scrollbar-thumb{ background:rgba(255,255,255,0.16);border-radius:4px; }
+  .dash-card{ flex:0 0 auto; }
+  /* Rows inside a card: a label, a value, and room for a colour chip. */
+  .dr{ display:flex;align-items:baseline;gap:9px;padding:4px 0;font-family:monospace;font-size:14px; }
+  .dr + .dr{ border-top:1px solid rgba(255,255,255,0.05); }
+  .dr .k{ color:var(--dim);flex:0 0 auto;min-width:84px; }
+  .dr .v{ color:#F5F3EC;font-weight:700; }
+  .dr .s{ color:var(--dim);font-size:12px;margin-left:auto;text-align:right; }
+  .dr .chip{ width:9px;height:9px;border-radius:2px;flex:0 0 auto; }
+  .dash-big{ font-family:monospace;font-size:34px;font-weight:700;color:#F5F3EC;line-height:1.1; }
+  .dash-sub{ font-family:monospace;font-size:12.5px;color:var(--dim);margin-top:3px; }
+  .dash-empty{ font-family:monospace;font-size:13px;color:var(--dim);padding:3px 0; }
   .dash-card{
     border:1px solid var(--border);border-radius:13px;padding:12px 14px;
     background:rgba(255,255,255,0.028);
@@ -808,10 +833,11 @@
 </div>
 
 <div id="dashRail">
-  <div class="dash-card">
-    <h3>Air aloft &mdash; next 24 h</h3>
-    <div id="dashSound"></div>
-  </div>
+  <div class="dash-card"><h3>Now</h3><div id="dashNow"></div></div>
+  <div class="dash-card"><h3>Air aloft &mdash; next 24 h</h3><div id="dashSound"></div></div>
+  <div class="dash-card"><h3>Watches &amp; warnings</h3><div id="dashAlerts"></div></div>
+  <div class="dash-card"><h3>Lightning</h3><div id="dashLtg"></div></div>
+  <div class="dash-card"><h3>Recent reports</h3><div id="dashReports"></div></div>
 </div>
 <div id="soundTab" onclick="toggleSounding()">ALOFT</div>
 <div id="soundPanel">
@@ -1138,7 +1164,7 @@ function initMap(){
   // because they only set timers.
   const MOVE_TASKS = [renderStations, drawIsoLines, renderSurface,
                       renderFeed, scheduleModelRefresh, scheduleMrmsRadar,
-                      scheduleSounding,
+                      scheduleSounding, renderDash,
                       scheduleIsobarRefresh, scheduleNoaaRadar, schedulePrecipRefresh,
                       syncAppSettings, scheduleHistoryRefresh, renderLakeTemps,
                       renderUpper, scheduleUpperRefresh, renderReplayMarks,
@@ -3919,6 +3945,7 @@ function applyReplay(){
     renderFeed();
     renderReplayBar();
     if(soundOpen) renderSounding();   // the column follows the scrubber too
+    renderDash();
   }
   loadSurfaceAnalysis();      // async; may cross a 3-hourly reissue
 }
@@ -6542,6 +6569,131 @@ function soundingInto(host, big){
 
    Every one of them is a toggle, because on a remote you cannot see which
    state you are in before you press. */
+/* The rail's other cards. Every one is built from data already in memory for
+   the map, so the dashboard costs no extra requests — it is a second reading
+   of what is already there, laid out for a room rather than for a cursor. */
+function dashRow(k, v, s, chip){
+  return `<div class="dr">${chip ? `<span class="chip" style="background:${chip}"></span>` : ''}` +
+         `<span class="k">${k}</span><span class="v">${v}</span>` +
+         (s ? `<span class="s">${s}</span>` : '') + `</div>`;
+}
+
+// The station the dashboard speaks for: nearest to the middle of the map with
+// a temperature on it.
+function dashStation(){
+  if(!map || !(stationData || []).length) return null;
+  const c = map.getCenter();
+  let best = null, bd = Infinity;
+  for(const s of stationData){
+    if(s.p.tmpf == null) continue;
+    const d = haversineKm(c.lat, c.lng, s.lat, s.lon);
+    if(d < bd){ bd = d; best = s; }
+  }
+  return best ? {s: best, km: bd} : null;
+}
+
+function renderDashNow(){
+  const host = document.getElementById('dashNow');
+  if(!host) return;
+  const hit = dashStation();
+  if(!hit){ host.innerHTML = '<div class="dash-empty">No station reporting here yet.</div>'; return; }
+  const p = hit.s.p, t = p.tmpf;
+  // The day's swing comes from the trace history already loaded for the
+  // sparklines, so this costs nothing.
+  const h = (tempHist || {})[p.station] || [];
+  let lo = null, hi = null;
+  for(const q of h){ if(lo == null || q.f < lo) lo = q.f; if(hi == null || q.f > hi) hi = q.f; }
+  const wind = p.sknt == null ? 'calm'
+    : `${p.drct != null ? Math.round(p.drct) + '° ' : ''}${Math.round(ktToMph(p.sknt))} mph`;
+  const gust = p.gust != null ? ` g${Math.round(ktToMph(p.gust))}` : '';
+  host.innerHTML =
+    `<div class="dash-big" style="color:${tempColor(t)}">${Math.round(t)}°F</div>` +
+    `<div class="dash-sub">${p.name || p.station} · ${Math.round(hit.km)} km from centre</div>` +
+    (lo != null ? dashRow('24 h', `${Math.round(lo)}° to ${Math.round(hi)}°`,
+                          `${Math.round(hi - lo)}° swing`) : '') +
+    dashRow('Dew point', p.dwpf != null ? Math.round(p.dwpf) + '°F' : '—') +
+    dashRow('Wind', wind + gust) +
+    dashRow('Pressure', p.mslp != null ? p.mslp.toFixed(1) + ' mb' : '—') +
+    (p.pday ? dashRow('Rain today', p.pday.toFixed(2) + '"') : '');
+}
+
+function renderDashAlerts(){
+  const host = document.getElementById('dashAlerts');
+  if(!host) return;
+  const now = mapNow();
+  const live = (lastAlertFeats || [])
+    .filter(f => f._geoms && f._geoms.length && alertInWindow(f) && alertInView(f))
+    .filter(f => hazardVisible[f._hazard])
+    .sort((a, b) => (a._cls === 'warning' ? 0 : a._cls === 'watch' ? 1 : 2) -
+                    (b._cls === 'warning' ? 0 : b._cls === 'watch' ? 1 : 2));
+  if(!live.length){ host.innerHTML = '<div class="dash-empty">Nothing in force here.</div>'; return; }
+  host.innerHTML = live.slice(0, 7).map(f => {
+    const p = f.properties;
+    const ends = Date.parse(p.ends || p.expires);
+    // Time left is the useful number: a warning with eight minutes on it reads
+    // very differently from one that runs till morning.
+    let left = '';
+    if(isFinite(ends)){
+      const m = Math.round((ends - now) / 60000);
+      left = m <= 0 ? 'ending' : m < 60 ? m + ' min' : Math.round(m / 60) + ' h';
+    }
+    return dashRow(f._cls, p.event.replace('Severe Thunderstorm', 'Svr T-storm'),
+                   left, alertColor(p.event, f._cls));
+  }).join('') + (live.length > 7 ? `<div class="dash-empty">+${live.length - 7} more</div>` : '');
+}
+
+function renderDashLightning(){
+  const host = document.getElementById('dashLtg');
+  if(!host) return;
+  if(!map || typeof strikes === 'undefined'){ host.innerHTML = ''; return; }
+  const b = map.getBounds(), now = Date.now();
+  // strikes carries its own timestamps, so the trend is free.
+  let last10 = 0, prev10 = 0, hour = 0;
+  for(const s of strikes){
+    const ll = s.marker && s.marker.getLatLng ? s.marker.getLatLng() : null;
+    if(!ll || !b.contains(ll)) continue;
+    const age = now - s.time;
+    if(age <= 10 * 60e3) last10++;
+    else if(age <= 20 * 60e3) prev10++;
+    if(age <= 60 * 60e3) hour++;
+  }
+  if(!hour){ host.innerHTML = '<div class="dash-empty">No strikes in view.</div>'; return; }
+  const trend = prev10 === 0 ? (last10 ? 'new' : 'quiet')
+    : last10 > prev10 * 1.3 ? 'intensifying'
+    : last10 < prev10 * 0.7 ? 'easing' : 'steady';
+  host.innerHTML =
+    `<div class="dash-big">${last10}</div>` +
+    `<div class="dash-sub">strikes in view, last 10 min · ${trend}</div>` +
+    dashRow('Previous 10', prev10) +
+    dashRow('Past hour', hour);
+}
+
+function renderDashReports(){
+  const host = document.getElementById('dashReports');
+  if(!host) return;
+  const b = map.getBounds(), now = mapNow();
+  const list = (lsrData || [])
+    .filter(f => f.geometry && lsrKeep(f.properties) && reportAtOrBefore(f.properties))
+    .filter(f => b.contains([f.geometry.coordinates[1], f.geometry.coordinates[0]]))
+    .sort((a, z) => feedTimeMs(z.properties.valid) - feedTimeMs(a.properties.valid));
+  if(!list.length){ host.innerHTML = '<div class="dash-empty">No reports here today.</div>'; return; }
+  host.innerHTML = list.slice(0, 6).map(f => {
+    const p = f.properties;
+    const mag = p.magnitude ? ` ${p.magnitude}${/HAIL/i.test(p.typetext) ? '"' : ' mph'}` : '';
+    const t = feedTimeMs(p.valid);
+    return dashRow((p.typetext || '').toLowerCase(), (p.city || '').slice(0, 18) + mag,
+                   t ? agoStr(t) : '', lsrColor(p.typetext));
+  }).join('');
+}
+
+function renderDash(){
+  if(!dashOn()) return;
+  renderDashNow();
+  renderDashAlerts();
+  renderDashLightning();
+  renderDashReports();
+}
+
 function dashOn(){ return document.body.classList.contains('dash'); }
 
 function toggleDash(on){
@@ -6551,6 +6703,7 @@ function toggleDash(on){
   if(want){
     soundOpen = true;
     renderSounding();
+    renderDash();
     if(!soundData || Date.now() - soundAt > 15 * 60e3) loadSounding();
   }else{
     // Leaving the dashboard, the cross section is only still showing if the
@@ -6583,7 +6736,8 @@ function keyHint(text){
 const KEY_HELP = [
   ['D', 'dashboard rail'], ['A', 'air aloft'], ['E', 'events'],
   ['R', 'replay bar'], ['F', 'full screen'], ['L', 'radar loop'],
-  ['\u2190 \u2192', 'step replay'], ['Esc', 'close panels'], ['?', 'this list'],
+  ['\u2190 \u2192', 'step replay'], ['\u2191 \u2193', 'scroll the rail'],
+  ['Esc', 'close panels'], ['?', 'this list'],
 ];
 function showKeyHelp(){
   let el = document.getElementById('keyHelp');
@@ -6646,6 +6800,17 @@ document.addEventListener('keydown', e => {
     if(isOpen('feedPanel')) return toggleFeed();
     if(dashOn()) return toggleDash(false);
     return;
+  }
+  // Up and down scroll the rail, since a remote has no wheel. A card at a
+  // time rather than a line, so it lands somewhere readable.
+  if(dashOn() && (k === 'ArrowUp' || k === 'ArrowDown')){
+    const rail = document.getElementById('dashRail');
+    if(rail){
+      e.preventDefault();
+      rail.scrollBy({top: (k === 'ArrowDown' ? 1 : -1) * Math.round(rail.clientHeight * 0.6),
+                     behavior: 'smooth'});
+      return;
+    }
   }
   // Arrows step the replay, the one thing worth scrubbing from a sofa.
   if(REPLAY_ENABLED && (k === 'ArrowLeft' || k === 'ArrowRight')){
@@ -7043,6 +7208,8 @@ async function boot(){
     soundOpen = true;                       // no tab to open on a television
     loadSounding();
     setInterval(loadSounding, 15 * 60 * 1000);
+    renderDash();
+    setInterval(renderDash, 30 * 1000);     // times left and trends go stale fast
   }
   loadAlerts(); loadOutlook(); loadMCD(); loadLSR(); loadSpcWatches();
   loadStations();   // heavy national fetch — fire after the map is visible
