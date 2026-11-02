@@ -563,6 +563,31 @@
     color:#F5F3EC;letter-spacing:0.06em;text-transform:uppercase;
   }
   .dash-card .sd-note{ font-size:12px; padding:7px 1px 0; }
+
+  /* Widget (the default dashboard look): instead of the full-height rail, a
+     floating card in the corner showing one panel at a time. It turns through
+     the panels by itself (?cycle=), rests closed for one period after the
+     last, then starts again; the arrow keys flip it by hand. The map keeps the
+     whole screen. ?dashstyle=rail brings back the rail. Every .dash-card in
+     #dashRail is a page, so new cards join the rotation with no change here. */
+  body.dash.dash-widget #map{ right:0; }
+  body.dash.dash-widget #dashRail{
+    top:16px;right:16px;height:auto;max-height:calc(100% - 150px);
+    border:1px solid var(--border);border-radius:16px;padding:12px;gap:8px;
+    box-shadow:0 8px 30px rgba(0,0,0,0.45);
+  }
+  body.dash.dash-widget #dashRail > .dash-card{ display:none;border:none;background:none;padding:2px 4px; }
+  body.dash.dash-widget #dashRail > .dash-card.on{ display:block; }
+  body.dash.dash-widget .leaflet-control-attribution{ right:0; }
+  #dashPager{ display:none; }
+  body.dash.dash-widget #dashPager{
+    display:flex;align-items:center;justify-content:center;gap:9px;padding-top:2px;flex-shrink:0;
+  }
+  #dashPager i{ width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,0.22); }
+  #dashPager i.on{ background:var(--amber); }
+  /* The dashboard is the map and the panels, nothing else: no status tabs,
+     no scrubber. */
+  body.dash #statusStack, body.dash #replayBar{ display:none !important; }
   .dash-card svg{ display:block; width:100%; height:auto; }
 
   /* A second tab under EVENTS, same shape. */
@@ -841,6 +866,7 @@
   <div class="dash-card"><h3>Watches &amp; warnings</h3><div id="dashAlerts"></div></div>
   <div class="dash-card"><h3>Lightning</h3><div id="dashLtg"></div></div>
   <div class="dash-card"><h3>Recent reports</h3><div id="dashReports"></div></div>
+  <div id="dashPager"></div>
 </div>
 <div id="soundTab" onclick="toggleSounding()">ALOFT</div>
 <div id="soundPanel">
@@ -2675,6 +2701,8 @@ function syncAppSettings(){
      ?replay=0          hide the scrubber entirely
      ?dash=1            television dashboard: map plus an always-on panel rail
      ?rail=520          width of that rail in px (default 560)
+     ?dashstyle=rail    the full-height rail instead of the corner widget
+     ?cycle=15          seconds per widget panel, and the closed rest after the last (0 = hold)
 
    On a television none of this is clicked: D toggles the dashboard rail, A the
    cross section, E the events list, R the scrubber, L the radar loop, F full
@@ -2700,6 +2728,13 @@ let tvMode = qFlag('tv', false);
    Nothing in here is clickable; everything refreshes itself. */
 const DASH = qFlag('dash', false);
 if(DASH) tvMode = true;
+// The dashboard as a corner widget, one card at a time (the default), or as
+// the full-height rail with every card stacked (?dashstyle=rail).
+const DASH_WIDGET = (URLQ.get('dashstyle') || 'widget') !== 'rail';
+const DASH_CYCLE = (function(){
+  const v = parseFloat(URLQ.get('cycle'));
+  return isFinite(v) ? Math.max(0, v) : 15;
+})();
 // ?rail=520 to suit the set. Narrow enough and the chart stops being readable;
 // wide enough and the map stops being a map.
 const DASH_RAIL = (function(){
@@ -2714,6 +2749,7 @@ function applyUrlView(){
   if(tvMode) document.body.classList.add('tv');
   if(DASH){
     document.body.classList.add('dash');
+    if(DASH_WIDGET) document.body.classList.add('dash-widget');
     document.documentElement.style.setProperty('--rail', DASH_RAIL + 'px');
   }
 }
@@ -6863,7 +6899,7 @@ function scheduleNwsForecast(){
   nwsFcTimer = setTimeout(loadNwsForecast, 900);   // debounce panning
 }
 
-function toggleDash(on){
+function toggleDash(on, quiet){
   const want = on === undefined ? !dashOn() : !!on;
   document.body.classList.toggle('dash', want);
   document.documentElement.style.setProperty('--rail', DASH_RAIL + 'px');
@@ -6882,7 +6918,43 @@ function toggleDash(on){
   // Leaflet sized itself to the old width; without this the map projects into
   // the rail and every position is off by its width.
   setTimeout(() => { if(map) map.invalidateSize(); }, 20);
-  keyHint(want ? 'Dashboard on' : 'Dashboard off');
+  if(!quiet) keyHint(want ? 'Dashboard on' : 'Dashboard off');
+  dashSchedule();
+}
+
+// The widget's pages: every card in the rail, one showing at a time.
+let dashIdx = 0;
+let dashTimer = null;
+function dashCards(){ return [...document.querySelectorAll('#dashRail > .dash-card')]; }
+function showDashCard(i){
+  const cards = dashCards();
+  if(!cards.length) return;
+  dashIdx = ((i % cards.length) + cards.length) % cards.length;
+  cards.forEach((c, j) => c.classList.toggle('on', j === dashIdx));
+  const pager = document.getElementById('dashPager');
+  if(pager) pager.innerHTML = cards.length > 1
+    ? cards.map((_, j) => `<i class="${j === dashIdx ? 'on' : ''}"></i>`).join('') : '';
+  dashSchedule();
+}
+// Flip to the next (1) or previous (-1) card, opening the widget if it is shut.
+function dashFlip(dir){
+  if(!dashOn()) toggleDash(true, true);
+  showDashCard(dashIdx + dir);
+  const h = dashCards()[dashIdx]?.querySelector('h3');
+  if(h) keyHint(h.textContent);
+}
+// The automatic turn: each card for one period, then the widget rests closed
+// for one period with only the map showing, then opens on the first card again.
+// Any press resets the clock, so a card someone just flipped to stays a while.
+function dashSchedule(){
+  clearTimeout(dashTimer);
+  if(!DASH || !DASH_WIDGET || !DASH_CYCLE) return;
+  dashTimer = setTimeout(dashTick, DASH_CYCLE * 1000);
+}
+function dashTick(){
+  if(!dashOn()){ toggleDash(true, true); showDashCard(0); }
+  else if(dashIdx >= dashCards().length - 1) toggleDash(false, true);
+  else showDashCard(dashIdx + 1);
 }
 
 // A word on screen when a key is pressed. Without it a remote press on a
@@ -6968,6 +7040,11 @@ document.addEventListener('keydown', e => {
     if(isOpen('feedPanel')) return toggleFeed();
     if(dashOn()) return toggleDash(false);
     return;
+  }
+  // With the widget, left and right flip its pages.
+  if(DASH_WIDGET && dashOn() && (k === 'ArrowLeft' || k === 'ArrowRight')){
+    e.preventDefault();
+    return dashFlip(k === 'ArrowRight' ? 1 : -1);
   }
   // Up and down scroll the rail, since a remote has no wheel. A card at a
   // time rather than a line, so it lands somewhere readable.
@@ -7374,6 +7451,7 @@ async function boot(){
     // projection is off by the rail's width.
     map.invalidateSize();
     soundOpen = true;                       // no tab to open on a television
+    if(DASH_WIDGET) showDashCard(0);
     loadSounding();
     setInterval(loadSounding, 15 * 60 * 1000);
     renderDash();
