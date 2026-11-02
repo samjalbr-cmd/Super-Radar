@@ -492,6 +492,30 @@
   }
 
   /* Recent-events side panel + edge tab. */
+  /* Feedback for a keypress, because a remote gives none of its own. Sized to
+     be read from a sofa. */
+  #keyHint{
+    position:absolute;left:50%;top:38px;transform:translateX(-50%);z-index:9000;
+    padding:10px 20px;border-radius:12px;pointer-events:none;
+    background:rgba(8,12,20,0.88);border:1px solid var(--border);
+    font-family:monospace;font-size:17px;letter-spacing:0.05em;color:#F5F3EC;
+    opacity:0;transition:opacity 0.18s ease;
+  }
+  #keyHint.show{ opacity:1; }
+  #keyHelp{
+    position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:9000;
+    display:none;grid-template-columns:auto auto;gap:9px 20px;
+    padding:22px 30px;border-radius:16px;
+    background:rgba(8,12,20,0.94);border:1px solid var(--border);
+    font-family:monospace;font-size:16px;color:#F5F3EC;
+  }
+  #keyHelp.show{ display:grid; }
+  #keyHelp > div{ display:contents; }
+  #keyHelp b{ color:var(--amber);font-weight:700; }
+  #keyHelp span{ color:var(--dim); }
+  /* R hides the scrubber, which is the one control a television never uses. */
+  #replayBar.hidden{ display:none !important; }
+
   /* Dashboard: the map shares the screen with a rail of panels that are always
      on, because nothing on a television gets clicked. Built on top of tv mode,
      so the text is already scaled for a room. */
@@ -2622,6 +2646,11 @@ function syncAppSettings(){
      ?replay=0          hide the scrubber entirely
      ?dash=1            television dashboard: map plus an always-on panel rail
      ?rail=520          width of that rail in px (default 560)
+
+   On a television none of this is clicked: D toggles the dashboard rail, A the
+   cross section, E the events list, R the scrubber, L the radar loop, F full
+   screen, arrows step the replay, Back or Escape closes, ? lists them.
+
      ?launcher=1        ambient loop of the last couple of hours, no controls
      ?hours=3           how far the launcher loop reaches back (with ?launcher=1)
      ?step=10           minutes per frame of the launcher loop, multiples of 5 (default 5)
@@ -6503,6 +6532,132 @@ function soundingInto(host, big){
         `warm air above a cold surface is what turns snow into freezing rain.<br>` +
         `HRRR at ${c.lat.toFixed(2)}, ${c.lng.toFixed(2)}.</div>`);
 }
+
+/* Opening and closing from a remote.
+
+   A television has no pointer worth using, so the dashboard has to be a
+   keypress. Smart-TV browsers and the usual HTPC remotes send ordinary key
+   events — letters from a remote keyboard, Enter for OK, Escape or Backspace
+   for Back — so plain shortcuts reach further than anything clever.
+
+   Every one of them is a toggle, because on a remote you cannot see which
+   state you are in before you press. */
+function dashOn(){ return document.body.classList.contains('dash'); }
+
+function toggleDash(on){
+  const want = on === undefined ? !dashOn() : !!on;
+  document.body.classList.toggle('dash', want);
+  document.documentElement.style.setProperty('--rail', DASH_RAIL + 'px');
+  if(want){
+    soundOpen = true;
+    renderSounding();
+    if(!soundData || Date.now() - soundAt > 15 * 60e3) loadSounding();
+  }else{
+    // Leaving the dashboard, the cross section is only still showing if the
+    // slide-over happens to be open. Left set, the flag made the next press of
+    // A toggle a panel that was already closed, so nothing appeared.
+    soundOpen = !!document.getElementById('soundPanel')?.classList.contains('open');
+  }
+  // Leaflet sized itself to the old width; without this the map projects into
+  // the rail and every position is off by its width.
+  setTimeout(() => { if(map) map.invalidateSize(); }, 20);
+  keyHint(want ? 'Dashboard on' : 'Dashboard off');
+}
+
+// A word on screen when a key is pressed. Without it a remote press on a
+// television gives no sign anything happened.
+let keyHintTimer = null;
+function keyHint(text){
+  let el = document.getElementById('keyHint');
+  if(!el){
+    el = document.createElement('div');
+    el.id = 'keyHint';
+    document.body.appendChild(el);
+  }
+  el.textContent = text;
+  el.classList.add('show');
+  clearTimeout(keyHintTimer);
+  keyHintTimer = setTimeout(() => el.classList.remove('show'), 1400);
+}
+
+const KEY_HELP = [
+  ['D', 'dashboard rail'], ['A', 'air aloft'], ['E', 'events'],
+  ['R', 'replay bar'], ['F', 'full screen'], ['L', 'radar loop'],
+  ['\u2190 \u2192', 'step replay'], ['Esc', 'close panels'], ['?', 'this list'],
+];
+function showKeyHelp(){
+  let el = document.getElementById('keyHelp');
+  if(!el){
+    el = document.createElement('div');
+    el.id = 'keyHelp';
+    el.innerHTML = KEY_HELP.map(([k, v]) => `<div><b>${k}</b><span>${v}</span></div>`).join('');
+    document.body.appendChild(el);
+  }
+  el.classList.toggle('show');
+}
+
+document.addEventListener('keydown', e => {
+  // Never steal a key from a text field or a select.
+  const t = e.target;
+  if(t && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable)) return;
+  if(e.metaKey || e.ctrlKey || e.altKey) return;
+  const k = e.key;
+  const hit = fn => { e.preventDefault(); fn(); };
+  switch(k.toLowerCase()){
+    case 'd': return hit(() => toggleDash());
+    case 'a': return hit(() => {
+      // The rail already shows it; opening the slide-over on top would just
+      // cover the map with a second copy.
+      if(dashOn()) return keyHint('Air aloft is on the dashboard');
+      toggleSounding();
+      keyHint(soundOpen ? 'Air aloft' : 'Closed');
+    });
+    case 'e': return hit(() => { toggleFeed(); keyHint('Events'); });
+    case 'f': return hit(() => {
+      if(document.fullscreenElement) document.exitFullscreen();
+      else document.documentElement.requestFullscreen?.();
+      keyHint(document.fullscreenElement ? 'Windowed' : 'Full screen');
+    });
+    case 'l': {
+      const cb = document.getElementById('radarLoopChk');
+      if(!cb) return;
+      return hit(() => { cb.checked = !cb.checked; toggleRadarLoop(cb);
+                         keyHint(cb.checked ? 'Loop on' : 'Loop off'); });
+    }
+    case 'r': {
+      const bar = document.getElementById('replayBar');
+      if(!bar) return;
+      return hit(() => { bar.classList.toggle('hidden');
+                         keyHint(bar.classList.contains('hidden') ? 'Replay hidden' : 'Replay shown'); });
+    }
+    case '?': case '/': return hit(showKeyHelp);
+  }
+  // Back on a remote closes whatever is open, which is what Back should do.
+  if(k === 'Escape' || k === 'Backspace' || k === 'GoBack'){
+    e.preventDefault();
+    const help = document.getElementById('keyHelp');
+    if(help && help.classList.contains('show')) return help.classList.remove('show');
+    // Judged by what is actually on screen. soundOpen is also set by the
+    // dashboard, where the cross section lives in the rail and there is no
+    // slide-over to close, so going by the flag closed nothing visible and
+    // left the rail standing.
+    const isOpen = id => !!document.getElementById(id)?.classList.contains('open');
+    if(isOpen('soundPanel')) return toggleSounding();
+    if(isOpen('feedPanel')) return toggleFeed();
+    if(dashOn()) return toggleDash(false);
+    return;
+  }
+  // Arrows step the replay, the one thing worth scrubbing from a sofa.
+  if(REPLAY_ENABLED && (k === 'ArrowLeft' || k === 'ArrowRight')){
+    e.preventDefault();
+    const step = REPLAY_STEP_MIN * 60e3 * (k === 'ArrowRight' ? 1 : -1);
+    const end = Date.now();
+    let next = (replayAt == null ? end : replayAt) + step;
+    if(next >= end) setReplay(null); else setReplay(Math.max(end - REPLAY_HOURS * 3600e3, next));
+    keyHint(replayAt == null ? 'Live'
+      : new Date(replayAt).toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'}));
+  }
+});
 
 function toggleSounding(){
   soundOpen = !soundOpen;
