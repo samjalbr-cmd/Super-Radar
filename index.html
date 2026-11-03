@@ -6961,7 +6961,9 @@ function renderDashRoad(){
     return {t: p.temperature, pave, rh, st, time: p.startTime, night: !p.isDaytime};
   });
 
-  const W = 500, Hh = 158, padL = 8, padR = 8, padT = 46, ribbonH = 30;
+  // padR leaves a gutter for the scale, which otherwise prints on top of
+  // the lines where they run out to the right edge.
+  const W = 500, Hh = 158, padL = 8, padR = 30, padT = 46, ribbonH = 30;
   // Past on the left, forecast on the right, with now between them. A third
   // of the width for twelve hours behind, the rest for eighteen ahead.
   const histW = hist.length ? Math.round((W - padL - padR) * 0.34) : 0;
@@ -6978,8 +6980,16 @@ function renderDashRoad(){
   // the moment that matters.
   const allT = rows.map(r => r.t).concat(rows.map(r => r.pave).filter(v => v != null))
     .concat(hist.map(h => h.pave)).concat(hist.map(h => h.air).filter(v => isFinite(v)));
-  const lo = Math.min(20, ...allT) - 2;
-  const hi = Math.max(40, ...allT) + 2;
+  // Fitted to the data rather than pinned to a fixed 20-to-40 window, which
+  // drew a 57F day as a flat line across forty-two degrees of empty chart.
+  let lo = Math.min(...allT), hi = Math.max(...allT);
+  // Freezing stays in frame whenever it is anywhere near, because it is the
+  // one level on this chart worth seeing crossed.
+  if(lo <= 40 && hi >= 24){ lo = Math.min(lo, 30); hi = Math.max(hi, 34); }
+  // A floor on the span, so a road holding steady all night reads as steady
+  // rather than being magnified into noise.
+  const mid = (hi + lo) / 2, span = Math.max(9, hi - lo);
+  lo = mid - span / 2 - 1; hi = mid + span / 2 + 1;
   const ty = v => padT + ribbonH + 8 + (1 - (v - lo) / (hi - lo)) * 44;
   let tline = '';
   rows.forEach((r, k) => {
@@ -6996,10 +7006,12 @@ function renderDashRoad(){
     const hx = t => padL + ((t - t0) / span) * histW;
     hband = `<rect x="${padL}" y="${padT}" width="${histW}" height="${ribbonH}" ` +
             `fill="rgba(255,255,255,0.05)"/>`;
+    // On the pavement ramp, same as the map labels, so a road crossing
+    // freezing changes colour here exactly as it does out there.
     for(let k = 1; k < hist.length; k++){
       hline += `<line x1="${hx(hist[k-1].t).toFixed(1)}" y1="${ty(hist[k-1].pave).toFixed(1)}" ` +
                `x2="${hx(hist[k].t).toFixed(1)}" y2="${ty(hist[k].pave).toFixed(1)}" ` +
-               `stroke="#C8D2E0" stroke-width="1.8" stroke-linecap="round"/>`;
+               `stroke="${paveColor(hist[k].pave)}" stroke-width="2.2" stroke-linecap="round"/>`;
     }
     hline += `<line x1="${nowX}" y1="${padT - 4}" x2="${nowX}" y2="${padT + ribbonH + 52}" ` +
              `stroke="rgba(255,255,255,0.3)" stroke-width="1"/>` +
@@ -7013,14 +7025,22 @@ function renderDashRoad(){
       if(!k || r.pave == null || rows[k-1].pave == null) return;
       pline += `<line x1="${(nowX + (k - 0.5) * cw).toFixed(1)}" y1="${ty(rows[k-1].pave).toFixed(1)}" ` +
                `x2="${(nowX + (k + 0.5) * cw).toFixed(1)}" y2="${ty(r.pave).toFixed(1)}" ` +
-               `stroke="#8A93A6" stroke-width="1.6" stroke-dasharray="3 2" stroke-linecap="round"/>`;
+               `stroke="${paveColor(r.pave)}" stroke-width="1.8" stroke-dasharray="3 2" ` +
+               `stroke-linecap="round" opacity="0.85"/>`;
     });
   }
   const frz = (lo <= 32 && hi >= 32)
     ? `<line x1="${padL}" y1="${ty(32).toFixed(1)}" x2="${W - padR}" y2="${ty(32).toFixed(1)}" ` +
       `stroke="#F5F3EC" stroke-width="1" stroke-dasharray="4 3" opacity="0.65"/>` +
-      `<text x="${W - padR}" y="${(ty(32) - 3).toFixed(1)}" text-anchor="end" font-size="9" ` +
+      `<text x="${W - padR + 4}" y="${(ty(32) - 3).toFixed(1)}" font-size="9" ` +
       `fill="#8A93A6" font-family="monospace">32°</text>` : '';
+  // With the scale fitted to the data, the range has to be stated or the
+  // shape of the line means nothing.
+  const axis =
+    `<text x="${W - padR + 4}" y="${(ty(hi - 1) + 8).toFixed(1)}" font-size="9" ` +
+    `fill="#5C6675" font-family="monospace">${Math.round(hi - 1)}°</text>` +
+    `<text x="${W - padR + 4}" y="${(ty(lo + 1) - 2).toFixed(1)}" font-size="9" ` +
+    `fill="#5C6675" font-family="monospace">${Math.round(lo + 1)}°</text>`;
   let hours = '';
   for(let k = 0; k < n; k += 3){
     const d = new Date(rows[k].time);
@@ -7048,7 +7068,7 @@ function renderDashRoad(){
     `font-family="monospace">${ROAD_STATE[now].label.toUpperCase()}</text>` +
     `<text x="${W - padR}" y="24" text-anchor="end" font-size="11" fill="#8A93A6" ` +
     `font-family="monospace">${changeTxt}</text>` +
-    hband + hours + ribbon + frz + hline + pline + tline + `</svg>` +
+    hband + hours + ribbon + frz + axis + hline + pline + tline + `</svg>` +
     dashRow('Air', hit && hit.s.p.tmpf != null ? Math.round(hit.s.p.tmpf) + '°F' : '—',
             obs ? 'observed now' : '') +
     (rw ? dashRow('Pavement', Math.round(rw.s.pave) + '°F',
