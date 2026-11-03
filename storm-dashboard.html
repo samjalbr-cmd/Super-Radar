@@ -6745,7 +6745,8 @@ async function loadRwis(){
       for(const f of (d.features || [])){
         const p = f.properties, c = f.geometry && f.geometry.coordinates;
         if(!c || p.tsf0 == null) continue;          // no pavement reading, no use here
-        out.push({lat: c[1], lon: c[0], name: (p.name || p.station || '').trim(),
+        out.push({lat: c[1], lon: c[0], id: p.station,
+                  name: (p.name || p.station || '').trim(),
                   pave: p.tsf0, air: p.tmpf, cond: p.scond0});
       }
     }catch(e){ /* a state without sensors simply contributes none */ }
@@ -6753,6 +6754,53 @@ async function loadRwis(){
   }
   rwisSites = out; rwisStates = key; rwisAt = Date.now();
   rwisLoading = false;
+  renderDash();
+}
+
+/* Where the pavement has been, not just where it is.
+
+   A road cooling three degrees an hour through the evening is a different
+   night from one holding steady, and the single current reading cannot tell
+   them apart. This is the sensor's own last 24 hours.
+
+   The archive spells the field differently from the live feed — tfs0 here,
+   tsf0 there, the same two letters transposed — which is the sort of thing
+   that silently returns nothing if you assume the names match. It also wants
+   "stations" plural and the station id rather than the highway name. Readings
+   land about every 18 minutes. */
+let roadHist = null, roadHistFor = '', roadHistAt = 0, roadHistLoading = false;
+
+async function loadRoadHistory(id){
+  if(!id || roadHistLoading) return;
+  if(id === roadHistFor && Date.now() - roadHistAt < 15 * 60e3) return;
+  roadHistLoading = true;
+  const now = new Date(), then = new Date(now.getTime() - 24 * 3600e3);
+  const d = (i, x) => `year${i}=${x.getUTCFullYear()}&month${i}=${x.getUTCMonth() + 1}` +
+                      `&day${i}=${x.getUTCDate()}&hour${i}=${x.getUTCHours()}`;
+  try{
+    const txt = await (await fetch(
+      'https://mesonet.agron.iastate.edu/cgi-bin/request/rwis.py' +
+      `?stations=${encodeURIComponent(id)}&${d(1, then)}&${d(2, now)}&tz=UTC&format=comma`)).text();
+    const lines = txt.split('\n').filter(l => l.trim() && l[0] !== '#');
+    const hdr = (lines[0] || '').split(',');
+    const iP = hdr.indexOf('tfs0'), iA = hdr.indexOf('tmpf'), iT = hdr.indexOf('obtime');
+    const out = [];
+    if(iP >= 0 && iT >= 0){
+      for(const line of lines.slice(1)){
+        const c = line.split(',');
+        if(c.length <= iP) continue;
+        const pave = parseFloat(c[iP]);
+        if(!isFinite(pave)) continue;
+        const t = Date.parse(c[iT].trim().replace(' ', 'T') + 'Z');
+        if(!isFinite(t)) continue;
+        out.push({t, pave, air: iA >= 0 ? parseFloat(c[iA]) : NaN});
+      }
+      out.sort((a, b) => a.t - b.t);
+    }
+    roadHist = out.length ? out : null;
+    roadHistFor = id; roadHistAt = Date.now();
+  }catch(e){ console.error('road history', e); }
+  roadHistLoading = false;
   renderDash();
 }
 
@@ -6894,6 +6942,11 @@ function renderDashRoad(){
   const P = H.slice(0, n);
   const obs = roadObserved();
   const rw = nearestRwis();
+  if(rw && rw.s.id) loadRoadHistory(rw.s.id);
+  // The last 12 hours of the sensor, which is what says whether the road is
+  // cooling towards freezing or holding.
+  const hist = (roadHist && rw && roadHistFor === rw.s.id)
+    ? roadHist.filter(h => h.t >= Date.now() - 12 * 3600e3) : [];
   // The sensor's own reading of the road beats anything inferred from the air.
   const sensorNow = rw ? rwisCondState(rw.s.cond) : null;
   // Its pavement-minus-air difference carries forward, so the rest of the
@@ -6909,34 +6962,57 @@ function renderDashRoad(){
   });
 
   const W = 500, Hh = 158, padL = 8, padR = 8, padT = 46, ribbonH = 30;
-  const pw = W - padL - padR, cw = pw / n;
+  // Past on the left, forecast on the right, with now between them. A third
+  // of the width for twelve hours behind, the rest for eighteen ahead.
+  const histW = hist.length ? Math.round((W - padL - padR) * 0.34) : 0;
+  const pw = W - padL - padR - histW, cw = pw / n;
+  const nowX = padL + histW;
   // The ribbon: one block an hour, so a change of state is a visible edge.
   let ribbon = '';
   rows.forEach((r, k) => {
-    ribbon += `<rect x="${(padL + k * cw).toFixed(1)}" y="${padT}" width="${(cw + 0.5).toFixed(1)}" ` +
+    ribbon += `<rect x="${(nowX + k * cw).toFixed(1)}" y="${padT}" width="${(cw + 0.5).toFixed(1)}" ` +
               `height="${ribbonH}" fill="${ROAD_STATE[r.st].color}" ` +
               `opacity="${r.st === 'dry' ? 0.55 : 0.92}"/>`;
   });
   // Temperature over the top, with freezing marked, because the crossing is
   // the moment that matters.
-  const allT = rows.map(r => r.t).concat(rows.map(r => r.pave).filter(v => v != null));
+  const allT = rows.map(r => r.t).concat(rows.map(r => r.pave).filter(v => v != null))
+    .concat(hist.map(h => h.pave)).concat(hist.map(h => h.air).filter(v => isFinite(v)));
   const lo = Math.min(20, ...allT) - 2;
   const hi = Math.max(40, ...allT) + 2;
   const ty = v => padT + ribbonH + 8 + (1 - (v - lo) / (hi - lo)) * 44;
   let tline = '';
   rows.forEach((r, k) => {
     if(!k) return;
-    tline += `<line x1="${(padL + (k - 0.5) * cw).toFixed(1)}" y1="${ty(rows[k-1].t).toFixed(1)}" ` +
-             `x2="${(padL + (k + 0.5) * cw).toFixed(1)}" y2="${ty(r.t).toFixed(1)}" ` +
+    tline += `<line x1="${(nowX + (k - 0.5) * cw).toFixed(1)}" y1="${ty(rows[k-1].t).toFixed(1)}" ` +
+             `x2="${(nowX + (k + 0.5) * cw).toFixed(1)}" y2="${ty(r.t).toFixed(1)}" ` +
              `stroke="${tempColor(r.t)}" stroke-width="2.2" stroke-linecap="round"/>`;
   });
+  // What the sensor has actually done, drawn solid against the forecast's
+  // dashes, so measured and predicted never read as the same thing.
+  let hline = '', hband = '';
+  if(hist.length){
+    const t0 = hist[0].t, span = Math.max(1, Date.now() - t0);
+    const hx = t => padL + ((t - t0) / span) * histW;
+    hband = `<rect x="${padL}" y="${padT}" width="${histW}" height="${ribbonH}" ` +
+            `fill="rgba(255,255,255,0.05)"/>`;
+    for(let k = 1; k < hist.length; k++){
+      hline += `<line x1="${hx(hist[k-1].t).toFixed(1)}" y1="${ty(hist[k-1].pave).toFixed(1)}" ` +
+               `x2="${hx(hist[k].t).toFixed(1)}" y2="${ty(hist[k].pave).toFixed(1)}" ` +
+               `stroke="#C8D2E0" stroke-width="1.8" stroke-linecap="round"/>`;
+    }
+    hline += `<line x1="${nowX}" y1="${padT - 4}" x2="${nowX}" y2="${padT + ribbonH + 52}" ` +
+             `stroke="rgba(255,255,255,0.3)" stroke-width="1"/>` +
+             `<text x="${padL + 2}" y="${padT - 6}" font-size="9" ` +
+             `fill="#8A93A6" font-family="monospace">measured, 12 h</text>`;
+  }
   // Drawn under the air line and dimmer, so the gap between them is the story.
   let pline = '';
   if(offset != null){
     rows.forEach((r, k) => {
       if(!k || r.pave == null || rows[k-1].pave == null) return;
-      pline += `<line x1="${(padL + (k - 0.5) * cw).toFixed(1)}" y1="${ty(rows[k-1].pave).toFixed(1)}" ` +
-               `x2="${(padL + (k + 0.5) * cw).toFixed(1)}" y2="${ty(r.pave).toFixed(1)}" ` +
+      pline += `<line x1="${(nowX + (k - 0.5) * cw).toFixed(1)}" y1="${ty(rows[k-1].pave).toFixed(1)}" ` +
+               `x2="${(nowX + (k + 0.5) * cw).toFixed(1)}" y2="${ty(r.pave).toFixed(1)}" ` +
                `stroke="#8A93A6" stroke-width="1.6" stroke-dasharray="3 2" stroke-linecap="round"/>`;
     });
   }
@@ -6948,7 +7024,7 @@ function renderDashRoad(){
   let hours = '';
   for(let k = 0; k < n; k += 3){
     const d = new Date(rows[k].time);
-    hours += `<text x="${(padL + (k + 0.5) * cw).toFixed(1)}" y="${padT - 6}" text-anchor="middle" ` +
+    hours += `<text x="${(nowX + (k + 0.5) * cw).toFixed(1)}" y="${padT - 6}" text-anchor="middle" ` +
              `font-size="9" fill="#8A93A6" font-family="monospace">` +
              `${d.toLocaleTimeString([], {hour: 'numeric'}).replace(' ', '')}</text>`;
   }
@@ -6972,7 +7048,7 @@ function renderDashRoad(){
     `font-family="monospace">${ROAD_STATE[now].label.toUpperCase()}</text>` +
     `<text x="${W - padR}" y="24" text-anchor="end" font-size="11" fill="#8A93A6" ` +
     `font-family="monospace">${changeTxt}</text>` +
-    hours + ribbon + frz + pline + tline + `</svg>` +
+    hband + hours + ribbon + frz + hline + pline + tline + `</svg>` +
     dashRow('Air', hit && hit.s.p.tmpf != null ? Math.round(hit.s.p.tmpf) + '°F' : '—',
             obs ? 'observed now' : '') +
     (rw ? dashRow('Pavement', Math.round(rw.s.pave) + '°F',
@@ -6980,9 +7056,14 @@ function renderDashRoad(){
                   ROAD_STATE[sensorNow || 'dry'].color) : '') +
     (wb != null ? dashRow('Wet bulb', Math.round(wb * 9 / 5 + 32) + '°F',
                           'what snow actually feels') : '') +
-    `<div class="dash-sub">Each block is an hour of road state. Solid line is air, ` +
+    `<div class="dash-sub">` +
+    (hist.length
+      ? `Left of the line is what the sensor at ${rw.s.name} actually recorded; right of it ` +
+        `is forecast. `
+      : '') +
+    `Each block is an hour of road state. Green is air, ` +
     (rw
-      ? `dashed is the pavement at ${rw.s.name}, carried forward on its measured ` +
+      ? `dashed is pavement, carried forward on the sensor's measured ` +
         `${offset >= 0 ? '+' : ''}${Math.round(offset)}°F difference. `
       : `and there is no road sensor within range, so this reasons from air temperature alone. `) +
     `Wet bulb decides whether snow survives the fall.</div>`;
