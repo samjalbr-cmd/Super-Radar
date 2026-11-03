@@ -8074,6 +8074,7 @@ function toggleDash(on, quiet){
     soundOpen = !!document.getElementById('soundPanel')?.classList.contains('open');
   }
   renderRwisLabels();
+  applyDashFocus();          // restores the map when the dashboard closes
   // Leaflet sized itself to the old width; without this the map projects into
   // the rail and every position is off by its width.
   setTimeout(() => { if(map) map.invalidateSize(); }, 20);
@@ -8099,12 +8100,85 @@ function dashNextLive(i, dir){
   }
   return -1;
 }
+/* The map as an extension of the card that is up.
+
+   One card is on screen at a time on the widget, and the map behind it was
+   showing everything at once regardless — station plots under the lightning
+   card, lightning under the forecast. So each card names the layers that
+   belong to it and the rest step aside while it has the screen, the way the
+   pavement readings already do.
+
+   The radar is never touched: it is the picture, not a layer. Nor is anything
+   switched off in the settings — layers are detached from the map and put
+   back, so leaving the dashboard restores exactly what the map had before,
+   including choices made while it was running. */
+const DASH_FOCUS = {
+  'now':         ['stations'],
+  'roads':       ['roads'],
+  'convection':  ['lightning', 'reports', 'outlook'],
+  'lake effect': ['lake', 'upper'],
+  'air aloft':   ['upper'],
+  'watches':     ['alerts'],
+  'lightning':   ['lightning'],
+  'recent':      ['reports'],
+};
+function dashFocusLayers(){
+  return {
+    stations:  stationLayer,
+    roads:     rwisLayer,
+    lake:      lakeLayer,
+    upper:     upperLayer,
+    lightning: typeof lightningLayerGroup === 'undefined' ? null : lightningLayerGroup,
+    reports:   lsrLayer,
+    alerts:    typeof alertLayerGroup === 'undefined' ? null : alertLayerGroup,
+    outlook:   spcOutlookLayer,
+    fronts:    sfcLayer,
+  };
+}
+// What the map had before the dashboard started rearranging it.
+let dashLayerMemory = null;
+
+function applyDashFocus(){
+  if(!map) return;
+  const layers = dashFocusLayers();
+  // Remember the real state once, so it can be handed back intact.
+  if(!dashLayerMemory){
+    dashLayerMemory = {};
+    for(const k in layers) if(layers[k]) dashLayerMemory[k] = map.hasLayer(layers[k]);
+  }
+  const focusing = dashOn() && typeof DASH_WIDGET !== 'undefined' && DASH_WIDGET;
+  if(!focusing){
+    // Put everything back the way it was found.
+    for(const k in layers){
+      if(!layers[k] || !(k in dashLayerMemory)) continue;
+      if(dashLayerMemory[k]) { if(!map.hasLayer(layers[k])) layers[k].addTo(map); }
+      else if(map.hasLayer(layers[k])) map.removeLayer(layers[k]);
+    }
+    dashLayerMemory = null;
+    return;
+  }
+  const card = dashCards()[dashIdx];
+  const title = (card?.querySelector('h3')?.textContent || '').toLowerCase();
+  const key = Object.keys(DASH_FOCUS).find(k => title.startsWith(k));
+  // A card with no layers of its own leaves the map as the user set it rather
+  // than blanking it, because an empty map is not an improvement.
+  const want = key ? DASH_FOCUS[key] : null;
+  for(const k in layers){
+    const L = layers[k];
+    if(!L) continue;
+    const on = want ? want.includes(k) : !!dashLayerMemory[k];
+    if(on){ if(!map.hasLayer(L)) L.addTo(map); }
+    else if(map.hasLayer(L)) map.removeLayer(L);
+  }
+}
+
 function showDashCard(i){
   const cards = dashCards();
   if(!cards.length) return;
   dashIdx = ((i % cards.length) + cards.length) % cards.length;
   cards.forEach((c, j) => c.classList.toggle('on', j === dashIdx));
   renderRwisLabels();        // the pavement layer belongs to the roads card
+  applyDashFocus();          // and the map follows whichever card is up
   dashPagerPaint();
   dashSchedule();
 }
