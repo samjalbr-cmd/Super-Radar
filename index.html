@@ -583,8 +583,8 @@
   .fc-lbl{
     display:inline-flex;align-items:baseline;gap:2px;
     transform:translate(-50%,-50%);white-space:nowrap;
-    font-family:monospace;font-weight:700;font-size:calc(12px * var(--lblscale, 1));
-    text-shadow:0 0 3px #000, 0 0 2px #000;
+    font-family:monospace;font-weight:700;font-size:calc(14px * var(--lblscale, 1));
+    text-shadow:0 0 4px #000, 0 0 3px #000, 0 0 2px #000;
   }
   .fc-lbl{ color:#F5F3EC; }
   .fc-lbl em{ font-style:normal;opacity:0.55;font-size:0.8em; }
@@ -8264,10 +8264,11 @@ function setFcFieldMode(m){
 /* The map as an extension of the card that is up.
 
    One card is on screen at a time on the widget, and the map behind it was
-   showing everything at once regardless — station plots under the lightning
+   showing everything at once regardless — pavement sensors under the lightning
    card, lightning under the forecast. So each card names the layers that
-   belong to it and the rest step aside while it has the screen, the way the
-   pavement readings already do.
+   belong to it and the other cards' layers step aside while it has the screen,
+   the way the pavement readings already do. What stays through all of it is
+   DASH_ALWAYS below.
 
    The radar is never touched: it is the picture, not a layer. Nor is anything
    switched off in the settings — layers are detached from the map and put
@@ -8278,7 +8279,7 @@ const DASH_FOCUS = {
   'roads':         ['roads'],
   'convection':    ['lightning', 'reports', 'outlook', 'feed'],
   'lake effect':   ['lake', 'upper'],
-  'air aloft':     ['upper', 'isobars', 'isolabels', 'fronts'],
+  'air aloft':     ['upper'],
   'watches':       ['alerts'],
   'lightning':     ['lightning'],
   'recent':        ['reports', 'feed'],
@@ -8287,6 +8288,14 @@ const DASH_FOCUS = {
   'precipitation': ['fcfield'],
   'next 5':        ['fcfield'],
 };
+// The map underneath, which every card is read against. Station temperatures
+// and the surface analysis are not one card's subject — they are what tells
+// you where you are and what the air is doing, so hiding them to make room for
+// a card's own layer took away the thing the card was being compared to.
+// These keep whatever setting they had before the dashboard opened, on every
+// card, rather than being forced on.
+const DASH_ALWAYS = ['stations', 'isobars', 'isolabels', 'fronts'];
+
 // Which forecast variable the shared field shows for each of those cards.
 const DASH_FC_MODE = {
   'next 48': 'temp', 'wind': 'gust', 'precipitation': 'precip', 'next 5': 'range',
@@ -8341,7 +8350,7 @@ function applyDashFocus(){
   for(const k in layers){
     const L = layers[k];
     if(!L) continue;
-    const on = want ? want.includes(k) : !!dashLayerMemory[k];
+    const on = (want && !DASH_ALWAYS.includes(k)) ? want.includes(k) : !!dashLayerMemory[k];
     if(on){ if(!map.hasLayer(L)) L.addTo(map); }
     else if(map.hasLayer(L)) map.removeLayer(L);
   }
