@@ -577,6 +577,19 @@
   }
   .rw-lbl i{ width:5px;height:5px;border-radius:1px;display:block; }
 
+  /* Forecast field: same weight as the pavement label, so the two read as one
+     family of map annotations rather than two competing ones. */
+  .fc-icon{ background:none; border:none; }
+  .fc-lbl{
+    display:inline-flex;align-items:baseline;gap:2px;
+    transform:translate(-50%,-50%);white-space:nowrap;
+    font-family:monospace;font-weight:700;font-size:calc(12px * var(--lblscale, 1));
+    text-shadow:0 0 3px #000, 0 0 2px #000;
+  }
+  .fc-lbl{ color:#F5F3EC; }
+  .fc-lbl em{ font-style:normal;opacity:0.55;font-size:0.8em; }
+  .fc-lbl i{ font-style:normal;display:inline-block;font-size:0.95em;line-height:1; }
+
   .dash-card > h3{
     margin:0 0 9px;font-family:sans-serif;font-weight:700;font-size:14px;
     color:#F5F3EC;letter-spacing:0.06em;text-transform:uppercase;
@@ -1186,6 +1199,7 @@ function initMap(){
   map.getPane('precipPane').style.zIndex = 235;
   map.getPane('precipPane').style.pointerEvents = 'none';
 
+  fcFieldLayer = L.layerGroup();   // forecast field: attached only by the card that wants it
   precipGroup = L.layerGroup().addTo(map);
   precipMarkers = L.layerGroup().addTo(map);
   isobarLayer = L.layerGroup().addTo(map);
@@ -1228,7 +1242,7 @@ function initMap(){
                       scheduleIsobarRefresh, scheduleNoaaRadar, schedulePrecipRefresh,
                       syncAppSettings, scheduleHistoryRefresh, renderLakeTemps,
                       renderUpper, scheduleUpperRefresh, renderReplayMarks,
-                      scheduleTempHistory];
+                      scheduleTempHistory, renderFcField, fetchFcField];
   const FRAME_BUDGET_MS = 8;          // leaves room in a 16 ms frame to paint
   let movePass = false, moveAgain = false;
   function runMoveTasks(){
@@ -5301,7 +5315,7 @@ let upperLayer = null, upperTimer = null, upperSeq = 0;
 // are model samples rather than stations and a perfect grid reads as texture.
 // The offset moves the sample itself, so a barb still sits exactly where its
 // wind was read.
-function upperLattice(bounds){
+function upperLattice(bounds, maxCols = 12){
   const padLat = (bounds.getNorth() - bounds.getSouth()) * 0.08;
   const padLon = (bounds.getEast() - bounds.getWest()) * 0.08;
   const south = bounds.getSouth() - padLat, north = bounds.getNorth() + padLat;
@@ -5317,7 +5331,7 @@ function upperLattice(bounds){
   const STEPS = [0.25, 0.5, 1, 1.5, 2, 3, 5, 8, 12, 20];
   let step = STEPS[STEPS.length - 1];
   for(const cand of STEPS){
-    if((east - west) / cand <= 12){ step = cand; break; }
+    if((east - west) / cand <= maxCols){ step = cand; break; }
   }
   const c0 = Math.floor(west / step), c1 = Math.ceil(east / step);
   const r0 = Math.floor(south / step), r1 = Math.ceil(north / step);
@@ -8114,6 +8128,139 @@ function dashNextLive(i, dir){
   }
   return -1;
 }
+/* ---------------- Forecast field ----------------
+   The forecast cards read one point — wherever the map is centred — and for a
+   long time the map behind them carried on showing observations, so the card
+   talked about tomorrow while the map was stuck on now. These four cards get
+   the same forecast spread across the view instead.
+
+   One fetch feeds all of them. The variables are cheap next to the round trip,
+   so asking for temperature, gusts and precipitation together costs barely
+   more than asking for any one, and switching cards then costs nothing.
+
+   The lattice is the upper-air one, thinned: barbs are small and tolerate
+   crowding, whereas these are two to five digits and need the room.
+   No model is pinned — HRRR stops at 48 hours and refuses a request that
+   reaches outside its domain, and the five-day card needs more than that. */
+
+const FC_FIELD_HOURS = 48;
+let fcFieldLayer = null, fcField = null, fcFieldSeq = 0, fcFieldMode = null, fcFieldKey = '';
+
+async function fetchFcField(){
+  if(!fcFieldLayer || !fcFieldMode) return;
+  const grid = upperLattice(map.getBounds(), 10);
+  if(!grid) return;
+  const {lats, lons} = grid;
+  // The same view asks the same question; don't re-ask it on every card turn.
+  const key = lats[0] + ',' + lons[0] + '|' + lats.length + '|' + lons[lons.length - 1] +
+              '|' + Math.floor(Date.now() / 9e5);
+  if(key === fcFieldKey) return;
+  const seq = ++fcFieldSeq;
+  const url = 'https://api.open-meteo.com/v1/forecast'
+            + `?latitude=${lats.join(',')}&longitude=${lons.join(',')}`
+            + '&hourly=temperature_2m,wind_gusts_10m,wind_direction_10m,precipitation,snowfall'
+            + '&daily=temperature_2m_max,temperature_2m_min'
+            + '&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch'
+            + `&timezone=GMT&forecast_days=6&forecast_hours=${FC_FIELD_HOURS}`;
+  try{
+    const data = await (await fetch(url)).json();
+    if(seq !== fcFieldSeq) return;                      // the map moved on
+    const arr = Array.isArray(data) ? data : [data];
+    if(!arr.length || !arr[0].hourly) return;
+    const pts = [];
+    arr.forEach((loc, i) => {
+      const h = loc.hourly || {}, d = loc.daily || {};
+      const num = v => (v == null || !isFinite(v)) ? null : +v;
+      const sum = a => (a || []).reduce((t, v) => t + (num(v) || 0), 0);
+      const gusts = h.wind_gusts_10m || [];
+      let gi = -1;
+      gusts.forEach((v, k) => { if(v != null && (gi < 0 || v > gusts[gi])) gi = k; });
+      const hiArr = (d.temperature_2m_max || []).slice(0, 5).filter(v => v != null);
+      const loArr = (d.temperature_2m_min || []).slice(0, 5).filter(v => v != null);
+      pts.push({
+        lat: +lats[i], lon: +lons[i],
+        // Same clock time tomorrow: far enough out that it is a forecast
+        // rather than a restatement of the observation on the map.
+        temp:  num((h.temperature_2m || [])[24]),
+        gust:  gi < 0 ? null : num(gusts[gi]),
+        gdir:  gi < 0 ? null : num((h.wind_direction_10m || [])[gi]),
+        ghr:   gi < 0 ? null : gi,
+        qpf:   sum(h.precipitation),
+        snow:  sum(h.snowfall),
+        dhi:   hiArr.length ? Math.max(...hiArr) : null,
+        dlo:   loArr.length ? Math.min(...loArr) : null,
+      });
+    });
+    fcField = {pts};
+    fcFieldKey = key;
+    renderFcField();
+  }catch(e){ console.error('forecast field', e); }
+}
+
+// Each mode says what to print, what colour it takes, and what the tap says.
+// Returning null for a point means it has nothing to report — a dry point on
+// the precipitation map prints nothing rather than a row of zeroes.
+const FC_FIELD_MODES = {
+  temp: p => p.temp == null ? null :
+    {txt: Math.round(p.temp) + '°', col: tempColor(p.temp), pop: 'this time tomorrow'},
+  gust: p => (p.gust == null || p.gust < 10) ? null :
+    {txt: String(Math.round(p.gust)), col: windColor(p.gust * 0.868976),
+     pop: `peak gust, next ${FC_FIELD_HOURS} h`, dir: p.gdir, hr: p.ghr},
+  precip: p => {
+    // Snow where it is forecast to fall as snow, because an inch of liquid and
+    // an inch of snow are not the same news.
+    if(p.snow >= 0.1) return {txt: p.snow.toFixed(p.snow < 10 ? 1 : 0) + '"',
+      col: snowColor(p.snow), pop: `snow, next ${FC_FIELD_HOURS} h`};
+    if(p.qpf >= 0.01) return {txt: p.qpf.toFixed(2).replace(/^0/, '') + '"',
+      col: rainColor(p.qpf), pop: `liquid, next ${FC_FIELD_HOURS} h`};
+    return null;
+  },
+  // Two numbers, each on the temperature ramp — the card plots low-to-high
+  // bars, so the map says the same thing in the same colours.
+  range: p => (p.dhi == null || p.dlo == null) ? null :
+    {txt: Math.round(p.dlo) + '–' + Math.round(p.dhi), col: tempColor(p.dhi),
+     col2: tempColor(p.dlo), pop: 'coldest night to warmest day, 5 days'},
+};
+
+function renderFcField(){
+  if(!fcFieldLayer) return;
+  fcFieldLayer.clearLayers();
+  const mode = FC_FIELD_MODES[fcFieldMode];
+  if(!mode || !fcField) return;
+  const view = map.getBounds();
+  for(const p of fcField.pts){
+    if(!view.contains([p.lat, p.lon])) continue;
+    const v = mode(p);
+    if(!v || !v.col) continue;
+    // A split label colours each number for its own value; a plain one is a
+    // single span, so the common case stays one element.
+    let html;
+    if(v.col2){
+      const [a, b] = v.txt.split('–');
+      html = `<span class="fc-lbl"><b style="color:${v.col2}">${a}</b>` +
+             `<em>–</em><b style="color:${v.col}">${b}</b></span>`;
+    }else{
+      html = `<span class="fc-lbl" style="color:${v.col}">` +
+             (v.dir != null ? `<i style="transform:rotate(${Math.round(v.dir)}deg)">↓</i>` : '') +
+             `<b>${v.txt}</b></span>`;
+    }
+    const when = v.hr != null ? `<br>${dcDay(Date.now() + v.hr * 3600e3)} ${dcHour(Date.now() + v.hr * 3600e3)}` : '';
+    L.marker([p.lat, p.lon], {
+      icon: L.divIcon({className: 'fc-icon', html, iconSize: [0, 0], iconAnchor: [0, 0]}),
+      keyboard: false,
+    }).bindPopup(`<div class="alert-popup"><b>${v.txt}</b>${v.pop}${when}</div>`).addTo(fcFieldLayer);
+  }
+}
+
+// Called when the card changes. Switching variable is a repaint, not a refetch.
+function setFcFieldMode(m){
+  if(fcFieldMode === m){ return; }
+  fcFieldMode = m || null;
+  if(!fcFieldMode){ if(fcFieldLayer) fcFieldLayer.clearLayers(); return; }
+  if(fcField) renderFcField();
+  fetchFcField();
+}
+
 /* The map as an extension of the card that is up.
 
    One card is on screen at a time on the widget, and the map behind it was
@@ -8127,14 +8274,22 @@ function dashNextLive(i, dir){
    back, so leaving the dashboard restores exactly what the map had before,
    including choices made while it was running. */
 const DASH_FOCUS = {
-  'now':         ['stations'],
-  'roads':       ['roads'],
-  'convection':  ['lightning', 'reports', 'outlook'],
-  'lake effect': ['lake', 'upper'],
-  'air aloft':   ['upper'],
-  'watches':     ['alerts'],
-  'lightning':   ['lightning'],
-  'recent':      ['reports'],
+  'now':           ['stations'],
+  'roads':         ['roads'],
+  'convection':    ['lightning', 'reports', 'outlook', 'feed'],
+  'lake effect':   ['lake', 'upper'],
+  'air aloft':     ['upper', 'isobars', 'isolabels', 'fronts'],
+  'watches':       ['alerts'],
+  'lightning':     ['lightning'],
+  'recent':        ['reports', 'feed'],
+  'next 48':       ['fcfield'],
+  'wind':          ['fcfield'],
+  'precipitation': ['fcfield'],
+  'next 5':        ['fcfield'],
+};
+// Which forecast variable the shared field shows for each of those cards.
+const DASH_FC_MODE = {
+  'next 48': 'temp', 'wind': 'gust', 'precipitation': 'precip', 'next 5': 'range',
 };
 function dashFocusLayers(){
   return {
@@ -8147,6 +8302,10 @@ function dashFocusLayers(){
     alerts:    typeof alertLayerGroup === 'undefined' ? null : alertLayerGroup,
     outlook:   spcOutlookLayer,
     fronts:    sfcLayer,
+    fcfield:   fcFieldLayer,
+    isobars:   isobarLayer,
+    isolabels: isobarMarkers,
+    feed:      typeof feedLayerGroup === 'undefined' ? null : feedLayerGroup,
   };
 }
 // What the map had before the dashboard started rearranging it.
@@ -8169,6 +8328,7 @@ function applyDashFocus(){
       else if(map.hasLayer(layers[k])) map.removeLayer(layers[k]);
     }
     dashLayerMemory = null;
+    setFcFieldMode(null);
     return;
   }
   const card = dashCards()[dashIdx];
@@ -8177,6 +8337,7 @@ function applyDashFocus(){
   // A card with no layers of its own leaves the map as the user set it rather
   // than blanking it, because an empty map is not an improvement.
   const want = key ? DASH_FOCUS[key] : null;
+  setFcFieldMode(key ? DASH_FC_MODE[key] : null);
   for(const k in layers){
     const L = layers[k];
     if(!L) continue;
