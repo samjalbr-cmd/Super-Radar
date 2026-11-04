@@ -2607,16 +2607,30 @@ const LSR_NAMES = {
   'FREEZING RAIN': 'freezing rain', 'ICE STORM': 'ice storm', 'BLIZZARD': 'blizzard',
   'SNOW SQUALL': 'snow squall', 'DUST STORM': 'dust storm',
 };
-function lsrValue(p){
+// The number with its own unit, and nothing else — no type word, so this can
+// sit next to a label that already says what the report is. Every reader of a
+// magnitude goes through here: the reports card used to carry a second copy of
+// this that assumed anything which wasn't hail was a wind speed, and happily
+// announced 3.2 inches of rain as "3.2 mph".
+function lsrMagText(p){
+  const mag = Number(p.magnitude);
+  if(p.magnitude == null || p.magnitude === '' || !isFinite(mag) || mag <= 0) return '';
   const t = String(p.typetext || '').toUpperCase().trim();
   const u = String(p.unit || '').toUpperCase();
-  const mag = Number(p.magnitude);
-  if(p.magnitude != null && p.magnitude !== '' && isFinite(mag) && mag > 0){
-    if(u.includes('MPH') || t.includes('WND') || t.includes('WIND')) return `${Math.round(mag)} mph`;
-    if(t.includes('HAIL')) return `${lsrNum(mag)}" hail`;
-    if(t.includes('SNOW')) return `${lsrNum(mag)}" snow`;
-    if(t.includes('RAIN')) return `${lsrNum(mag)}" rain`;
-    return lsrNum(mag);
+  if(u.includes('MPH') || t.includes('WND') || t.includes('WIND')) return `${Math.round(mag)} mph`;
+  if(u.includes('INCH') || /HAIL|SNOW|RAIN|SLEET|ICE|PRECIP|FLOOD|SURGE/.test(t)) return `${lsrNum(mag)}"`;
+  if(u === 'F') return `${lsrNum(mag)}\u00B0`;
+  // An unknown unit is still better spelled out than guessed at.
+  return lsrNum(mag) + (p.unit ? ' ' + String(p.unit).toLowerCase() : '');
+}
+function lsrValue(p){
+  const t = String(p.typetext || '').toUpperCase().trim();
+  const m = lsrMagText(p);
+  if(m){
+    if(t.includes('HAIL')) return m + ' hail';
+    if(t.includes('SNOW')) return m + ' snow';
+    if(t.includes('RAIN')) return m + ' rain';
+    return m;
   }
   return LSR_NAMES[t] || (t ? t.toLowerCase() : '\u2022');
 }
@@ -7632,7 +7646,7 @@ function renderDashReports(){
   if(!list.length){ host.innerHTML = '<div class="dash-empty">No reports here today.</div>'; return; }
   host.innerHTML = list.slice(0, 6).map(f => {
     const p = f.properties;
-    const mag = p.magnitude ? ` ${p.magnitude}${/HAIL/i.test(p.typetext) ? '"' : ' mph'}` : '';
+    const m = lsrMagText(p), mag = m ? ' ' + m : '';
     const t = feedTimeMs(p.valid);
     return dashRow((p.typetext || '').toLowerCase(), (p.city || '').slice(0, 18) + mag,
                    t ? agoStr(t) : '', lsrColor(p.typetext));
