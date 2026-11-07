@@ -568,6 +568,27 @@
   }
   /* Pavement readings: a square chip so they never read as another air
      temperature among the station plots. */
+  /* Satellite loop. The frame is square but the bottom 2.67% is NESDIS's
+     caption strip, so the box is that much shorter than the picture and
+     clips it off. */
+  .sat-wrap{
+    position:relative; width:100%; aspect-ratio:600/584; overflow:hidden;
+    border-radius:10px; background:#05070d;
+  }
+  .sat-wrap img{
+    position:absolute; top:0; left:0; width:100%; display:block;
+    opacity:0; transition:opacity .08s linear;
+  }
+  .sat-wrap img.on{ opacity:1; }
+  .sat-bar{
+    display:flex; align-items:center; gap:7px;
+    font-family:monospace; font-size:12px; color:#8A93A6; padding-top:6px;
+  }
+  .sat-bar .t{ color:#F5F3EC; }
+  .sat-dots{ display:flex; gap:3px; margin-left:auto; }
+  .sat-dots i{ width:4px;height:4px;border-radius:50%;background:#2A3346;display:block; }
+  .sat-dots i.on{ background:#F2B705; }
+
   .rw-icon{ background:none; border:none; }
   .rw-lbl{
     display:inline-flex;flex-direction:column;align-items:center;
@@ -899,6 +920,7 @@
   <div class="dash-card"><h3>Wind &mdash; next 48 h</h3><div id="dashWind"></div></div>
   <div class="dash-card"><h3>Precipitation &mdash; next 48 h</h3><div id="dashPrecip"></div></div>
   <div class="dash-card"><h3>Next 5 days</h3><div id="dashOutlook"></div></div>
+  <div class="dash-card"><h3>Satellite</h3><div id="dashSat"></div></div>
   <div class="dash-card"><h3>Watches &amp; warnings</h3><div id="dashAlerts"></div></div>
   <div class="dash-card"><h3>Lightning</h3><div id="dashLtg"></div></div>
   <div class="dash-card"><h3>Recent reports</h3><div id="dashReports"></div></div>
@@ -8048,6 +8070,97 @@ function renderDashOutlook(){
     `<div class="dash-sub">Low to high on one scale; percent is chance of precipitation. NWS ${nwsFc.office}.</div>`;
 }
 
+/* ---------------- Satellite loop ----------------
+
+   The GOES Central Great Lakes sector, last hour, looping.
+
+   No scraping to find the frames: every one of the 2881 files the archive
+   holds is stamped at a minute ending 1, 6, 11 … 56, so the URLs are simply
+   computed. Checked against the whole listing — 2881 of 2881 sit on that
+   grid — which is a great deal cheaper than fetching an index page and more
+   robust than depending on its markup.
+
+   The newest file appears a couple of minutes after its nominal time, so the
+   loop ends a few minutes back and any frame that 404s anyway is dropped on
+   its error handler rather than leaving a gap. */
+
+const SAT_FRAMES = 12;            // an hour at five minutes
+const SAT_STEP_MIN = 5;
+const SAT_LAG_MIN = 8;            // publishing delay, plus a margin
+const SAT_FPS_MS = 420;
+let satImgs = [], satIdx = 0, satTimer = null, satKey = '';
+
+function satFrameTimes(){
+  const now = Date.now();
+  // Back off the publishing lag, then down to the nearest minute ending in 1.
+  let t = new Date(now - SAT_LAG_MIN * 60000);
+  t.setUTCSeconds(0, 0);
+  const m = t.getUTCMinutes();
+  t.setUTCMinutes(m - ((m - 1 + 5) % 5));
+  const out = [];
+  for(let i = SAT_FRAMES - 1; i >= 0; i--) out.push(new Date(t - i * SAT_STEP_MIN * 60000));
+  return out;
+}
+function satURL(d){
+  const p = n => String(n).padStart(2, '0');
+  const doy = Math.floor((Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())
+                        - Date.UTC(d.getUTCFullYear(), 0, 0)) / 86400000);
+  const stamp = `${d.getUTCFullYear()}${String(doy).padStart(3,'0')}${p(d.getUTCHours())}${p(d.getUTCMinutes())}`;
+  return `https://cdn.star.nesdis.noaa.gov/GOES19/ABI/SECTOR/cgl/GEOCOLOR/` +
+         `${stamp}_GOES19-ABI-cgl-GEOCOLOR-600x600.jpg`;
+}
+
+function renderDashSat(){
+  const host = document.getElementById('dashSat');
+  if(!host) return;
+  const times = satFrameTimes();
+  const key = times[times.length - 1].toISOString();
+  if(key === satKey && host.querySelector('.sat-wrap')) return;   // same hour, leave it running
+  satKey = key;
+  clearInterval(satTimer); satTimer = null; satIdx = 0;
+  host.innerHTML = `<div class="sat-wrap"></div>` +
+    `<div class="sat-bar"><span class="t">—</span><span>GOES-19 · Great Lakes</span>` +
+    `<span class="sat-dots"></span></div>`;
+  const wrap = host.querySelector('.sat-wrap');
+  const dots = host.querySelector('.sat-dots');
+  satImgs = [];
+  for(const d of times){
+    const im = new Image();
+    im.decoding = 'async';
+    im.alt = '';
+    im.dataset.t = d.getTime();
+    // A frame that is not there yet simply leaves the loop; the alternative
+    // is a black flash once a cycle.
+    im.onerror = () => { im.remove(); satImgs = satImgs.filter(x => x !== im); satPaintDots(); };
+    im.src = satURL(d);
+    wrap.appendChild(im);
+    satImgs.push(im);
+  }
+  satPaintDots();
+  satTimer = setInterval(satTick, SAT_FPS_MS);
+  satTick();
+}
+function satPaintDots(){
+  const dots = document.querySelector('#dashSat .sat-dots');
+  if(dots) dots.innerHTML = satImgs.map((_, i) =>
+    `<i class="${i === satIdx ? 'on' : ''}"></i>`).join('');
+}
+function satTick(){
+  const host = document.getElementById('dashSat');
+  // Off screen in the card rotation: keep the clock but do no work.
+  //
+  // Not offsetParent — the dash card is positioned, so offsetParent is null
+  // whether the card is up or not, and the loop sat frozen on one frame.
+  // getClientRects is empty only when the element really is not laid out.
+  if(!host || host.getBoundingClientRect().width < 1 || !satImgs.length) return;
+  satIdx = (satIdx + 1) % satImgs.length;
+  satImgs.forEach((im, i) => im.classList.toggle('on', i === satIdx));
+  const t = +satImgs[satIdx].dataset.t;
+  const lab = host.querySelector('.sat-bar .t');
+  if(lab) lab.textContent = new Date(t).toLocaleTimeString([], {hour:'numeric', minute:'2-digit'});
+  satPaintDots();
+}
+
 /* Watches and warnings, each with a bar for how much of it is left. */
 function renderDashAlerts(){
   const host = document.getElementById('dashAlerts');
@@ -8124,6 +8237,7 @@ function renderDash(){
   renderDashWind();
   renderDashPrecip();
   renderDashOutlook();
+  renderDashSat();
   renderDashAlerts();
   renderDashLightning();
   renderDashReports();
