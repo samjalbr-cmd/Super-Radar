@@ -19,11 +19,8 @@ struct SectorProvider: TimelineProvider {
         Task { completion(await current()) }
     }
 
-    /// Centred on wherever the watch app last saw the wearer, which is the
-    /// whole point: the published sector is centred on Ohio.
     private func current() async -> SectorEntry {
-        let c = SatelliteSector.center
-        let d = await SatelliteSector.fetch(lat: c.lat, lon: c.lon, pixels: 256)
+        let d = await SatelliteSector.fetch()
         return SectorEntry(date: Date(), imageData: d, stale: d == nil)
     }
 
