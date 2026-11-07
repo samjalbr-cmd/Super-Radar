@@ -73,6 +73,48 @@ enum SatelliteSector {
     /// was the large preview that suffered from a tight crop, not the watch.
     static let spanFraction: CGFloat = 0.45
 
+    /// The timestamps of the most recent `count` frames, newest last.
+    ///
+    /// Computed, not scraped. Every one of the 2881 files the archive holds is
+    /// stamped at a minute ending 1, 6, 11 … 56 — checked against the whole
+    /// listing — so the grid is known and an index fetch is pointless. A frame
+    /// that is not published yet simply fails to download and is skipped.
+    static func recentFrames(count: Int, lagMinutes: Int = 8) -> [Date] {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "UTC")!
+        let back = Date().addingTimeInterval(-Double(lagMinutes) * 60)
+        var c = cal.dateComponents([.year, .month, .day, .hour, .minute], from: back)
+        let m = c.minute ?? 0
+        c.minute = m - ((m - 1 + 5) % 5)
+        guard let end = cal.date(from: c) else { return [] }
+        return (0..<count).reversed().map { end.addingTimeInterval(-Double($0) * 300) }
+    }
+
+    /// The archive URL for one frame.
+    static func frameURL(_ d: Date, pixels: Int = pixels) -> URL? {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "UTC")!
+        let c = cal.dateComponents([.year, .hour, .minute], from: d)
+        // ordinality rather than the .dayOfYear component, which needs
+        // watchOS 11 and this deployment target is 10.
+        guard let year = c.year, let hour = c.hour, let minute = c.minute,
+              let doy = cal.ordinality(of: .day, in: .year, for: d) else { return nil }
+        let stamp = String(format: "%04d%03d%02d%02d", year, doy, hour, minute)
+        return URL(string: "https://cdn.star.nesdis.noaa.gov/\(satellite)/ABI/SECTOR/"
+                 + "\(sector)/GEOCOLOR/\(stamp)_\(satellite)-ABI-\(sector)-GEOCOLOR-"
+                 + "\(pixels)x\(pixels).jpg")
+    }
+
+    static func fetchFrame(_ d: Date, pixels: Int) async -> Data? {
+        guard let url = frameURL(d, pixels: pixels) else { return nil }
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 25
+        guard let (data, resp) = try? await URLSession.shared.data(for: req),
+              (resp as? HTTPURLResponse)?.statusCode == 200,
+              data.count > 5000 else { return nil }
+        return data
+    }
+
     static func fetch(pixels: Int = pixels) async -> Data? {
         var req = URLRequest(url: imageURL(pixels: pixels))
         req.timeoutInterval = 25

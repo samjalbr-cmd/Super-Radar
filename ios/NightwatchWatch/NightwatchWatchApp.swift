@@ -125,25 +125,35 @@ struct RadarView: View {
 }
 
 
-/// The satellite sector, zoomable with the crown.
+/// The satellite sector: the last hour, looping, zoomable with the crown.
 ///
-/// The complication has to choose a framing and live with it. Here there is a
-/// screen and an input, so the whole sector is shown and the wearer picks:
-/// crown to zoom, drag to pan.
+/// Frames arrive one at a time and the loop starts as soon as the second one
+/// lands, because over a watch relayed through a phone twelve downloads can
+/// take the better part of a minute and a spinner that long reads as broken.
+///
+/// 300 px rather than the app's usual 1200: twelve of those is a megabyte
+/// against nine, and the difference is invisible on a 400-point screen until
+/// you zoom a long way in.
 struct SectorView: View {
-    @State private var image: UIImage?
-    @State private var failed = false
+    @State private var frames: [UIImage] = []
+    @State private var times: [Date] = []
+    @State private var idx = 0
+    @State private var done = false
+    @State private var playing = true
     @State private var zoom: Double = 1.6
     @State private var pan: CGSize = .zero
     @GestureState private var drag: CGSize = .zero
     @FocusState private var focused: Bool
 
+    private let frameCount = 12
+    private let tick = Timer.publish(every: 0.42, on: .main, in: .common).autoconnect()
+
     var body: some View {
         GeometryReader { geo in
             ZStack {
                 Color.black
-                if let image {
-                    Image(uiImage: image)
+                if let img = frames.indices.contains(idx) ? frames[idx] : frames.last {
+                    Image(uiImage: img)
                         .resizable()
                         .aspectRatio(contentMode: .fill)
                         .frame(width: geo.size.width, height: geo.size.height)
@@ -163,11 +173,27 @@ struct SectorView: View {
                                     clamp(geo.size)
                                 }
                         )
-                } else if failed {
-                    VStack(spacing: 4) {
-                        Image(systemName: "cloud.slash")
-                        Text("No signal").font(.caption2)
-                    }.foregroundStyle(.secondary)
+                        .onTapGesture { playing.toggle() }
+                    VStack {
+                        Spacer()
+                        HStack(spacing: 5) {
+                            if !playing {
+                                Image(systemName: "pause.fill").font(.system(size: 9))
+                            }
+                            Text(times.indices.contains(idx) ? stamp(times[idx]) : "")
+                                .font(.system(size: 11, design: .monospaced))
+                            if !done {
+                                // Says the loop is still filling in, so a short
+                                // loop does not look like a broken one.
+                                Text("\(frames.count)/\(frameCount)")
+                                    .font(.system(size: 9, design: .monospaced))
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .padding(.horizontal, 7).padding(.vertical, 2)
+                        .background(.black.opacity(0.55), in: Capsule())
+                        .padding(.bottom, 4)
+                    }
                 } else {
                     ProgressView()
                 }
@@ -180,16 +206,26 @@ struct SectorView: View {
                                   isHapticFeedbackEnabled: true)
             .onChange(of: zoom) { _, _ in clamp(geo.size) }
             .onAppear { focused = true }
-        }
-        .task {
-            // The detail size, not the complication's: there is no point
-            // offering six times zoom into an image that has not got it.
-            let d = await SatelliteSector.fetch(pixels: SatelliteSector.detailPixels)
-            await MainActor.run {
-                if let d, let img = SatelliteSector.fullFrame(d) { image = img }
-                else { failed = true }
+            .onReceive(tick) { _ in
+                guard playing, frames.count > 1 else { return }
+                idx = (idx + 1) % frames.count
             }
         }
+        .task { await load() }
+    }
+
+    private func stamp(_ d: Date) -> String {
+        let f = DateFormatter(); f.dateFormat = "h:mm a"; return f.string(from: d)
+    }
+
+    private func load() async {
+        let wanted = SatelliteSector.recentFrames(count: frameCount)
+        for t in wanted {
+            guard let data = await SatelliteSector.fetchFrame(t, pixels: 300),
+                  let img = SatelliteSector.fullFrame(data) else { continue }
+            await MainActor.run { frames.append(img); times.append(t) }
+        }
+        await MainActor.run { done = true }
     }
 
     /// Keep the picture over the screen. Panning past its edge leaves black
