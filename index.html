@@ -594,6 +594,7 @@
     padding:1px 5px; border-radius:5px; background:rgba(255,255,255,0.05);
   }
   .sat-spans b.on{ color:#05070d; background:#F2B705; }
+  #topControls #dashBtn.on{ color:#05070d; background:#F2B705; border-color:#F2B705; }
 
   .rw-icon{ background:none; border:none; }
   .rw-lbl{
@@ -861,6 +862,10 @@
   <button onclick="map.zoomIn()" title="Zoom in">+</button>
   <button id="brightnessBtn" onclick="cycleBrightness()" title="Brightness">☀</button>
   <button onclick="toggleFullscreen()" title="Toggle fullscreen">⛶</button>
+  <!-- The cards were reachable only by pressing D, which is no use on a
+       phone — and the iOS app is this page in a web view, so everything on
+       the rail, the satellite loop included, was unreachable there. -->
+  <button id="dashBtn" onclick="toggleDash()" title="Cards (D)">▦</button>
 </div>
 
 <div id="statusStack">
@@ -8291,6 +8296,13 @@ function scheduleNwsForecast(){
   nwsFcTimer = setTimeout(loadNwsForecast, 900);   // debounce panning
 }
 
+// Shows whether the rail is up, so the button reads as a state rather than
+// a mystery glyph you press twice to work out.
+function paintDashBtn(){
+  const b = document.getElementById('dashBtn');
+  if(b) b.classList.toggle('on', dashOn());
+}
+
 function toggleDash(on, quiet){
   const want = on === undefined ? !dashOn() : !!on;
   document.body.classList.toggle('dash', want);
@@ -8314,6 +8326,7 @@ function toggleDash(on, quiet){
   // the rail and every position is off by its width.
   setTimeout(() => { if(map) map.invalidateSize(); }, 20);
   if(!quiet) keyHint(want ? 'Dashboard on' : 'Dashboard off');
+  paintDashBtn();
   dashSchedule();
 }
 
