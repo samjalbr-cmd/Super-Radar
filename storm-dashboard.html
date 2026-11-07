@@ -541,6 +541,16 @@
     backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
     overflow-y:auto;overscroll-behavior:contain;scroll-behavior:smooth;
   }
+  /* On a phone the rail is the whole screen, so nothing is inset for it and
+     the controls have to come above it — at z-index 600 against the rail's
+     640 the button that opens the cards was buried by them, with no way
+     back to the map. */
+  body.dash.dash-narrow #map{ right:0; }
+  body.dash.dash-narrow #replayBar{ left:50%; }
+  body.dash.dash-narrow .leaflet-control-attribution{ right:0; }
+  body.dash.dash-narrow #topControls{ z-index:660; }
+  body.dash.dash-narrow #dashRail{ padding-top:70px; }
+
   #dashRail::-webkit-scrollbar{ width:7px; }
   #dashRail::-webkit-scrollbar-thumb{ background:rgba(255,255,255,0.16);border-radius:4px; }
   .dash-card{ flex:0 0 auto; }
@@ -2832,6 +2842,23 @@ const DASH_RAIL = (function(){
   return isFinite(v) ? Math.max(320, Math.min(760, v)) : 560;
 })();
 
+/* The rail is a fixed 560 on a television, which is most of a phone and more
+   than some. Below that it takes the whole width and the map sits behind it
+   rather than being squeezed into what is left: at 440 points the old sum
+   gave the map a negative width and it vanished entirely.
+
+   Not a media query, because --rail is set as an inline custom property here
+   and an inline style beats a stylesheet. */
+const DASH_NARROW_AT = 700;
+function railWidth(){
+  return window.innerWidth < DASH_NARROW_AT ? window.innerWidth : DASH_RAIL;
+}
+function applyRail(){
+  document.documentElement.style.setProperty('--rail', railWidth() + 'px');
+  document.body.classList.toggle('dash-narrow', window.innerWidth < DASH_NARROW_AT);
+}
+window.addEventListener('resize', () => { if(dashOn()) applyRail(); });
+
 // Applied before initMap so the first view is already the requested one.
 function applyUrlView(){
   const qLat = parseFloat(URLQ.get('lat')), qLon = parseFloat(URLQ.get('lon'));
@@ -2840,7 +2867,7 @@ function applyUrlView(){
   if(DASH){
     document.body.classList.add('dash');
     if(DASH_WIDGET) document.body.classList.add('dash-widget');
-    document.documentElement.style.setProperty('--rail', DASH_RAIL + 'px');
+    applyRail();
   }
 }
 
@@ -8306,7 +8333,7 @@ function paintDashBtn(){
 function toggleDash(on, quiet){
   const want = on === undefined ? !dashOn() : !!on;
   document.body.classList.toggle('dash', want);
-  document.documentElement.style.setProperty('--rail', DASH_RAIL + 'px');
+  applyRail();
   if(want){
     soundOpen = true;
     renderSounding();
