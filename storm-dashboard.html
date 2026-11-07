@@ -577,18 +577,6 @@
   }
   .rw-lbl i{ width:5px;height:5px;border-radius:1px;display:block; }
 
-  /* Forecast field: same weight as the pavement label, so the two read as one
-     family of map annotations rather than two competing ones. */
-  .fc-icon{ background:none; border:none; }
-  .fc-lbl{
-    display:inline-flex;align-items:baseline;gap:2px;
-    transform:translate(-50%,-50%);white-space:nowrap;
-    font-family:monospace;font-weight:700;font-size:calc(14px * var(--lblscale, 1));
-    text-shadow:0 0 4px #000, 0 0 3px #000, 0 0 2px #000;
-  }
-  .fc-lbl{ color:#F5F3EC; }
-  .fc-lbl em{ font-style:normal;opacity:0.55;font-size:0.8em; }
-  .fc-lbl i{ font-style:normal;display:inline-block;font-size:0.95em;line-height:1; }
 
   .dash-card > h3{
     margin:0 0 9px;font-family:sans-serif;font-weight:700;font-size:14px;
@@ -1199,7 +1187,6 @@ function initMap(){
   map.getPane('precipPane').style.zIndex = 235;
   map.getPane('precipPane').style.pointerEvents = 'none';
 
-  fcFieldLayer = L.layerGroup();   // forecast field: attached only by the card that wants it
   precipGroup = L.layerGroup().addTo(map);
   precipMarkers = L.layerGroup().addTo(map);
   isobarLayer = L.layerGroup().addTo(map);
@@ -1242,7 +1229,7 @@ function initMap(){
                       scheduleIsobarRefresh, scheduleNoaaRadar, schedulePrecipRefresh,
                       syncAppSettings, scheduleHistoryRefresh, renderLakeTemps,
                       renderUpper, scheduleUpperRefresh, renderReplayMarks,
-                      scheduleTempHistory, renderFcField, fetchFcField];
+                      scheduleTempHistory];
   const FRAME_BUDGET_MS = 8;          // leaves room in a 16 ms frame to paint
   let movePass = false, moveAgain = false;
   function runMoveTasks(){
@@ -2392,7 +2379,7 @@ const HIDEABLE = [
   ['Watches',       () => hazardVisible.watches],
   ['Advisories',    () => hazardVisible.advisories],
   ['Temp traces',   () => sparkOn],
-  ['Road temps',    () => roadsLayerOn || dashOn()],
+  ['Road temps',    () => roadsLayerOn],
   ['Upper air',     () => upperLevel !== 'off'],
 ];
 
@@ -5315,7 +5302,7 @@ let upperLayer = null, upperTimer = null, upperSeq = 0;
 // are model samples rather than stations and a perfect grid reads as texture.
 // The offset moves the sample itself, so a barb still sits exactly where its
 // wind was read.
-function upperLattice(bounds, maxCols = 12){
+function upperLattice(bounds){
   const padLat = (bounds.getNorth() - bounds.getSouth()) * 0.08;
   const padLon = (bounds.getEast() - bounds.getWest()) * 0.08;
   const south = bounds.getSouth() - padLat, north = bounds.getNorth() + padLat;
@@ -5331,7 +5318,7 @@ function upperLattice(bounds, maxCols = 12){
   const STEPS = [0.25, 0.5, 1, 1.5, 2, 3, 5, 8, 12, 20];
   let step = STEPS[STEPS.length - 1];
   for(const cand of STEPS){
-    if((east - west) / cand <= maxCols){ step = cand; break; }
+    if((east - west) / cand <= 12){ step = cand; break; }
   }
   const c0 = Math.floor(west / step), c1 = Math.ceil(east / step);
   const r0 = Math.floor(south / step), r1 = Math.ceil(north / step);
@@ -6759,7 +6746,7 @@ function rwisCondState(s){
 
 async function loadRwis(){
   if(!map || rwisLoading) return;
-  if(!dashOn() && !roadsLayerOn) return;     // nothing is asking for it
+  if(!dashOn() && !roadsLayerOn) return;     // neither the card nor the layer wants it
   const states = replayStatesFor(map.getBounds()).slice(0, 3);
   const key = states.join(',');
   if(key === rwisStates && Date.now() - rwisAt < 10 * 60e3) return;
@@ -6898,14 +6885,13 @@ function roadObserved(){
   return null;
 }
 
-/* Pavement readings on the map, and only while the card is up.
+/* Pavement readings on the map.
 
-   A layer that belongs to a panel rather than to the map: it says what the
-   roads are doing across the whole view, which is worth seeing next to the
-   radar — and is clutter the rest of the time. So it lives and dies with the
-   card, which on the rotating widget means it appears for that card's turn
-   and goes again. */
-let roadsLayerOn = false;      // the settings switch, separate from the card
+   What the roads are doing across the whole view, which is worth seeing next
+   to the radar. It answers to its own switch and nothing else — it used to
+   come and go with the Roads card, and a layer that appears and disappears on
+   its own is harder to read than one that is simply on or off. */
+let roadsLayerOn = false;
 function toggleRoads(cb){
   roadsLayerOn = cb.checked;
   if(roadsLayerOn && !rwisSites.length) loadRwis();
@@ -6913,25 +6899,10 @@ function toggleRoads(cb){
   renderHiddenStatus();
 }
 
-function roadsCardShowing(){
-  // The switch wins: asked for explicitly, the layer stays up whatever the
-  // dashboard is doing.
-  if(roadsLayerOn) return true;
-  const card = [...document.querySelectorAll('#dashRail > .dash-card')]
-    .find(c => /Roads/i.test(c.querySelector('h3')?.textContent || ''));
-  if(!card || !dashOn()) return false;
-  if(card.offsetParent === null) return false;          // display:none in the rotation
-  const rail = document.getElementById('dashRail');
-  if(!rail) return false;
-  // In the scrolling rail it counts as up only while actually in view.
-  const r = card.getBoundingClientRect(), q = rail.getBoundingClientRect();
-  return r.bottom > q.top + 8 && r.top < q.bottom - 8;
-}
-
 function renderRwisLabels(){
   if(!rwisLayer) return;
   rwisLayer.clearLayers();
-  if(!roadsCardShowing() || !rwisSites.length || map.getZoom() < 6) return;
+  if(!roadsLayerOn || !rwisSites.length || map.getZoom() < 6) return;
   if(roadsLayerOn && !rwisSites.length) return;
   const b = map.getBounds();
   // Thinned the way the station plots are, so a motorway's worth of sensors
@@ -8102,7 +8073,6 @@ function toggleDash(on, quiet){
     soundOpen = !!document.getElementById('soundPanel')?.classList.contains('open');
   }
   renderRwisLabels();
-  applyDashFocus();          // restores the map when the dashboard closes
   // Leaflet sized itself to the old width; without this the map projects into
   // the rail and every position is off by its width.
   setTimeout(() => { if(map) map.invalidateSize(); }, 20);
@@ -8128,241 +8098,11 @@ function dashNextLive(i, dir){
   }
   return -1;
 }
-/* ---------------- Forecast field ----------------
-   The forecast cards read one point — wherever the map is centred — and for a
-   long time the map behind them carried on showing observations, so the card
-   talked about tomorrow while the map was stuck on now. These four cards get
-   the same forecast spread across the view instead.
-
-   One fetch feeds all of them. The variables are cheap next to the round trip,
-   so asking for temperature, gusts and precipitation together costs barely
-   more than asking for any one, and switching cards then costs nothing.
-
-   The lattice is the upper-air one, thinned: barbs are small and tolerate
-   crowding, whereas these are two to five digits and need the room.
-   No model is pinned — HRRR stops at 48 hours and refuses a request that
-   reaches outside its domain, and the five-day card needs more than that. */
-
-const FC_FIELD_HOURS = 48;
-let fcFieldLayer = null, fcField = null, fcFieldSeq = 0, fcFieldMode = null, fcFieldKey = '';
-
-async function fetchFcField(){
-  if(!fcFieldLayer || !fcFieldMode) return;
-  const grid = upperLattice(map.getBounds(), 10);
-  if(!grid) return;
-  const {lats, lons} = grid;
-  // The same view asks the same question; don't re-ask it on every card turn.
-  const key = lats[0] + ',' + lons[0] + '|' + lats.length + '|' + lons[lons.length - 1] +
-              '|' + Math.floor(Date.now() / 9e5);
-  if(key === fcFieldKey) return;
-  const seq = ++fcFieldSeq;
-  const url = 'https://api.open-meteo.com/v1/forecast'
-            + `?latitude=${lats.join(',')}&longitude=${lons.join(',')}`
-            + '&hourly=temperature_2m,wind_gusts_10m,wind_direction_10m,precipitation,snowfall'
-            + '&daily=temperature_2m_max,temperature_2m_min'
-            + '&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch'
-            + `&timezone=GMT&forecast_days=6&forecast_hours=${FC_FIELD_HOURS}`;
-  try{
-    const data = await (await fetch(url)).json();
-    if(seq !== fcFieldSeq) return;                      // the map moved on
-    const arr = Array.isArray(data) ? data : [data];
-    if(!arr.length || !arr[0].hourly) return;
-    const pts = [];
-    arr.forEach((loc, i) => {
-      const h = loc.hourly || {}, d = loc.daily || {};
-      const num = v => (v == null || !isFinite(v)) ? null : +v;
-      const sum = a => (a || []).reduce((t, v) => t + (num(v) || 0), 0);
-      const gusts = h.wind_gusts_10m || [];
-      let gi = -1;
-      gusts.forEach((v, k) => { if(v != null && (gi < 0 || v > gusts[gi])) gi = k; });
-      const hiArr = (d.temperature_2m_max || []).slice(0, 5).filter(v => v != null);
-      const loArr = (d.temperature_2m_min || []).slice(0, 5).filter(v => v != null);
-      pts.push({
-        lat: +lats[i], lon: +lons[i],
-        // Same clock time tomorrow: far enough out that it is a forecast
-        // rather than a restatement of the observation on the map.
-        temp:  num((h.temperature_2m || [])[24]),
-        gust:  gi < 0 ? null : num(gusts[gi]),
-        gdir:  gi < 0 ? null : num((h.wind_direction_10m || [])[gi]),
-        ghr:   gi < 0 ? null : gi,
-        qpf:   sum(h.precipitation),
-        snow:  sum(h.snowfall),
-        dhi:   hiArr.length ? Math.max(...hiArr) : null,
-        dlo:   loArr.length ? Math.min(...loArr) : null,
-      });
-    });
-    fcField = {pts};
-    fcFieldKey = key;
-    renderFcField();
-  }catch(e){ console.error('forecast field', e); }
-}
-
-// Each mode says what to print, what colour it takes, and what the tap says.
-// Returning null for a point means it has nothing to report — a dry point on
-// the precipitation map prints nothing rather than a row of zeroes.
-const FC_FIELD_MODES = {
-  temp: p => p.temp == null ? null :
-    {txt: Math.round(p.temp) + '°', col: tempColor(p.temp), pop: 'this time tomorrow'},
-  gust: p => (p.gust == null || p.gust < 10) ? null :
-    {txt: String(Math.round(p.gust)), col: windColor(p.gust * 0.868976),
-     pop: `peak gust, next ${FC_FIELD_HOURS} h`, dir: p.gdir, hr: p.ghr},
-  precip: p => {
-    // Snow where it is forecast to fall as snow, because an inch of liquid and
-    // an inch of snow are not the same news.
-    if(p.snow >= 0.1) return {txt: p.snow.toFixed(p.snow < 10 ? 1 : 0) + '"',
-      col: snowColor(p.snow), pop: `snow, next ${FC_FIELD_HOURS} h`};
-    if(p.qpf >= 0.01) return {txt: p.qpf.toFixed(2).replace(/^0/, '') + '"',
-      col: rainColor(p.qpf), pop: `liquid, next ${FC_FIELD_HOURS} h`};
-    return null;
-  },
-  // Two numbers, each on the temperature ramp — the card plots low-to-high
-  // bars, so the map says the same thing in the same colours.
-  range: p => (p.dhi == null || p.dlo == null) ? null :
-    {txt: Math.round(p.dlo) + '–' + Math.round(p.dhi), col: tempColor(p.dhi),
-     col2: tempColor(p.dlo), pop: 'coldest night to warmest day, 5 days'},
-};
-
-function renderFcField(){
-  if(!fcFieldLayer) return;
-  fcFieldLayer.clearLayers();
-  const mode = FC_FIELD_MODES[fcFieldMode];
-  if(!mode || !fcField) return;
-  const view = map.getBounds();
-  for(const p of fcField.pts){
-    if(!view.contains([p.lat, p.lon])) continue;
-    const v = mode(p);
-    if(!v || !v.col) continue;
-    // A split label colours each number for its own value; a plain one is a
-    // single span, so the common case stays one element.
-    let html;
-    if(v.col2){
-      const [a, b] = v.txt.split('–');
-      html = `<span class="fc-lbl"><b style="color:${v.col2}">${a}</b>` +
-             `<em>–</em><b style="color:${v.col}">${b}</b></span>`;
-    }else{
-      html = `<span class="fc-lbl" style="color:${v.col}">` +
-             (v.dir != null ? `<i style="transform:rotate(${Math.round(v.dir)}deg)">↓</i>` : '') +
-             `<b>${v.txt}</b></span>`;
-    }
-    const when = v.hr != null ? `<br>${dcDay(Date.now() + v.hr * 3600e3)} ${dcHour(Date.now() + v.hr * 3600e3)}` : '';
-    L.marker([p.lat, p.lon], {
-      icon: L.divIcon({className: 'fc-icon', html, iconSize: [0, 0], iconAnchor: [0, 0]}),
-      keyboard: false,
-    }).bindPopup(`<div class="alert-popup"><b>${v.txt}</b>${v.pop}${when}</div>`).addTo(fcFieldLayer);
-  }
-}
-
-// Called when the card changes. Switching variable is a repaint, not a refetch.
-function setFcFieldMode(m){
-  if(fcFieldMode === m){ return; }
-  fcFieldMode = m || null;
-  if(!fcFieldMode){ if(fcFieldLayer) fcFieldLayer.clearLayers(); return; }
-  if(fcField) renderFcField();
-  fetchFcField();
-}
-
-/* The map as an extension of the card that is up.
-
-   One card is on screen at a time on the widget, and the map behind it was
-   showing everything at once regardless — pavement sensors under the lightning
-   card, lightning under the forecast. So each card names the layers that
-   belong to it and the other cards' layers step aside while it has the screen,
-   the way the pavement readings already do. What stays through all of it is
-   DASH_ALWAYS below.
-
-   The radar is never touched: it is the picture, not a layer. Nor is anything
-   switched off in the settings — layers are detached from the map and put
-   back, so leaving the dashboard restores exactly what the map had before,
-   including choices made while it was running. */
-const DASH_FOCUS = {
-  'now':           ['stations'],
-  'roads':         ['roads'],
-  'convection':    ['lightning', 'reports', 'outlook', 'feed'],
-  'lake effect':   ['lake', 'upper'],
-  'air aloft':     ['upper'],
-  'watches':       ['alerts'],
-  'lightning':     ['lightning'],
-  'recent':        ['reports', 'feed'],
-  'next 48':       ['fcfield'],
-  'wind':          ['fcfield'],
-  'precipitation': ['fcfield'],
-  'next 5':        ['fcfield'],
-};
-// The map underneath, which every card is read against. Station temperatures
-// and the surface analysis are not one card's subject — they are what tells
-// you where you are and what the air is doing, so hiding them to make room for
-// a card's own layer took away the thing the card was being compared to.
-// These keep whatever setting they had before the dashboard opened, on every
-// card, rather than being forced on.
-const DASH_ALWAYS = ['stations', 'isobars', 'isolabels', 'fronts'];
-
-// Which forecast variable the shared field shows for each of those cards.
-const DASH_FC_MODE = {
-  'next 48': 'temp', 'wind': 'gust', 'precipitation': 'precip', 'next 5': 'range',
-};
-function dashFocusLayers(){
-  return {
-    stations:  stationLayer,
-    roads:     rwisLayer,
-    lake:      lakeLayer,
-    upper:     upperLayer,
-    lightning: typeof lightningLayerGroup === 'undefined' ? null : lightningLayerGroup,
-    reports:   lsrLayer,
-    alerts:    typeof alertLayerGroup === 'undefined' ? null : alertLayerGroup,
-    outlook:   spcOutlookLayer,
-    fronts:    sfcLayer,
-    fcfield:   fcFieldLayer,
-    isobars:   isobarLayer,
-    isolabels: isobarMarkers,
-    feed:      typeof feedLayerGroup === 'undefined' ? null : feedLayerGroup,
-  };
-}
-// What the map had before the dashboard started rearranging it.
-let dashLayerMemory = null;
-
-function applyDashFocus(){
-  if(!map) return;
-  const layers = dashFocusLayers();
-  // Remember the real state once, so it can be handed back intact.
-  if(!dashLayerMemory){
-    dashLayerMemory = {};
-    for(const k in layers) if(layers[k]) dashLayerMemory[k] = map.hasLayer(layers[k]);
-  }
-  const focusing = dashOn() && typeof DASH_WIDGET !== 'undefined' && DASH_WIDGET;
-  if(!focusing){
-    // Put everything back the way it was found.
-    for(const k in layers){
-      if(!layers[k] || !(k in dashLayerMemory)) continue;
-      if(dashLayerMemory[k]) { if(!map.hasLayer(layers[k])) layers[k].addTo(map); }
-      else if(map.hasLayer(layers[k])) map.removeLayer(layers[k]);
-    }
-    dashLayerMemory = null;
-    setFcFieldMode(null);
-    return;
-  }
-  const card = dashCards()[dashIdx];
-  const title = (card?.querySelector('h3')?.textContent || '').toLowerCase();
-  const key = Object.keys(DASH_FOCUS).find(k => title.startsWith(k));
-  // A card with no layers of its own leaves the map as the user set it rather
-  // than blanking it, because an empty map is not an improvement.
-  const want = key ? DASH_FOCUS[key] : null;
-  setFcFieldMode(key ? DASH_FC_MODE[key] : null);
-  for(const k in layers){
-    const L = layers[k];
-    if(!L) continue;
-    const on = (want && !DASH_ALWAYS.includes(k)) ? want.includes(k) : !!dashLayerMemory[k];
-    if(on){ if(!map.hasLayer(L)) L.addTo(map); }
-    else if(map.hasLayer(L)) map.removeLayer(L);
-  }
-}
-
 function showDashCard(i){
   const cards = dashCards();
   if(!cards.length) return;
   dashIdx = ((i % cards.length) + cards.length) % cards.length;
   cards.forEach((c, j) => c.classList.toggle('on', j === dashIdx));
-  renderRwisLabels();        // the pavement layer belongs to the roads card
-  applyDashFocus();          // and the map follows whichever card is up
   dashPagerPaint();
   dashSchedule();
 }
