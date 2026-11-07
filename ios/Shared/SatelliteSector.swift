@@ -39,7 +39,11 @@ enum SatelliteSector {
     /// larger files only cost the watch battery.
     static let pixels = 600
 
-    static var imageURL: URL {
+    /// What the app asks for. The complication is downsampled to nothing, but
+    /// a frame you can zoom six times into needs the pixels to be there.
+    static let detailPixels = 1200
+
+    static func imageURL(pixels: Int = pixels) -> URL {
         URL(string: "https://cdn.star.nesdis.noaa.gov/\(satellite)/ABI/SECTOR/"
                   + "\(sector)/GEOCOLOR/\(pixels)x\(pixels).jpg")!
     }
@@ -69,8 +73,8 @@ enum SatelliteSector {
     /// was the large preview that suffered from a tight crop, not the watch.
     static let spanFraction: CGFloat = 0.45
 
-    static func fetch() async -> Data? {
-        var req = URLRequest(url: imageURL)
+    static func fetch(pixels: Int = pixels) async -> Data? {
+        var req = URLRequest(url: imageURL(pixels: pixels))
         req.timeoutInterval = 25
         // The file is overwritten in place under one name, so a cached copy is
         // indistinguishable from the current one and would quietly freeze the
@@ -83,6 +87,20 @@ enum SatelliteSector {
     }
 
 #if canImport(UIKit)
+    /// The whole sector with only the caption strip removed.
+    ///
+    /// For the app, where there is a screen to use and the crown to zoom with,
+    /// so the framing is the wearer's to choose rather than one picked here.
+    static func fullFrame(_ data: Data) -> UIImage? {
+        guard let src = CGImageSourceCreateWithData(data as CFData, nil),
+              let cg = CGImageSourceCreateImageAtIndex(src, 0, nil) else { return nil }
+        let h = Int((CGFloat(cg.height) * (1 - captionFraction)).rounded(.down))
+        guard h > 0,
+              let cropped = cg.cropping(to: CGRect(x: 0, y: 0, width: cg.width, height: h))
+        else { return nil }
+        return UIImage(cgImage: cropped, scale: 1, orientation: .up)
+    }
+
     /// Caption removed, cropped about the centre above, masked to a circle.
     ///
     /// Core Graphics rather than UIGraphicsImageRenderer, which does not exist
