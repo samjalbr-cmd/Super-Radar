@@ -882,47 +882,62 @@ enum StormFeed {
             let c = cal.dateComponents([.year, .month, .day, .hour], from: d)
             return "year\(i)=\(c.year!)&month\(i)=\(c.month!)&day\(i)=\(c.day!)&hour\(i)=\(c.hour!)"
         }
-        return await withTaskGroup(of: [String: [(t: Date, f: Double)]].self) { group in
-            for st in states where st.count == 2 {
-                group.addTask {
-                    let s = "https://mesonet.agron.iastate.edu/cgi-bin/request/asos.py?network=\(st)_ASOS"
-                          + "&data=tmpf&" + part(1, then) + "&" + part(2, now)
-                          + "&tz=UTC&format=comma&missing=empty&trace=empty"
-                    guard let url = URL(string: s) else { return [:] }
+        // One state at a time, with a gap. These went out as a task group,
+        // every state at once, and the archive rate-limits by IP: most of them
+        // came back 429 "Too many requests". Nothing checked the status, so a
+        // 50-byte refusal was parsed as CSV, produced no rows, and the station
+        // simply had no graph — which is why so many were missing.
+        var all: [String: [(t: Date, f: Double)]] = [:]
+        for st in states where st.count == 2 {
+            let s = "https://mesonet.agron.iastate.edu/cgi-bin/request/asos.py?network=\(st)_ASOS"
+                  + "&data=tmpf&" + part(1, then) + "&" + part(2, now)
+                  + "&tz=UTC&format=comma&missing=empty&trace=empty"
+            guard let url = URL(string: s) else { continue }
+            let text: String? = await {
+                for attempt in 0..<3 {
                     var req = URLRequest(url: url); req.timeoutInterval = 25
-                    guard let data = try? await URLSession.shared.data(for: req).0,
-                          let text = String(data: data, encoding: .utf8) else { return [:] }
-                    let fmt = DateFormatter()
-                    fmt.locale = Locale(identifier: "en_US_POSIX")
-                    fmt.timeZone = TimeZone(identifier: "UTC")
-                    fmt.dateFormat = "yyyy-MM-dd HH:mm"
-                    // Column positions come from the header rather than being
-                    // assumed: the same endpoint returns extra columns when
-                    // asked for lat/lon.
-                    var iSta = 0, iVal = 1, iT = 2
-                    var out: [String: [(t: Date, f: Double)]] = [:]
-                    for line in text.split(separator: "\n", omittingEmptySubsequences: true) {
-                        if line.hasPrefix("#") { continue }
-                        let c = line.split(separator: ",", omittingEmptySubsequences: false)
-                                    .map { $0.trimmingCharacters(in: .whitespaces) }
-                        if c.first == "station" {
-                            iSta = c.firstIndex(of: "station") ?? 0
-                            iVal = c.firstIndex(of: "valid") ?? 1
-                            iT   = c.firstIndex(of: "tmpf") ?? 2
-                            continue
-                        }
-                        guard c.count > max(iT, iVal), let f = Double(c[iT]),
-                              let when = fmt.date(from: c[iVal]) else { continue }
-                        out[c[iSta], default: []].append((when, f))
+                    guard let (data, resp) = try? await URLSession.shared.data(for: req) else {
+                        if attempt == 2 { return nil }
+                        try? await Task.sleep(nanoseconds: UInt64(1.2 * pow(2, Double(attempt)) * 1_000_000_000))
+                        continue
                     }
-                    return out
+                    let code = (resp as? HTTPURLResponse)?.statusCode ?? 200
+                    if code == 200 { return String(data: data, encoding: .utf8) }
+                    // A 429 is the server asking for a pause, not a failure.
+                    guard code == 429 else { return nil }
+                    let hdr = Double((resp as? HTTPURLResponse)?
+                        .value(forHTTPHeaderField: "Retry-After") ?? "") ?? 0
+                    let wait = hdr > 0 ? min(hdr, 8) : 1.2 * pow(2, Double(attempt))
+                    try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000))
                 }
+                return nil
+            }()
+            guard let text else { continue }
+            let fmt = DateFormatter()
+            fmt.locale = Locale(identifier: "en_US_POSIX")
+            fmt.timeZone = TimeZone(identifier: "UTC")
+            fmt.dateFormat = "yyyy-MM-dd HH:mm"
+            // Column positions come from the header rather than being assumed:
+            // the same endpoint returns extra columns when asked for lat/lon.
+            var iSta = 0, iVal = 1, iT = 2
+            for line in text.split(separator: "\n", omittingEmptySubsequences: true) {
+                if line.hasPrefix("#") { continue }
+                let c = line.split(separator: ",", omittingEmptySubsequences: false)
+                            .map { $0.trimmingCharacters(in: .whitespaces) }
+                if c.first == "station" {
+                    iSta = c.firstIndex(of: "station") ?? 0
+                    iVal = c.firstIndex(of: "valid") ?? 1
+                    iT   = c.firstIndex(of: "tmpf") ?? 2
+                    continue
+                }
+                guard c.count > max(iT, iVal), let f = Double(c[iT]),
+                      let when = fmt.date(from: c[iVal]) else { continue }
+                all[c[iSta], default: []].append((when, f))
             }
-            var all: [String: [(t: Date, f: Double)]] = [:]
-            for await part in group { all.merge(part) { a, _ in a } }
-            for k in all.keys { all[k]!.sort { $0.t < $1.t } }
-            return all
+            try? await Task.sleep(nanoseconds: 700_000_000)
         }
+        for k in all.keys { all[k]!.sort { $0.t < $1.t } }
+        return all
     }
 
     /// The ground each state's ASOS network covers, derived once from the

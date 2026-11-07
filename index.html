@@ -3363,7 +3363,7 @@ function statesInView(bounds){
   return hits;
 }
 
-function replayStatesFor(bounds){
+function replayStatesFor(bounds, cap){
   const S = bounds.getSouth(), N = bounds.getNorth(), W = bounds.getWest(), E = bounds.getEast();
   const hits = [];
   for(const st in US_STATE_BOX){
@@ -3381,7 +3381,13 @@ function replayStatesFor(bounds){
   // matter most. The launcher fills a whole screen and asks for only the hours
   // its loop needs, so it takes every state in view — capped at four, the
   // stations stopped at a state line and a third of a TV sat empty.
-  return hits.slice(0, LAUNCHER ? 16 : 4).map(h => h[0]);
+  //
+  // Callers with a lighter payload pass their own cap. Four is a replay
+  // figure, and the sparklines were quietly inheriting it: a Michigan view
+  // reaches into five states, Indiana came fifth by area, and every station
+  // around South Bend and Gary went without a graph no matter how long you
+  // waited. One state's day of temperatures alone is about 220 KB.
+  return hits.slice(0, cap || (LAUNCHER ? 16 : 4)).map(h => h[0]);
 }
 
 // How far back the station history reaches: the scrubber's whole day, or for
@@ -4623,14 +4629,44 @@ const tempHistState = {};     // state -> {at, rows:{station:[{t,f}]}}
 let tempHistLoading = false, tempHistTimer = null;
 const TEMP_HIST_TTL = 10 * 60e3;   // most sites report hourly
 const TEMP_HIST_KEEP = 12;         // states to hold before dropping the oldest
+// Enough to cover an ordinary view to its edges. Only the temperature column
+// is asked for, so a state is about 220 KB rather than the replay scrubber's
+// 700 KB, and these arrive spaced out in the background.
+const TEMP_HIST_STATES = 8;
 // Off while the launcher loops. A gradient-stroked SVG per station, redrawn as
 // the window slides, had to be re-rasterised on every step: on a TV that took
 // the loop from 24 fps to under 4. A still launcher draws them once a refresh.
 let sparkOn = !LAUNCHER_LOOP;
 
+/* One state's day of temperatures, or null.
+
+   The archive rate-limits by IP and says so with a 429 and "slow down", and
+   the loop below used to treat that as a state with no data: it was dropped
+   without comment and had no traces until the next pan or the ten-minute
+   refresh. With four states in view that was two of them, so roughly a third
+   of the map was missing its graphs at any time and the ones that were there
+   looked arbitrary.
+
+   A 429 is the server asking for a pause, not a failure, so wait and ask
+   again — honouring Retry-After when it sends one. Anything else is a real
+   failure and returns immediately rather than hammering a broken endpoint. */
+async function fetchTempCsv(url){
+  for(let attempt = 0; attempt < 3; attempt++){
+    let res = null;
+    try{ res = await fetch(url); }
+    catch(e){ if(attempt === 2) return null; }
+    if(res && res.ok) return await res.text();
+    if(res && res.status !== 429) return null;
+    const hdr = res && parseFloat(res.headers.get('retry-after'));
+    const wait = isFinite(hdr) && hdr > 0 ? Math.min(hdr * 1000, 8000) : 1200 * Math.pow(2, attempt);
+    await new Promise(r => setTimeout(r, wait));
+  }
+  return null;
+}
+
 async function loadTempHistory(){
   if(!sparkOn || !stationsOn || tempHistLoading || !map) return;
-  const states = replayStatesFor(map.getBounds());
+  const states = replayStatesFor(map.getBounds(), TEMP_HIST_STATES);
   if(!states.length) return;
 
   // Whatever is already cached for the states in view, merged into the map the
@@ -4661,9 +4697,9 @@ async function loadTempHistory(){
               '&data=tmpf&' + d(1, then) + '&' + d(2, now) +
               '&tz=UTC&format=comma&missing=empty&trace=empty';
     try{
-      const res = await fetch(u);
-      if(res.ok){
-        const lines = (await res.text()).split('\n');
+      const text = await fetchTempCsv(u);
+      if(text){
+        const lines = text.split('\n');
         // Column positions come from the header rather than being assumed: the
         // same endpoint returns extra columns when asked for lat/lon, and the
         // replay loader does ask for them.
@@ -4693,7 +4729,10 @@ async function loadTempHistory(){
         renderStations();
       }
     }catch(e){ /* a state that fails just has no traces */ }
-    await new Promise(r => setTimeout(r, 250));
+    // Spacing between states. At 250 ms the archive answered every other
+    // request with a 429, which is what left a third of the map without
+    // traces; see fetchTempCsv.
+    await new Promise(r => setTimeout(r, 700));
   }
   // Bound the cache, oldest first, or a long session wandering the country
   // keeps every state it ever looked at.
