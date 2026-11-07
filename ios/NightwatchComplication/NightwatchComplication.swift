@@ -16,16 +16,21 @@ struct SectorProvider: TimelineProvider {
     }
 
     func getSnapshot(in context: Context, completion: @escaping (SectorEntry) -> Void) {
-        Task {
-            let d = await SatelliteSector.fetch()
-            completion(SectorEntry(date: Date(), imageData: d, stale: d == nil))
-        }
+        Task { completion(await current()) }
+    }
+
+    /// Centred on wherever the watch app last saw the wearer, which is the
+    /// whole point: the published sector is centred on Ohio.
+    private func current() async -> SectorEntry {
+        let c = SatelliteSector.center
+        let d = await SatelliteSector.fetch(lat: c.lat, lon: c.lon, pixels: 256)
+        return SectorEntry(date: Date(), imageData: d, stale: d == nil)
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<SectorEntry>) -> Void) {
         Task {
-            let d = await SatelliteSector.fetch()
-            let entry = SectorEntry(date: Date(), imageData: d, stale: d == nil)
+            let entry = await current()
+            let d = entry.imageData
             // The sector is republished every few minutes, but a watch
             // complication is given a small budget of refreshes a day and
             // spends battery on each one. Twenty minutes is frequent enough
