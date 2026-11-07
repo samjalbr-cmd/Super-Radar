@@ -588,6 +588,12 @@
   .sat-dots{ display:flex; gap:3px; margin-left:auto; }
   .sat-dots i{ width:4px;height:4px;border-radius:50%;background:#2A3346;display:block; }
   .sat-dots i.on{ background:#F2B705; }
+  .sat-spans{ display:flex; gap:4px; }
+  .sat-spans b{
+    font-weight:700; font-size:11px; color:#8A93A6; cursor:pointer;
+    padding:1px 5px; border-radius:5px; background:rgba(255,255,255,0.05);
+  }
+  .sat-spans b.on{ color:#05070d; background:#F2B705; }
 
   .rw-icon{ background:none; border:none; }
   .rw-lbl{
@@ -8084,21 +8090,46 @@ function renderDashOutlook(){
    loop ends a few minutes back and any frame that 404s anyway is dropped on
    its error handler rather than leaving a gap. */
 
-const SAT_FRAMES = 12;            // an hour at five minutes
-const SAT_STEP_MIN = 5;
+/* The archive holds ten days at five minutes — 2885 frames when counted,
+   with a single ten-minute gap in all of them — so how far back the loop
+   reaches is a question of bandwidth, not availability.
+
+   Longer windows are thinned rather than piled up: the frame count stays near
+   eighteen whatever the span, so a day costs the same to load as three hours
+   and only the step between frames changes. Every step is a multiple of five,
+   which keeps each frame on the archive's own grid. */
+const SAT_SPANS = [
+  {h: 1,  step: 5,  label: '1h'},
+  {h: 3,  step: 10, label: '3h'},
+  {h: 6,  step: 20, label: '6h'},
+  {h: 12, step: 40, label: '12h'},
+  {h: 24, step: 80, label: '24h'},
+];
 const SAT_LAG_MIN = 8;            // publishing delay, plus a margin
 const SAT_FPS_MS = 420;
 let satImgs = [], satIdx = 0, satTimer = null, satKey = '';
+let satSpan = (() => {
+  const v = parseInt(localStorage.getItem('satSpan') || '1', 10);
+  return (v >= 0 && v < SAT_SPANS.length) ? v : 1;     // three hours by default
+})();
+
+function setSatSpan(i){
+  satSpan = i;
+  try{ localStorage.setItem('satSpan', String(i)); }catch(e){}
+  satKey = '';                                          // force a rebuild
+  renderDashSat();
+}
 
 function satFrameTimes(){
-  const now = Date.now();
+  const {h, step} = SAT_SPANS[satSpan];
+  const count = Math.round(h * 60 / step);
   // Back off the publishing lag, then down to the nearest minute ending in 1.
-  let t = new Date(now - SAT_LAG_MIN * 60000);
+  let t = new Date(Date.now() - SAT_LAG_MIN * 60000);
   t.setUTCSeconds(0, 0);
   const m = t.getUTCMinutes();
   t.setUTCMinutes(m - ((m - 1 + 5) % 5));
   const out = [];
-  for(let i = SAT_FRAMES - 1; i >= 0; i--) out.push(new Date(t - i * SAT_STEP_MIN * 60000));
+  for(let i = count - 1; i >= 0; i--) out.push(new Date(t - i * step * 60000));
   return out;
 }
 function satURL(d){
@@ -8119,8 +8150,10 @@ function renderDashSat(){
   satKey = key;
   clearInterval(satTimer); satTimer = null; satIdx = 0;
   host.innerHTML = `<div class="sat-wrap"></div>` +
-    `<div class="sat-bar"><span class="t">—</span><span>GOES-19 · Great Lakes</span>` +
-    `<span class="sat-dots"></span></div>`;
+    `<div class="sat-bar"><span class="t">—</span>` +
+    `<span class="sat-spans">` + SAT_SPANS.map((sp, i) =>
+       `<b class="${i === satSpan ? 'on' : ''}" onclick="setSatSpan(${i})">${sp.label}</b>`).join('') +
+    `</span><span class="sat-dots"></span></div>`;
   const wrap = host.querySelector('.sat-wrap');
   const dots = host.querySelector('.sat-dots');
   satImgs = [];
@@ -8157,7 +8190,12 @@ function satTick(){
   satImgs.forEach((im, i) => im.classList.toggle('on', i === satIdx));
   const t = +satImgs[satIdx].dataset.t;
   const lab = host.querySelector('.sat-bar .t');
-  if(lab) lab.textContent = new Date(t).toLocaleTimeString([], {hour:'numeric', minute:'2-digit'});
+  if(lab){
+    const d = new Date(t);
+    const long = SAT_SPANS[satSpan].h >= 12;
+    lab.textContent = (long ? d.toLocaleDateString([], {weekday:'short'}) + ' ' : '')
+                    + d.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'});
+  }
   satPaintDots();
 }
 

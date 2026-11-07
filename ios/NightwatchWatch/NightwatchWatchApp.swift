@@ -145,7 +145,11 @@ struct SectorView: View {
     @GestureState private var drag: CGSize = .zero
     @FocusState private var focused: Bool
 
-    private let frameCount = 12
+    // Three hours at ten minutes, matching the dashboard's default. Eighteen
+    // 300-px frames is about 1.7 MB — three times the window the first cut
+    // had, for about half again the download.
+    private let frameCount = 18
+    private let stepMinutes = 10
     private let tick = Timer.publish(every: 0.42, on: .main, in: .common).autoconnect()
 
     var body: some View {
@@ -219,7 +223,7 @@ struct SectorView: View {
     }
 
     private func load() async {
-        let wanted = SatelliteSector.recentFrames(count: frameCount)
+        let wanted = SatelliteSector.recentFrames(count: frameCount, stepMinutes: stepMinutes)
         for t in wanted {
             guard let data = await SatelliteSector.fetchFrame(t, pixels: 300),
                   let img = SatelliteSector.fullFrame(data) else { continue }

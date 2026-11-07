@@ -79,7 +79,8 @@ enum SatelliteSector {
     /// stamped at a minute ending 1, 6, 11 … 56 — checked against the whole
     /// listing — so the grid is known and an index fetch is pointless. A frame
     /// that is not published yet simply fails to download and is skipped.
-    static func recentFrames(count: Int, lagMinutes: Int = 8) -> [Date] {
+    static func recentFrames(count: Int, stepMinutes: Int = 5,
+                             lagMinutes: Int = 8) -> [Date] {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = TimeZone(identifier: "UTC")!
         let back = Date().addingTimeInterval(-Double(lagMinutes) * 60)
@@ -87,7 +88,10 @@ enum SatelliteSector {
         let m = c.minute ?? 0
         c.minute = m - ((m - 1 + 5) % 5)
         guard let end = cal.date(from: c) else { return [] }
-        return (0..<count).reversed().map { end.addingTimeInterval(-Double($0) * 300) }
+        // Every step is a multiple of five, so each frame still lands on the
+        // archive's own grid.
+        let step = Double(max(5, stepMinutes - stepMinutes % 5)) * 60
+        return (0..<count).reversed().map { end.addingTimeInterval(-Double($0) * step) }
     }
 
     /// The archive URL for one frame.
