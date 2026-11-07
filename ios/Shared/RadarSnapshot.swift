@@ -1020,7 +1020,7 @@ enum RadarSnapshot {
             // does not, and thinned on its own grid.
             if !roads.isEmpty {
                 var roadClaimed = Set<Int64>()
-                let rcell = cell * 1.15
+                let rcell = cell * 1.35   // two lines now, not one
                 for r in roads {
                     let p = snap.point(for: CLLocationCoordinate2D(latitude: r.lat, longitude: r.lon))
                     guard p.x > 6, p.y > 6, p.x < size.width - 6, p.y < size.height - 6 else { continue }
@@ -1043,6 +1043,23 @@ enum RadarSnapshot {
                                           y: p.y - 1.5, width: 3, height: 3)
                         c.setFill()
                         UIBezierPath(rect: chip).fill()
+                    }
+                    // The road underneath, quieter than the reading: the
+                    // number is the measurement and this only says where it
+                    // was taken. Without it every sensor was an anonymous
+                    // temperature and you could not tell the interstate from
+                    // the county road beside it.
+                    if !r.road.isEmpty {
+                        let road = r.road as NSString
+                        let rattrs: [NSAttributedString.Key: Any] = [
+                            .font: UIFont.systemFont(ofSize: 6, weight: .medium),
+                            .foregroundColor: UIColor(white: 0.72, alpha: 1),
+                            .strokeColor: UIColor.black, .strokeWidth: -3.0,
+                        ]
+                        let rsz = road.size(withAttributes: rattrs)
+                        road.draw(at: CGPoint(x: p.x - rsz.width / 2,
+                                              y: p.y + sz.height / 2 - 1),
+                                  withAttributes: rattrs)
                     }
                 }
             }

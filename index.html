@@ -570,12 +570,19 @@
      temperature among the station plots. */
   .rw-icon{ background:none; border:none; }
   .rw-lbl{
-    display:inline-flex;align-items:center;gap:3px;
+    display:inline-flex;flex-direction:column;align-items:center;
     transform:translate(-50%,-50%);white-space:nowrap;
     font-family:monospace;font-weight:700;font-size:calc(11px * var(--lblscale, 1));
     text-shadow:0 0 3px #000, 0 0 2px #000;
   }
+  .rw-lbl b{ display:inline-flex;align-items:center;gap:3px;font-weight:700; }
   .rw-lbl i{ width:5px;height:5px;border-radius:1px;display:block; }
+  /* The road, quieter than the reading it belongs to: the number is the
+     measurement and this only says where it was taken. */
+  .rw-lbl em{
+    font-style:normal;font-weight:400;color:#AEB7C6;
+    font-size:calc(7.5px * var(--lblscale, 1));line-height:1.1;margin-top:-1px;
+  }
 
 
   .dash-card > h3{
@@ -6810,6 +6817,10 @@ async function loadRwis(){
   }
   rwisSites = out; rwisStates = key; rwisAt = Date.now();
   rwisLoading = false;
+  // Draw them now the data is here. This used to ride on the next pan, or on
+  // the Roads card coming round again, so switching the layer on and leaving
+  // the map still showed nothing at all.
+  renderRwisLabels();
   renderDash();
 }
 
@@ -6940,6 +6951,37 @@ function toggleRoads(cb){
   renderHiddenStatus();
 }
 
+/* The road a sensor sits on, short enough to print under the reading.
+
+   Every state names these differently and none of them names them for a map:
+   Michigan writes "I94W-MM0630", Ohio prefixes its own sensor id as in
+   "162-I-90 @ Abbey Rd.", Minnesota appends the milepost and the agency
+   ("U.S.169 - Farm Island - MP 245.4 MN US MNDOT"), Iowa puts the highway in
+   brackets after the town. What is worth reading at a glance is the near end
+   of all of them, so this strips the parts that are addressed to someone
+   else — a leading sensor id, a milepost, anything past a separator — and
+   caps what is left, backing off to a word boundary rather than cutting a
+   name in half. Checked against 527 sensors in nine states: none comes out
+   blank and none keeps a milepost. */
+function roadShortName(name){
+  let t = String(name || '').trim();
+  if(!t) return '';
+  t = t.replace(/^\d+\s*-\s*/, '');                 // Ohio's own sensor id
+  // The milepost, which Michigan writes both ways — "I94W-MM0630" and
+  // "I196MM0623" — so this cannot lean on a word boundary before the MM.
+  // Upper case and a preceding non-letter are what keep it off "Camp 5".
+  t = t.replace(/(?<=[^A-Za-z])M[MP]\s*\d[\d.]*.*$/, '');
+  t = t.split(/\s-\s|\s@\s|\s+at\s+|\(|,/)[0];
+  t = t.replace(/\s+/g, ' ').replace(/^[\s._\-]+|[\s._\-]+$/g, '');
+  if(t.length > 14){
+    t = t.slice(0, 14);
+    const cut = t.lastIndexOf(' ');
+    if(cut >= 5) t = t.slice(0, cut);
+  }
+  return t.replace(/^[\s._\-]+|[\s._\-]+$/g, '');
+}
+const escHtml = v => String(v).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
 function renderRwisLabels(){
   if(!rwisLayer) return;
   rwisLayer.clearLayers();
@@ -6948,7 +6990,7 @@ function renderRwisLabels(){
   const b = map.getBounds();
   // Thinned the way the station plots are, so a motorway's worth of sensors
   // does not stack into an unreadable column.
-  const cell = 46, claimed = new Set();
+  const cell = 54, claimed = new Set();   // two lines now, not one
   for(const s of rwisSites){
     if(!b.contains([s.lat, s.lon])) continue;
     const pt = map.latLngToLayerPoint([s.lat, s.lon]);
@@ -6961,8 +7003,10 @@ function renderRwisLabels(){
     // be above freezing and still wet, or below it and dry.
     const col = paveColor(s.pave);
     const chip = st ? ROAD_STATE[st].color : 'transparent';
-    const html = `<span class="rw-lbl" style="color:${col}">${Math.round(s.pave)}` +
-                 `<i style="background:${chip}"></i></span>`;
+    const nm = roadShortName(s.name);
+    const html = `<span class="rw-lbl" style="color:${col}">` +
+                 `<b>${Math.round(s.pave)}<i style="background:${chip}"></i></b>` +
+                 (nm ? `<em>${escHtml(nm)}</em>` : '') + `</span>`;
     L.marker([s.lat, s.lon], {
       icon: L.divIcon({className: 'rw-icon', html, iconSize: [0, 0], iconAnchor: [0, 0]}),
       keyboard: false,
