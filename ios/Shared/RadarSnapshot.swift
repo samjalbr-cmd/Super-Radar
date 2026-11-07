@@ -546,6 +546,38 @@ private func drawStationModel(_ st: StormFeed.Station, at p: CGPoint) {
 private let basemapDim: CGFloat = 0.5
 
 enum RadarSnapshot {
+
+    /// Draw into an image, on either platform.
+    ///
+    /// UIGraphicsImageRenderer does not exist on watchOS, so there the context
+    /// is built by hand. Every drawing call in the body is a UIKit one —
+    /// UIColor.setFill, UIBezierPath, NSString.draw — and those need two
+    /// things the renderer normally supplies: a current context, and UIKit's
+    /// coordinate system with the origin at the top left and y increasing
+    /// downwards. A bare bitmap context has neither, hence the push and the
+    /// scale-translate-flip.
+    private static func renderImage(size: CGSize, _ body: (CGContext) -> Void) -> UIImage? {
+#if os(watchOS)
+        let scale: CGFloat = 2
+        let w = Int((size.width * scale).rounded()), h = Int((size.height * scale).rounded())
+        guard w > 0, h > 0, let space = CGColorSpace(name: CGColorSpace.sRGB),
+              let c = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8,
+                                bytesPerRow: 0, space: space,
+                                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return nil }
+        c.scaleBy(x: scale, y: scale)
+        c.translateBy(x: 0, y: size.height)
+        c.scaleBy(x: 1, y: -1)
+        UIGraphicsPushContext(c)
+        body(c)
+        UIGraphicsPopContext()
+        guard let img = c.makeImage() else { return nil }
+        return UIImage(cgImage: img, scale: scale, orientation: .up)
+#else
+        return UIGraphicsImageRenderer(size: size).image { body($0.cgContext) }
+#endif
+    }
+
     /// A dark basemap for the region, with radar drawn over it. The watched
     /// point frames the view but is not marked — the picture is the subject,
     /// not the pin. Returns nil only if the map itself fails; a clear sky
@@ -578,10 +610,17 @@ enum RadarSnapshot {
         let opts = MKMapSnapshotter.Options()
         opts.mapRect = mapRect
         opts.size = size
+#if os(watchOS)
+        // None of these four exist on watchOS. The system there is always in
+        // dark mode so the snapshot comes back dark regardless; what is lost
+        // is the muted style and the suppression of points of interest, and
+        // the basemap wash below is deepened to compensate.
+#else
         opts.mapType = .mutedStandard
         opts.pointOfInterestFilter = .excludingAll
         opts.showsBuildings = false
         opts.traitCollection = UITraitCollection(userInterfaceStyle: .dark)
+#endif
 
         guard let snap = try? await MKMapSnapshotter(options: opts).start() else { return nil }
 
@@ -651,7 +690,7 @@ enum RadarSnapshot {
         let upperWinds = upper != nil
             ? await MapLayers.upperWinds(sw: sw, ne: ne, level: upper!) : []
 
-        let out = UIGraphicsImageRenderer(size: size).image { ctx in
+        guard let out = renderImage(size: size, { ctx in
             snap.image.draw(at: .zero)
             // Darken the basemap to match the dashboard, which runs its tiles
             // through brightness(0.5). MapKit's dark style is lighter than that,
@@ -873,20 +912,20 @@ enum RadarSnapshot {
                 // read the same; the lattice is fixed in degrees, so the barbs
                 // would otherwise crowd or float depending on the size.
                 let s = max(0.75, min(1.35, size.width / 330))
-                ctx.cgContext.setAlpha(0.92)
+                ctx.setAlpha(0.92)
                 for w in upperWinds {
                     let p = snap.point(for: w.coord)
                     guard p.x > -10, p.y > -10, p.x < size.width + 10, p.y < size.height + 10
                     else { continue }
                     // A black pass first, one step wider, so a barb stays legible
                     // over radar as well as over bare ground.
-                    drawUpperBarb(ctx.cgContext, at: p, kt: w.kt, dir: w.dir,
+                    drawUpperBarb(ctx, at: p, kt: w.kt, dir: w.dir,
                                   color: UIColor.black.withAlphaComponent(0.55),
                                   scale: s, widthBoost: 2.8)
-                    drawUpperBarb(ctx.cgContext, at: p, kt: w.kt, dir: w.dir,
+                    drawUpperBarb(ctx, at: p, kt: w.kt, dir: w.dir,
                                   color: style.color, scale: s)
                 }
-                ctx.cgContext.setAlpha(1)
+                ctx.setAlpha(1)
             }
 
             // Every report keeps its dot; the labels are packed. On a busy day
@@ -899,11 +938,11 @@ enum RadarSnapshot {
                 let p = snap.point(for: CLLocationCoordinate2D(latitude: r.lat, longitude: r.lon))
                 guard size.width > 0, p.x.isFinite, p.y.isFinite else { continue }
                 let dot = CGRect(x: p.x - 3, y: p.y - 3, width: 6, height: 6)
-                ctx.cgContext.setFillColor(r.color.cgColor)
-                ctx.cgContext.setStrokeColor(UIColor.black.withAlphaComponent(0.8).cgColor)
-                ctx.cgContext.setLineWidth(1)
-                ctx.cgContext.addEllipse(in: dot)
-                ctx.cgContext.drawPath(using: .fillStroke)
+                ctx.setFillColor(r.color.cgColor)
+                ctx.setStrokeColor(UIColor.black.withAlphaComponent(0.8).cgColor)
+                ctx.setLineWidth(1)
+                ctx.addEllipse(in: dot)
+                ctx.drawPath(using: .fillStroke)
 
                 guard r.labelled, !r.label.isEmpty,
                       p.x > 2, p.y > 8, p.y < size.height - 8 else { continue }
@@ -987,7 +1026,7 @@ enum RadarSnapshot {
                     placed.append(rect)
                     drawStationModel(st, at: p)
                     if let id = st.id, let series = sparks[id] {
-                        drawSpark(ctx.cgContext, series: series,
+                        drawSpark(ctx, series: series,
                                   at: CGPoint(x: p.x - sparkSize.width / 2,
                                               y: p.y + stationPlotSize.height / 2 - 1))
                     }
@@ -1009,7 +1048,7 @@ enum RadarSnapshot {
                 text.draw(at: CGPoint(x: x, y: y), withAttributes: attrs)
                 if let id = st.id, let series = sparks[id],
                    x + sz.width + 2 + sparkSize.width < size.width {
-                    drawSpark(ctx.cgContext, series: series,
+                    drawSpark(ctx, series: series,
                               at: CGPoint(x: x + sz.width + 2,
                                           y: y + sz.height / 2 - sparkSize.height / 2))
                 }
@@ -1067,7 +1106,7 @@ enum RadarSnapshot {
             // Discussion text last, over everything: the hazard over the window
             // it applies to, as two centred lines in the middle of the outline.
             // The window line is dropped before the hazard when only one fits.
-        }
+        }) else { return nil }
         return (out, render?.hasEcho ?? false)
     }
 }

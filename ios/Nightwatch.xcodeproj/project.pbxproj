@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		0192A5B629B8B3635764DEEF /* NightwatchWatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0EC68D813E198B86A3700633 /* NightwatchWatchApp.swift */; };
+		0531D6661A5C477A8ABD2A3B /* StormFeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C1EED00B753D2D565882EAF /* StormFeed.swift */; };
 		17D496800EBE77804BA3F477 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C29590D21C785393F95D6732 /* Foundation.framework */; };
 		277CF500625680193AB85624 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A708415EA19EE4A1491517A5 /* Assets.xcassets */; };
 		29BFFE19CCEF5B5B8A9A97A3 /* NightwatchWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = A63D3A96B250DD6CD993B205 /* NightwatchWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -23,12 +24,15 @@
 		9BC865300AD0199732828DC7 /* MapLayers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30CD3E342E1A5F5A38B0A2AF /* MapLayers.swift */; };
 		A6CC8C1358D604E4CE07BCCD /* NightwatchWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFFBD07D58A5FF30082E0F57 /* NightwatchWidget.swift */; };
 		B52F183A0D297D5716BE344E /* RadarSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18B7B84248E12EDD60AC67E /* RadarSnapshot.swift */; };
+		B600F4FD066E086DFB6EF37B /* RadarSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18B7B84248E12EDD60AC67E /* RadarSnapshot.swift */; };
 		BCD50092462A1021E1C05849 /* RadarWidgetViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 223C86CF980A0B039BD51BFB /* RadarWidgetViews.swift */; };
 		C7B28C9F524F9A5A94467E6B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 253B8A663A8DEDB3B8CF937E /* Assets.xcassets */; };
 		CE5A847CA4EEE0D7E4788907 /* StormArrival.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77916E83D2402B94D33B6D55 /* StormArrival.swift */; };
 		CFD7AAADAACC0B90812572A4 /* StormFeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C1EED00B753D2D565882EAF /* StormFeed.swift */; };
 		D1763412867236FCB99073E8 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C29590D21C785393F95D6732 /* Foundation.framework */; };
 		E4594729B6130B4A1D7BB091 /* SatelliteSector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AFBDD221E15E129785EEAFD /* SatelliteSector.swift */; };
+		EC75B0D6B86C4CA72EECB1ED /* MapLayers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30CD3E342E1A5F5A38B0A2AF /* MapLayers.swift */; };
+		FCF4FCEDC0D0F21A89CDA6CC /* StormArrival.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77916E83D2402B94D33B6D55 /* StormArrival.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -415,6 +419,10 @@
 			files = (
 				0192A5B629B8B3635764DEEF /* NightwatchWatchApp.swift in Sources */,
 				95C3DDFD4C852EC53C07BC01 /* SatelliteSector.swift in Sources */,
+				FCF4FCEDC0D0F21A89CDA6CC /* StormArrival.swift in Sources */,
+				EC75B0D6B86C4CA72EECB1ED /* MapLayers.swift in Sources */,
+				0531D6661A5C477A8ABD2A3B /* StormFeed.swift in Sources */,
+				B600F4FD066E086DFB6EF37B /* RadarSnapshot.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -518,6 +526,7 @@
 				DEVELOPMENT_TEAM = LHU5H8QVY5;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Nightwatch;
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Centres the radar on where you are.";
 				INFOPLIST_KEY_WKApplication = YES;
 				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.samjalbr.nightwatch;
 				MARKETING_VERSION = 1.0;
@@ -648,6 +657,7 @@
 				DEVELOPMENT_TEAM = LHU5H8QVY5;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Nightwatch;
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Centres the radar on where you are.";
 				INFOPLIST_KEY_WKApplication = YES;
 				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.samjalbr.nightwatch;
 				MARKETING_VERSION = 1.0;
