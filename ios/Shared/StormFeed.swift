@@ -229,11 +229,11 @@ enum StormFeed {
         var rank: Double = 0        // higher keeps its label when two collide
         /// Whether the value is written beside the dot.
         ///
-        /// Spotter reports are drawn but not labelled. A single flooding
-        /// episode arrives as dozens of calls from the same few miles, and
-        /// their text was a wall of identical words; as bare dots they still
-        /// show where it happened without burying the measurements, which come
-        /// from a fixed place with a number attached and do carry their text.
+        /// A spotter report with a measurement — rain, snow, hail, a gust —
+        /// writes it. One with only words does not: a single flooding episode
+        /// arrives as dozens of calls from the same few miles, and their text
+        /// was a wall of identical words, where as bare dots they still show
+        /// where it happened without burying the numbers around them.
         var labelled: Bool = true
     }
 
@@ -412,7 +412,11 @@ enum StormFeed {
             if t.contains("HAIL") { return "\(trimmed(m))\" hail" }
             if t.contains("SNOW") { return "\(trimmed(m))\" snow" }
             if t.contains("RAIN") { return "\(trimmed(m))\" rain" }
-            return trimmed(m)
+            // Visibility, which the feed reports in statute miles under "M".
+            if u == "M" || u == "MI" { return "\(trimmed(m)) mi" }
+            // An unknown unit still names itself. A bare number beside a dot
+            // says nothing — the reader cannot tell inches from miles.
+            return u.isEmpty ? trimmed(m) : "\(trimmed(m)) \(u.lowercased())"
         }
         return reportNames[t] ?? (t.isEmpty ? "\u{2022}" : t.lowercased())
     }
@@ -467,10 +471,16 @@ enum StormFeed {
             let mag = f.properties.magnitude?.value
             guard reportKeep(type: t, magnitude: mag) else { return nil }
             let color = reportColor(t)
+            // A report that came with a number says it. An inch of rain or
+            // four of snow is the whole content of the report, and as a bare
+            // dot it was indistinguishable from a flooding call — you could
+            // see that something had been reported but not what. The ones
+            // with no number stay dots; that is the case the wall of
+            // repeated text comes from.
             return Report(lat: c[1], lon: c[0], color: color,
                           label: reportLabel(type: t, magnitude: mag, unit: f.properties.unit),
                           rank: reportRank(type: t, magnitude: mag),
-                          labelled: false)
+                          labelled: (mag ?? 0) > 0)
         }
         // Worst first, so when labels compete for the same patch of screen the
         // packer keeps the tornado and drops the 41 mph gust.

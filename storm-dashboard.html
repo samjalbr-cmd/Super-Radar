@@ -2621,6 +2621,8 @@ function lsrMagText(p){
   if(u.includes('MPH') || t.includes('WND') || t.includes('WIND')) return `${Math.round(mag)} mph`;
   if(u.includes('INCH') || /HAIL|SNOW|RAIN|SLEET|ICE|PRECIP|FLOOD|SURGE/.test(t)) return `${lsrNum(mag)}"`;
   if(u === 'F') return `${lsrNum(mag)}\u00B0`;
+  // Visibility, which the feed reports in statute miles under "M".
+  if(u === 'M' || u === 'MI') return `${lsrNum(mag)} mi`;
   // An unknown unit is still better spelled out than guessed at.
   return lsrNum(mag) + (p.unit ? ' ' + String(p.unit).toLowerCase() : '');
 }
