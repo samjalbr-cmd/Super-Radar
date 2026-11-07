@@ -59,6 +59,15 @@ enum SatelliteSector {
     static let centerX: CGFloat = 0.411
     static let centerY: CGFloat = 0.372
 
+    /// How much of the frame's width the circle spans. The sector is roughly
+    /// 2400 km across, so this lands near 1300 km — the Lower Peninsula with
+    /// all three lakes around it, rather than half the eastern seaboard.
+    ///
+    /// Zooming in costs nothing in sharpness at this size: the complication is
+    /// about fifty points, so even this crop is downsampled on the way in. It
+    /// was the large preview that suffered from a tight crop, not the watch.
+    static let spanFraction: CGFloat = 0.55
+
     static func fetch() async -> Data? {
         var req = URLRequest(url: imageURL)
         req.timeoutInterval = 25
@@ -84,11 +93,9 @@ enum SatelliteSector {
               let cg = CGImageSourceCreateImageAtIndex(src, 0, nil) else { return nil }
         let w = CGFloat(cg.width), h = CGFloat(cg.height) * (1 - captionFraction)
         let cx = w * centerX, cy = h * centerY
-        // The largest square that stays inside the frame. Widest is best: GOES
-        // resolves about two kilometres a pixel, so cropping tighter than that
-        // enlarges pixels instead of adding detail, which is what made the
-        // first attempt look blurry. This lands near 1700 km across.
-        let half = min(cx, cy, w - cx, h - cy)
+        // As much as spanFraction asks for, bounded by the frame edge so an
+        // off-centre crop never runs off the picture.
+        let half = min(cx, cy, w - cx, h - cy, w * spanFraction / 2)
         guard half > 1 else { return nil }
         // CGImage crop rects are measured from the top left, so excluding the
         // bottom caption strip is simply a shorter usable height.
