@@ -60,13 +60,14 @@ enum SatelliteSector {
     static let centerY: CGFloat = 0.372
 
     /// How much of the frame's width the circle spans. The sector is roughly
-    /// 2400 km across, so this lands near 1300 km — the Lower Peninsula with
-    /// all three lakes around it, rather than half the eastern seaboard.
+    /// 2400 km across, so this lands near 1100 km — Lake Michigan down one
+    /// side, Huron and Erie down the other, and the peninsula between them
+    /// filling the glass.
     ///
     /// Zooming in costs nothing in sharpness at this size: the complication is
     /// about fifty points, so even this crop is downsampled on the way in. It
     /// was the large preview that suffered from a tight crop, not the watch.
-    static let spanFraction: CGFloat = 0.55
+    static let spanFraction: CGFloat = 0.45
 
     static func fetch() async -> Data? {
         var req = URLRequest(url: imageURL)
