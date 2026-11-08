@@ -4652,6 +4652,7 @@ function detectTempChanges(){
 
 const PH_W = 228, PH_H = 64, PH_HOURS = 24;
 const phCache = {};            // key -> {rows, at} | {err, at}
+let phGid = 0;                 // gradient ids; two in one popup must not collide
 const PH_TTL = 10 * 60e3;
 
 // A line per series, sharing one scale, with the span labelled. Colours come
@@ -4668,24 +4669,47 @@ function phSVG(series){
   lo -= pad; hi += pad;
   const X = t => 30 + ((t - t0) / (t1 - t0 || 1)) * (PH_W - 38);
   const Y = v => PH_H - 14 - ((v - lo) / (hi - lo || 1)) * (PH_H - 26);
-  let g = '';
+  let defs = '', g = '';
   // Freezing, when the range crosses it — the one line that changes meaning.
   if(lo < 32 && hi > 32){
     g += `<line x1="30" y1="${Y(32).toFixed(1)}" x2="${PH_W}" y2="${Y(32).toFixed(1)}" ` +
          `stroke="#6FB7FF" stroke-width="1" stroke-dasharray="3 3" opacity="0.5"/>` +
          `<text x="2" y="${(Y(32) + 3).toFixed(1)}" fill="#6FB7FF" font-size="9" font-family="monospace">32</text>`;
   }
+  const floor = PH_H - 14;
   for(const s of live){
+    // Coloured along its length by what it is reading, the way the station
+    // traces are — a line that is blue at one end and amber at the other says
+    // the day warmed up without anyone reading the axis. Pavement gets the
+    // pavement ramp, because a road at 34F is a different thing from air at
+    // 34F and the two ramps say so.
+    const ramp = s.ramp || tempColor;
+    const gid = 'phg' + (++phGid);
+    const n = s.rows.length - 1;
+    defs += `<linearGradient id="${gid}" x1="0" y1="0" x2="1" y2="0">` +
+      s.rows.map((r, i) =>
+        `<stop offset="${((i / n) * 100).toFixed(1)}%" stop-color="${ramp(r.v) || s.color}"/>`
+      ).join('') + `</linearGradient>`;
     const pts = s.rows.map(r => `${X(r.t).toFixed(1)},${Y(r.v).toFixed(1)}`).join(' ');
-    g += `<polyline points="${pts}" fill="none" stroke="${s.color}" stroke-width="1.6" ` +
+    const x0 = X(s.rows[0].t).toFixed(1), x1 = X(s.rows[n].t).toFixed(1);
+    // A wash under the line, same gradient. It gives the trace a body at this
+    // size, where a 1.8px stroke on its own reads as a scratch.
+    if(!s.dash){
+      g += `<polygon points="${x0},${floor} ${pts} ${x1},${floor}" ` +
+           `fill="url(#${gid})" opacity="0.18"/>`;
+    }
+    g += `<polyline points="${pts}" fill="none" stroke="url(#${gid})" stroke-width="1.8" ` +
          `stroke-linejoin="round" stroke-linecap="round"${s.dash ? ' stroke-dasharray="3 2"' : ''}/>`;
-    const last = s.rows[s.rows.length - 1];
-    g += `<circle cx="${X(last.t).toFixed(1)}" cy="${Y(last.v).toFixed(1)}" r="2" fill="${s.color}"/>`;
+    const last = s.rows[n];
+    g += `<circle cx="${X(last.t).toFixed(1)}" cy="${Y(last.v).toFixed(1)}" r="2.2" ` +
+         `fill="${ramp(last.v) || s.color}"/>`;
+    s.swatch = ramp(last.v) || s.color;
   }
+  g = `<defs>${defs}</defs>` + g;
   g += `<text x="2" y="12" fill="#8A93A6" font-size="9" font-family="monospace">${Math.round(hi)}</text>`;
   g += `<text x="2" y="${PH_H - 15}" fill="#8A93A6" font-size="9" font-family="monospace">${Math.round(lo)}</text>`;
   const span = Math.round((t1 - t0) / 3600e3);
-  const key = live.map(s => `<span style="color:${s.color}">▬</span> ${s.label}`).join(' ');
+  const key = live.map(s => `<span style="color:${s.swatch || s.color}">▬</span> ${s.label}`).join(' ');
   return `<svg class="hist-svg" width="${PH_W}" height="${PH_H}" viewBox="0 0 ${PH_W} ${PH_H}">${g}</svg>` +
          `<div class="hist-key">${key} · past ${span} h</div>`;
 }
@@ -4726,11 +4750,11 @@ async function phRows(kind, id){
       let rows = (tempHist && tempHist[id] || []).filter(r => r.f != null)
                   .map(r => ({t: r.t, v: r.f}));
       if(rows.length < 2) rows = await phFetchAsos(id);
-      series = [{rows, color: '#F2B705', label: 'air'}];
+      series = [{rows, color: '#F2B705', label: 'air', ramp: tempColor}];
     }else if(kind === 'rwis'){
       const r = await phFetchRwis(id);
-      series = [{rows: r.pave, color: '#7FC4F2', label: 'pavement'},
-                {rows: r.air, color: '#8FD98F', label: 'air', dash: true}];
+      series = [{rows: r.pave, color: '#7FC4F2', label: 'pavement', ramp: paveColor},
+                {rows: r.air, color: '#8FD98F', label: 'air', dash: true, ramp: tempColor}];
       // Nothing inside the window but rows outside it means the sensor
       // stopped, not that it has no archive — worth the distinction, because
       // the whole Michigan network goes down for days at a time.
@@ -4741,7 +4765,7 @@ async function phRows(kind, id){
       const b = ((lakeData && lakeData.stations) || []).find(x => String(x.id) === String(id));
       const rows = (b && Array.isArray(b.hist) ? b.hist : [])
         .map(h => ({t: Date.parse(h.t), v: h.w})).filter(h => isFinite(h.t) && h.v != null);
-      series = [{rows, color: '#4FD0E7', label: 'water'}];
+      series = [{rows, color: '#4FD0E7', label: 'water', ramp: tempColor}];
     }
   }catch(e){ series = []; }
   phCache[key] = {series, at: Date.now()};
