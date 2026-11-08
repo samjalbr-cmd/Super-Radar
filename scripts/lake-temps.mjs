@@ -56,6 +56,51 @@ for (const line of text.split('\n')) {
   });
 }
 
+/* The last 24 hours for each buoy, for the graph a tap opens on the map.
+
+   latest_obs.txt is one file for the whole country but carries only the newest
+   observation, so history means one request per station. Fifty-odd of those is
+   nothing in CI and impossible in the browser, which is the same reason this
+   script exists at all: NDBC sends no CORS header.
+
+   Sampled to the hour. The feed reports every ten minutes, and 144 points to
+   draw a line 228 pixels wide is 120 points nobody can see. */
+const HIST_HOURS = 24;
+const WTMP_COL = 14;                       // after the five date fields
+
+async function history(id) {
+  try {
+    const r = await fetch(`https://www.ndbc.noaa.gov/data/realtime2/${id}.txt`,
+                          { headers: { 'User-Agent': 'nightwatch-lake-temps' } });
+    if (!r.ok) return [];
+    const cut = Date.now() - HIST_HOURS * 3600e3;
+    const seen = new Set();
+    const out = [];
+    for (const line of (await r.text()).split('\n')) {
+      if (!line || line.startsWith('#')) continue;
+      const f = line.trim().split(/\s+/);
+      if (f.length <= WTMP_COL) continue;
+      const w = num(f[WTMP_COL]);
+      if (w == null || w < -2 || w > 35) continue;
+      const t = Date.parse(`${f[0]}-${f[1]}-${f[2]}T${f[3]}:${f[4]}:00Z`);
+      if (!Number.isFinite(t) || t < cut) continue;
+      const hour = Math.floor(t / 3600e3);
+      if (seen.has(hour)) continue;        // rows are newest first; keep the first per hour
+      seen.add(hour);
+      out.push({ t: new Date(t).toISOString(), w: +(w * 9 / 5 + 32).toFixed(1) });
+    }
+    return out.reverse();                  // oldest first, the way it is drawn
+  } catch { return []; }
+}
+
+// A few at a time. Fifty-three parallel requests at one host is rude and gets
+// throttled; serial would take a minute.
+for (let i = 0; i < stations.length; i += 6) {
+  const slice = stations.slice(i, i + 6);
+  const got = await Promise.all(slice.map(s => history(s.id)));
+  slice.forEach((s, k) => { if (got[k].length >= 2) s.hist = got[k]; });
+}
+
 if (!stations.length) {
   console.error(`parsed no Great Lakes stations; leaving ${OUT} alone`);
   process.exit(1);
@@ -68,3 +113,5 @@ writeFileSync(OUT, JSON.stringify({ generated: new Date().toISOString(), station
 const temps = stations.map(s => s.waterF);
 console.log(`${stations.length} stations -> ${OUT}`);
 console.log(`  water ${Math.min(...temps).toFixed(0)}F .. ${Math.max(...temps).toFixed(0)}F`);
+const withHist = stations.filter(s => s.hist).length;
+console.log(`  history for ${withHist}/${stations.length}, ${(JSON.stringify(stations).length / 1024).toFixed(0)} KB`);

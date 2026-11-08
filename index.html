@@ -608,6 +608,9 @@
     padding:1px 5px; border-radius:5px; background:rgba(255,255,255,0.05);
   }
   .sat-spans b.on{ color:#05070d; background:#F2B705; }
+  .hist{ margin-top:7px; border-top:1px solid rgba(255,255,255,0.1); padding-top:6px; }
+  .hist-svg{ display:block; }
+  .hist-key{ font-family:monospace; font-size:10px; color:#8A93A6; padding-top:2px; }
   #topControls #dashBtn.on{ color:#05070d; background:#F2B705; border-color:#F2B705; }
 
   .rw-icon{ background:none; border:none; }
@@ -1304,6 +1307,7 @@ function initMap(){
     requestAnimationFrame(step);
   }
   map.on('moveend', runMoveTasks);
+  map.on('popupopen', phOnPopupOpen);
 
   // Labels are hidden for the zoom animation and come back at the end of the
   // pass above, not at moveend — deferring the work would otherwise show them
@@ -4633,6 +4637,185 @@ function detectTempChanges(){
   if(tempEvents.length > 250) tempEvents = tempEvents.slice(-250);
 }
 
+/* ---------------- Popup history graph ----------------
+
+   The last 24 hours behind whatever was just tapped. The map already shows
+   what a place is doing now; the question a tap usually means is whether it
+   has been getting colder.
+
+   One renderer for all three kinds of marker, because a station, a buoy and a
+   road sensor are all a series of temperatures against time, and three
+   slightly different little charts would be three things to keep in step.
+
+   Loading is per-popup and cached: a tap fires the fetch, the popup shows a
+   line as soon as it lands, and tapping the same marker again is free. */
+
+const PH_W = 228, PH_H = 64, PH_HOURS = 24;
+const phCache = {};            // key -> {rows, at} | {err, at}
+const PH_TTL = 10 * 60e3;
+
+// A line per series, sharing one scale, with the span labelled. Colours come
+// from the caller so pavement reads as pavement and water as water.
+function phSVG(series){
+  const live = series.filter(s => s.rows && s.rows.length >= 2);
+  if(!live.length) return '';
+  const all = live.flatMap(s => s.rows);
+  const t0 = Math.min(...all.map(r => r.t)), t1 = Math.max(...all.map(r => r.t));
+  let lo = Math.min(...all.map(r => r.v)), hi = Math.max(...all.map(r => r.v));
+  // A flat day would otherwise be a line on the floor of the box.
+  if(hi - lo < 4){ const m = (hi + lo) / 2; lo = m - 2; hi = m + 2; }
+  const pad = (hi - lo) * 0.12;
+  lo -= pad; hi += pad;
+  const X = t => 30 + ((t - t0) / (t1 - t0 || 1)) * (PH_W - 38);
+  const Y = v => PH_H - 14 - ((v - lo) / (hi - lo || 1)) * (PH_H - 26);
+  let g = '';
+  // Freezing, when the range crosses it — the one line that changes meaning.
+  if(lo < 32 && hi > 32){
+    g += `<line x1="30" y1="${Y(32).toFixed(1)}" x2="${PH_W}" y2="${Y(32).toFixed(1)}" ` +
+         `stroke="#6FB7FF" stroke-width="1" stroke-dasharray="3 3" opacity="0.5"/>` +
+         `<text x="2" y="${(Y(32) + 3).toFixed(1)}" fill="#6FB7FF" font-size="9" font-family="monospace">32</text>`;
+  }
+  for(const s of live){
+    const pts = s.rows.map(r => `${X(r.t).toFixed(1)},${Y(r.v).toFixed(1)}`).join(' ');
+    g += `<polyline points="${pts}" fill="none" stroke="${s.color}" stroke-width="1.6" ` +
+         `stroke-linejoin="round" stroke-linecap="round"${s.dash ? ' stroke-dasharray="3 2"' : ''}/>`;
+    const last = s.rows[s.rows.length - 1];
+    g += `<circle cx="${X(last.t).toFixed(1)}" cy="${Y(last.v).toFixed(1)}" r="2" fill="${s.color}"/>`;
+  }
+  g += `<text x="2" y="12" fill="#8A93A6" font-size="9" font-family="monospace">${Math.round(hi)}</text>`;
+  g += `<text x="2" y="${PH_H - 15}" fill="#8A93A6" font-size="9" font-family="monospace">${Math.round(lo)}</text>`;
+  const span = Math.round((t1 - t0) / 3600e3);
+  const key = live.map(s => `<span style="color:${s.color}">▬</span> ${s.label}`).join(' ');
+  return `<svg class="hist-svg" width="${PH_W}" height="${PH_H}" viewBox="0 0 ${PH_W} ${PH_H}">${g}</svg>` +
+         `<div class="hist-key">${key} · past ${span} h</div>`;
+}
+
+// Fill in the placeholder once the rows are in. The popup may well have been
+// closed by then, in which case there is nothing to write to and that is fine.
+function phFill(key, series){
+  const host = document.querySelector(`.hist[data-k="${key}"]`);
+  if(!host) return;
+  const svg = phSVG(series);
+  host.innerHTML = svg ||
+    `<div class="hist-key">${series.note || 'No history for this one.'}</div>`;
+  // Resize the popup around the chart, but do not call update(): that
+  // re-renders the popup from the HTML it was given when the marker was
+  // bound, which still says "Loading" — so the chart was being written and
+  // then immediately overwritten by the placeholder it replaced.
+  const pop = map && map._popup;
+  if(pop){
+    try{ pop._updateLayout(); pop._adjustPan(); }catch(e){ /* older Leaflet */ }
+  }
+}
+
+/* Each kind knows where to get its own 24 hours.
+
+   Stations reuse what the sparklines already loaded, and fall back to the
+   archive when traces are switched off. Road sensors go to the RWIS archive,
+   which carries pavement and air as separate columns and is worth drawing as
+   two lines — the gap between them is the whole point of a road sensor. Buoys
+   read the history the lake file now carries, because NDBC sends no CORS
+   header and cannot be read from a page at all. */
+async function phRows(kind, id){
+  const key = kind + ':' + id;
+  const hit = phCache[key];
+  if(hit && Date.now() - hit.at < PH_TTL) return hit.series;
+  let series = [];
+  try{
+    if(kind === 'stn'){
+      let rows = (tempHist && tempHist[id] || []).filter(r => r.f != null)
+                  .map(r => ({t: r.t, v: r.f}));
+      if(rows.length < 2) rows = await phFetchAsos(id);
+      series = [{rows, color: '#F2B705', label: 'air'}];
+    }else if(kind === 'rwis'){
+      const r = await phFetchRwis(id);
+      series = [{rows: r.pave, color: '#7FC4F2', label: 'pavement'},
+                {rows: r.air, color: '#8FD98F', label: 'air', dash: true}];
+      // Nothing inside the window but rows outside it means the sensor
+      // stopped, not that it has no archive — worth the distinction, because
+      // the whole Michigan network goes down for days at a time.
+      if(!r.pave.length && !r.air.length && r.newest){
+        series.note = `Sensor last reported ${Math.round((Date.now() - r.newest) / 3600e3)} h ago.`;
+      }
+    }else if(kind === 'buoy'){
+      const b = ((lakeData && lakeData.stations) || []).find(x => String(x.id) === String(id));
+      const rows = (b && Array.isArray(b.hist) ? b.hist : [])
+        .map(h => ({t: Date.parse(h.t), v: h.w})).filter(h => isFinite(h.t) && h.v != null);
+      series = [{rows, color: '#4FD0E7', label: 'water'}];
+    }
+  }catch(e){ series = []; }
+  phCache[key] = {series, at: Date.now()};
+  return series;
+}
+
+async function phFetchAsos(id){
+  const now = new Date(), then = new Date(now - PH_HOURS * 3600e3);
+  const d = (i, x) => `year${i}=${x.getUTCFullYear()}&month${i}=${x.getUTCMonth() + 1}` +
+                      `&day${i}=${x.getUTCDate()}&hour${i}=${x.getUTCHours()}`;
+  const u = 'https://mesonet.agron.iastate.edu/cgi-bin/request/asos.py?station=' +
+            encodeURIComponent(id) + '&data=tmpf&' + d(1, then) + '&' + d(2, now) +
+            '&tz=UTC&format=comma&missing=empty&trace=empty';
+  const txt = await (await fetch(u)).text();
+  const lines = txt.split('\n').filter(l => l && l[0] !== '#');
+  const h = (lines[0] || '').split(','), iV = h.indexOf('valid'), iT = h.indexOf('tmpf');
+  const out = [];
+  for(const line of lines.slice(1)){
+    const c = line.split(',');
+    const v = parseFloat(c[iT]), t = Date.parse((c[iV] || '').trim().replace(' ', 'T') + 'Z');
+    if(isFinite(v) && isFinite(t)) out.push({t, v});
+  }
+  return out.sort((a, b) => a.t - b.t);
+}
+
+// sts/ets as plain dates; the year1/month1 form this endpoint also accepts
+// matches nothing at all. See loadRoadHistory.
+async function phFetchRwis(id){
+  const day = x => x.toISOString().slice(0, 10);
+  const now = new Date();
+  const u = 'https://mesonet.agron.iastate.edu/cgi-bin/request/rwis.py?stations=' +
+            encodeURIComponent(id) + '&sts=' + day(new Date(now - 36 * 3600e3)) +
+            '&ets=' + day(new Date(+now + 864e5)) + '&tz=UTC&format=comma';
+  const txt = await (await fetch(u)).text();
+  const lines = txt.split('\n').filter(l => l.trim() && l[0] !== '#');
+  const h = (lines[0] || '').split(',');
+  const iT = h.indexOf('obtime'), iP = h.indexOf('tfs0'), iA = h.indexOf('tmpf');
+  const pave = [], air = [];
+  let newest = 0;
+  const cut = Date.now() - PH_HOURS * 3600e3;
+  for(const line of lines.slice(1)){
+    const c = line.split(',');
+    const t = Date.parse((c[iT] || '').trim().replace(' ', 'T') + 'Z');
+    if(!isFinite(t)) continue;
+    if(isFinite(parseFloat(c[iP])) && t > newest) newest = t;
+    if(t < cut) continue;
+    const pv = parseFloat(c[iP]); if(isFinite(pv)) pave.push({t, v: pv});
+    const av = parseFloat(c[iA]); if(isFinite(av)) air.push({t, v: av});
+  }
+  return {pave, air, newest};
+}
+
+/* The placeholder a popup carries while its rows are on the way.
+
+   Only a placeholder. Popup content is built when the marker is bound, not
+   when it is opened, so starting the fetch here meant firing one for every
+   station on the map and then filling an element that did not exist yet —
+   the chart stayed on "Loading" forever because its one chance to be filled
+   came and went before anyone clicked. The loading happens on popupopen. */
+function phBlock(kind, id){
+  return `<div class="hist" data-k="${kind}:${id}"><div class="hist-key">Loading the last 24 h…</div></div>`;
+}
+
+// One handler for every popup on the map: if what opened has a history slot,
+// fill it.
+function phOnPopupOpen(e){
+  const el = e.popup && e.popup.getElement();
+  const slot = el && el.querySelector('.hist[data-k]');
+  if(!slot || slot.dataset.loaded) return;
+  slot.dataset.loaded = '1';
+  const [kind, ...rest] = slot.dataset.k.split(':');
+  phRows(kind, rest.join(':')).then(ser => phFill(slot.dataset.k, ser));
+}
+
 function stationPopup(s){
   const p = s.p;
   const wind = (p.sknt != null) ? `${p.drct != null ? Math.round(p.drct) + '° ' : ''}${Math.round(ktToMph(p.sknt))} mph` : 'calm';
@@ -4646,7 +4829,8 @@ function stationPopup(s){
   const day  = (p.pday > 0) ? `<br>Rain (since midnight): ${inStr(p.pday)}` : '';
   const snow = (p.snow > 0) ? `<br>Snowfall (since midnight): ${inStr(p.snow)}` : '';
   const dpth = (p.snowd > 0) ? `<br>Snow depth: ${inStr(p.snowd)}` : '';
-  return `<div class="alert-popup"><b>${p.name || p.station} (${p.station})</b>Wind: ${wind}${gust}${maxg}<br>Temp: ${temp}${feel}<br>Vis: ${vis}${rain}${day}${snow}${dpth}<br><span style="color:#8A93A6;font-size:11px;">${fmtTime(p.utc_valid)}</span></div>`;
+  return `<div class="alert-popup"><b>${p.name || p.station} (${p.station})</b>Wind: ${wind}${gust}${maxg}<br>Temp: ${temp}${feel}<br>Vis: ${vis}${rain}${day}${snow}${dpth}<br><span style="color:#8A93A6;font-size:11px;">${fmtTime(p.utc_valid)}</span>` +
+    phBlock('stn', p.station) + `</div>`;
 }
 
 // Big hubs to keep first when decluttering zoomed-out views (FAA 3-letter ids).
@@ -5971,7 +6155,7 @@ function renderLakeTemps(){
       (st.airF != null ? `<br>Air ${st.airF}\u00b0F \u00b7 water is ${Math.abs(Math.round(st.waterF - st.airF))}\u00b0 ` +
         (st.waterF >= st.airF ? 'warmer' : 'cooler') : '') +
       (age != null ? `<br><span style="color:#8A93A6">${age < 1 ? 'within the hour' : Math.round(age) + ' h old'}</span>` : '') +
-      `</div>`).addTo(lakeLayer);
+      phBlock('buoy', st.id) + `</div>`).addTo(lakeLayer);
   }
 }
 
@@ -7098,7 +7282,9 @@ function renderRwisLabels(){
     }).bindPopup(`<div class="alert-popup"><b>${s.name}</b>` +
       `pavement ${Math.round(s.pave)}°F` +
       (s.air != null ? ` · air ${Math.round(s.air)}°F` : '') +
-      (s.cond ? `<br>${s.cond}` : '') + `</div>`).addTo(rwisLayer);
+      (s.cond ? `<br>${s.cond}` : '') +
+      rwisAgeNote(s).replace(' · ', '<br>') +
+      phBlock('rwis', s.id) + `</div>`).addTo(rwisLayer);
   }
 }
 
