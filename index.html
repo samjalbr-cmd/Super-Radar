@@ -4650,7 +4650,10 @@ function detectTempChanges(){
    Loading is per-popup and cached: a tap fires the fetch, the popup shows a
    line as soon as it lands, and tapping the same marker again is free. */
 
-const PH_W = 228, PH_H = 64, PH_HOURS = 24;
+// Bigger than it first was. At 228x64 the colour along the line was there
+// and measurable but barely readable — a gradient you have to be told about
+// is not doing its job.
+const PH_W = 258, PH_H = 88, PH_HOURS = 24;
 const phCache = {};            // key -> {rows, at} | {err, at}
 let phGid = 0;                 // gradient ids; two in one popup must not collide
 const PH_TTL = 10 * 60e3;
@@ -4668,7 +4671,7 @@ function phSVG(series){
   const pad = (hi - lo) * 0.12;
   lo -= pad; hi += pad;
   const X = t => 30 + ((t - t0) / (t1 - t0 || 1)) * (PH_W - 38);
-  const Y = v => PH_H - 14 - ((v - lo) / (hi - lo || 1)) * (PH_H - 26);
+  const Y = v => PH_H - 16 - ((v - lo) / (hi - lo || 1)) * (PH_H - 30);
   let defs = '', g = '';
   // Freezing, when the range crosses it — the one line that changes meaning.
   if(lo < 32 && hi > 32){
@@ -4676,7 +4679,7 @@ function phSVG(series){
          `stroke="#6FB7FF" stroke-width="1" stroke-dasharray="3 3" opacity="0.5"/>` +
          `<text x="2" y="${(Y(32) + 3).toFixed(1)}" fill="#6FB7FF" font-size="9" font-family="monospace">32</text>`;
   }
-  const floor = PH_H - 14;
+  const floor = PH_H - 16;
   for(const s of live){
     // Coloured along its length by what it is reading, the way the station
     // traces are — a line that is blue at one end and amber at the other says
@@ -4696,9 +4699,9 @@ function phSVG(series){
     // size, where a 1.8px stroke on its own reads as a scratch.
     if(!s.dash){
       g += `<polygon points="${x0},${floor} ${pts} ${x1},${floor}" ` +
-           `fill="url(#${gid})" opacity="0.18"/>`;
+           `fill="url(#${gid})" opacity="0.38"/>`;
     }
-    g += `<polyline points="${pts}" fill="none" stroke="url(#${gid})" stroke-width="1.8" ` +
+    g += `<polyline points="${pts}" fill="none" stroke="url(#${gid})" stroke-width="2.4" ` +
          `stroke-linejoin="round" stroke-linecap="round"${s.dash ? ' stroke-dasharray="3 2"' : ''}/>`;
     const last = s.rows[n];
     g += `<circle cx="${X(last.t).toFixed(1)}" cy="${Y(last.v).toFixed(1)}" r="2.2" ` +
@@ -4707,7 +4710,7 @@ function phSVG(series){
   }
   g = `<defs>${defs}</defs>` + g;
   g += `<text x="2" y="12" fill="#8A93A6" font-size="9" font-family="monospace">${Math.round(hi)}</text>`;
-  g += `<text x="2" y="${PH_H - 15}" fill="#8A93A6" font-size="9" font-family="monospace">${Math.round(lo)}</text>`;
+  g += `<text x="2" y="${PH_H - 17}" fill="#8A93A6" font-size="9" font-family="monospace">${Math.round(lo)}</text>`;
   const span = Math.round((t1 - t0) / 3600e3);
   const key = live.map(s => `<span style="color:${s.swatch || s.color}">▬</span> ${s.label}`).join(' ');
   return `<svg class="hist-svg" width="${PH_W}" height="${PH_H}" viewBox="0 0 ${PH_W} ${PH_H}">${g}</svg>` +
