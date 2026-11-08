@@ -8161,6 +8161,10 @@ const SAT_SPANS = [
 const SAT_LAG_MIN = 8;            // publishing delay, plus a margin
 const SAT_FPS_MS = 420;
 let satImgs = [], satIdx = 0, satTimer = null, satKey = '';
+// Whether the loop has run from end to end since the card came up. The
+// rotation waits for this rather than for a fixed number of seconds, because
+// what takes the time is the frames arriving, not the playing.
+let satPassDone = false, satShownAt = 0;
 let satSpan = (() => {
   const v = parseInt(localStorage.getItem('satSpan') || '1', 10);
   return (v >= 0 && v < SAT_SPANS.length) ? v : 1;     // three hours by default
@@ -8201,7 +8205,8 @@ function renderDashSat(){
   const key = times[times.length - 1].toISOString();
   if(key === satKey && host.querySelector('.sat-wrap')) return;   // same hour, leave it running
   satKey = key;
-  clearInterval(satTimer); satTimer = null; satIdx = 0;
+  satIdx = 0;
+  satPassDone = false; satShownAt = Date.now();
   host.innerHTML = `<div class="sat-wrap"></div>` +
     `<div class="sat-bar"><span class="t">—</span>` +
     `<span class="sat-spans">` + SAT_SPANS.map((sp, i) =>
@@ -8223,7 +8228,12 @@ function renderDashSat(){
     satImgs.push(im);
   }
   satPaintDots();
-  satTimer = setInterval(satTick, SAT_FPS_MS);
+  // One interval for the life of the page, not one per rebuild. Tearing it
+  // down and recreating it on every rebuild left the loop frozen whenever the
+  // two crossed — satTimer still holding an id for a timer that was no longer
+  // firing. satTick is a no-op when the card is hidden or the frames are not
+  // in yet, so leaving it running costs nothing.
+  if(!satTimer) satTimer = setInterval(satTick, SAT_FPS_MS);
   satTick();
 }
 function satPaintDots(){
@@ -8239,7 +8249,15 @@ function satTick(){
   // whether the card is up or not, and the loop sat frozen on one frame.
   // getClientRects is empty only when the element really is not laid out.
   if(!host || host.getBoundingClientRect().width < 1 || !satImgs.length) return;
-  satIdx = (satIdx + 1) % satImgs.length;
+  // Step to the next frame that has actually arrived. Advancing onto one
+  // that has not leaves the card black for a beat, which on a television
+  // reads as the picture having broken.
+  let next = satIdx, hops = 0;
+  do { next = (next + 1) % satImgs.length; hops++; }
+  while(hops <= satImgs.length && !(satImgs[next].complete && satImgs[next].naturalWidth));
+  if(hops > satImgs.length) return;                 // nothing loaded yet
+  if(next <= satIdx) satPassDone = true;            // wrapped: one pass done
+  satIdx = next;
   satImgs.forEach((im, i) => im.classList.toggle('on', i === satIdx));
   const t = +satImgs[satIdx].dataset.t;
   const lab = host.querySelector('.sat-bar .t');
@@ -8401,6 +8419,9 @@ function showDashCard(i){
   if(!cards.length) return;
   dashIdx = ((i % cards.length) + cards.length) % cards.length;
   cards.forEach((c, j) => c.classList.toggle('on', j === dashIdx));
+  if(/Satellite/i.test(cards[dashIdx]?.querySelector('h3')?.textContent || '')){
+    satPassDone = false; satShownAt = Date.now();
+  }
   dashPagerPaint();
   dashSchedule();
 }
@@ -8428,12 +8449,31 @@ function dashSchedule(){
   if(!DASH || !DASH_WIDGET || !DASH_CYCLE) return;
   dashTimer = setTimeout(dashTick, DASH_CYCLE * 1000);
 }
+// True while the card on screen still has something to finish saying. Only
+// the satellite loop does: the rest are stills and are done the moment they
+// are drawn.
+//
+// Capped, because "wait for the loop" must not become "wait forever" when the
+// archive is unreachable — past the cap the rotation moves on with whatever
+// it managed to show.
+const DASH_HOLD_CAP_MS = 45000;
+function dashCardBusy(){
+  const card = dashCards()[dashIdx];
+  if(!card || !/Satellite/i.test(card.querySelector('h3')?.textContent || '')) return false;
+  if(satPassDone) return false;
+  return Date.now() - satShownAt < DASH_HOLD_CAP_MS;
+}
+
 function dashTick(){
   if(!dashOn()){
     const j = dashNextLive(0, 1);
     toggleDash(true, true); showDashCard(j < 0 ? 0 : j);
     return;
   }
+  // Hold while the card still has something to finish — one full turn of the
+  // satellite loop, which a fifteen second slot cuts in half whenever the
+  // frames were still downloading when the card came up.
+  if(dashCardBusy()){ dashSchedule(); return; }
   // The next live card after this one, without wrapping; past the last, rest.
   const cards = dashCards();
   let j = dashIdx + 1;
