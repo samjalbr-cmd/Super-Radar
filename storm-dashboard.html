@@ -6870,7 +6870,13 @@ async function loadRwis(){
         if(!c || p.tsf0 == null) continue;          // no pavement reading, no use here
         out.push({lat: c[1], lon: c[0], id: p.station,
                   name: (p.name || p.station || '').trim(),
-                  pave: p.tsf0, air: p.tmpf, cond: p.scond0});
+                  pave: p.tsf0, air: p.tmpf, cond: p.scond0,
+                  // When it was measured. The currents feed keeps serving a
+                  // station's last reading however old it is, so without this
+                  // a sensor that stopped yesterday looks like it reported a
+                  // minute ago — and the whole Michigan network has been down
+                  // for thirty hours while this said "observed now".
+                  t: Date.parse(p.utc_valid || '') || null});
       }
     }catch(e){ /* a state without sensors simply contributes none */ }
     await new Promise(r => setTimeout(r, 200));
@@ -6897,17 +6903,32 @@ async function loadRwis(){
    land about every 18 minutes. */
 let roadHist = null, roadHistFor = '', roadHistAt = 0, roadHistLoading = false;
 
+// Blank while the reading is current; otherwise how stale it is. Silent under
+// ninety minutes because these report every twenty and a gap of one is not
+// worth a caveat.
+function rwisAgeNote(site){
+  if(!site || !site.t) return '';
+  const h = (Date.now() - site.t) / 3600e3;
+  if(h < 1.5) return '';
+  return h < 48 ? ` · ${Math.round(h)} h old` : ` · ${Math.round(h / 24)} d old`;
+}
+
 async function loadRoadHistory(id){
   if(!id || roadHistLoading) return;
   if(id === roadHistFor && Date.now() - roadHistAt < 15 * 60e3) return;
   roadHistLoading = true;
+  // sts/ets as plain dates. The archive also accepts the year1/month1/day1
+  // form the ASOS endpoint uses — accepts it, answers 200, and matches
+  // nothing at all, which is why this had been returning "Sorry, no results
+  // found for query!" and the card simply had no trace on it.
+  const day = x => x.toISOString().slice(0, 10);
   const now = new Date(), then = new Date(now.getTime() - 24 * 3600e3);
-  const d = (i, x) => `year${i}=${x.getUTCFullYear()}&month${i}=${x.getUTCMonth() + 1}` +
-                      `&day${i}=${x.getUTCDate()}&hour${i}=${x.getUTCHours()}`;
+  const tomorrow = new Date(now.getTime() + 24 * 3600e3);
   try{
     const txt = await (await fetch(
       'https://mesonet.agron.iastate.edu/cgi-bin/request/rwis.py' +
-      `?stations=${encodeURIComponent(id)}&${d(1, then)}&${d(2, now)}&tz=UTC&format=comma`)).text();
+      `?stations=${encodeURIComponent(id)}&sts=${day(then)}&ets=${day(tomorrow)}` +
+      '&tz=UTC&format=comma')).text();
     const lines = txt.split('\n').filter(l => l.trim() && l[0] !== '#');
     const hdr = (lines[0] || '').split(',');
     const iP = hdr.indexOf('tfs0'), iA = hdr.indexOf('tmpf'), iT = hdr.indexOf('obtime');
@@ -7216,7 +7237,7 @@ function renderDashRoad(){
     dashRow('Air', hit && hit.s.p.tmpf != null ? Math.round(hit.s.p.tmpf) + '°F' : '—',
             obs ? 'observed now' : '') +
     (rw ? dashRow('Pavement', Math.round(rw.s.pave) + '°F',
-                  `${rw.s.cond || 'sensor'} · ${Math.round(rw.km)} km`,
+                  `${rw.s.cond || 'sensor'} · ${Math.round(rw.km)} km${rwisAgeNote(rw.s)}`,
                   ROAD_STATE[sensorNow || 'dry'].color) : '') +
     (wb != null ? dashRow('Wet bulb', Math.round(wb * 9 / 5 + 32) + '°F',
                           'what snow actually feels') : '') +
