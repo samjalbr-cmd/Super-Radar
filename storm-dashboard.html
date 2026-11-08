@@ -585,11 +585,15 @@
     position:relative; width:100%; aspect-ratio:600/584; overflow:hidden;
     border-radius:10px; background:#05070d;
   }
+  /* No transition. Fading one frame out while the next fades in leaves both
+     part-transparent for a moment, and what shows through the pair is the
+     dark behind them — so every step dipped and the loop flashed. A flipbook
+     cuts; it does not dissolve. */
   .sat-wrap img{
     position:absolute; top:0; left:0; width:100%; display:block;
-    opacity:0; transition:opacity .08s linear;
+    visibility:hidden;
   }
-  .sat-wrap img.on{ opacity:1; }
+  .sat-wrap img.on{ visibility:visible; }
   .sat-bar{
     display:flex; align-items:center; gap:7px;
     font-family:monospace; font-size:12px; color:#8A93A6; padding-top:6px;
@@ -8219,6 +8223,10 @@ function renderDashSat(){
     const im = new Image();
     im.decoding = 'async';
     im.alt = '';
+    // Decode as it arrives rather than at the moment it is first shown: an
+    // undecoded frame makes the browser do the work during the swap, which is
+    // its own stutter on top of the fade.
+    im.addEventListener('load', () => { im.decode?.().catch(() => {}); }, {once: true});
     im.dataset.t = d.getTime();
     // A frame that is not there yet simply leaves the loop; the alternative
     // is a black flash once a cycle.
